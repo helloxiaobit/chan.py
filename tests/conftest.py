@@ -66,9 +66,9 @@ def synthetic_csv_code(synthetic_bars):
     code = "test_synthetic"
     path = os.path.join(ROOT, f"{code}_day.csv")
     with open(path, "w", encoding="utf-8") as f:
-        f.write("datetime,open,high,low,close\n")
+        f.write("datetime,open,high,low,close,volume\n")
         for b in synthetic_bars:
-            f.write(f"{b['year']:04}-{b['month']:02}-{b['day']:02},{b['open']},{b['high']},{b['low']},{b['close']}\n")
+            f.write(f"{b['year']:04}-{b['month']:02}-{b['day']:02},{b['open']},{b['high']},{b['low']},{b['close']},{b['volume']}\n")
     yield code
     if os.path.exists(path):
         os.remove(path)

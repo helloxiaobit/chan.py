@@ -166,6 +166,19 @@ class CChanConfig:
             res.append(RSI(self.rsi_cycle))
         if self.cal_kdj:
             res.append(KDJ(self.kdj_cycle))
+        if self.cal_feature:  # 特征引擎需要量能离群点分数
+            from Common.CEnum import TRADE_INFO_LST
+            from Math.OutlinerDetection import COutlinerDetection
+            res.extend(
+                COutlinerDetection(
+                    field,
+                    win_width=self.od_win_width,
+                    mean_thred=self.od_mean_thred,
+                    max_zero_cnt=self.od_max_zero_cnt,
+                    skip_zero=self.od_skip_zero,
+                )
+                for field in TRADE_INFO_LST
+            )
         return res
 
     def set_bsp_config(self, conf):

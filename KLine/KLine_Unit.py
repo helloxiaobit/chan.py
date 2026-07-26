@@ -67,6 +67,8 @@ class CKLine_Unit:
             obj.rsi = copy.deepcopy(self.rsi, memo)
         if hasattr(self, "kdj"):
             obj.kdj = copy.deepcopy(self.kdj, memo)
+        if hasattr(self, "od_scores"):
+            obj.od_scores = dict(self.od_scores)
         obj.set_idx(self.idx)
         memo[id(self)] = obj
         return obj
@@ -117,6 +119,7 @@ class CKLine_Unit:
         return self.high
 
     def set_metric(self, metric_model_lst: list) -> None:
+        from Math.OutlinerDetection import COutlinerDetection
         for metric_model in metric_model_lst:
             if isinstance(metric_model, CMACD):
                 self.macd: CMACD_item = metric_model.add(self.close)
@@ -132,6 +135,12 @@ class CKLine_Unit:
                 self.rsi = metric_model.add(self.close)
             elif isinstance(metric_model, KDJ):
                 self.kdj = metric_model.add(self.high, self.low, self.close)
+            elif isinstance(metric_model, COutlinerDetection):
+                if not hasattr(self, "od_scores"):
+                    self.od_scores = {}
+                score = metric_model.add(self.trade_info.metric.get(metric_model.field))
+                if score is not None:
+                    self.od_scores[metric_model.field] = score
 
     def get_parent_klc(self):
         assert self.sup_kl is not None

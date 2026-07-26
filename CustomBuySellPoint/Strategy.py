@@ -59,6 +59,9 @@ class CStrategy(metaclass=abc.ABCMeta):
             self.try_close(chan, lv)
             self.check_force_cover(cur_klu)
         if cbsp := self.try_open(chan, lv):
+            if self.conf.cal_feature:
+                from ChanModel.FeatureEngine import CFeatureEngine  # 懒加载
+                cbsp.add_feat(CFeatureEngine.cal_features(chan, lv, cbsp))
             if self.model_filter(cbsp):
                 self.cbsp_lst.append(cbsp)
 
