@@ -124,3 +124,11 @@ def test_conviction_risk_mult():
     h = FakeTrade(1 * DAY, 10 * DAY, 2.0, bs_type="1")
     stamp_conviction([g, h], co_dir_mult=3.0, bs_mults={"1": 1.5}, mult_cap=2.0)
     assert getattr(h, "risk_mult") == pytest.approx(2.0)
+
+
+def test_exit_maker_fee():
+    conf = CPortfolioConfig(risk_pct=0.01, taker_fee=0.001, maker_fee=0.0002, max_leverage=10)
+    # 收益0:taker进+maker出 → 亏 0.5×(0.001+0.0002)
+    t = FakeTrade(0, DAY, 0.0)
+    t.exit_maker = True
+    assert portfolio_eval([t], conf).total_return == pytest.approx(-0.5 * 0.0012)

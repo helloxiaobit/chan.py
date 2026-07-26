@@ -71,6 +71,9 @@
 | 31 | WF-2E:pyramid 未测角落(会话甲;S1 冻结剖面×py、S2 二级加仓 max_add=2;覆盖交接清单里的 wf8_pyramid.py,该脚本无需再跑) | **双双关闭**:S1+py 全拒(Cal 1.13→1.06/0.97,B段 0.74→0.19——1H 趋势长度撑不起加仓,正好加在衰竭处);S2 py10_max2 记分牌中性(同 Cal 2.30,DD≤25% 重标后同目标年化,不值得重跑门槛链)。**加仓杠杆的有效域=高时间框架单级(S2×1次),已画完边界**。research/wf2e_report.json;CTradeRecord 已加 is_pyramid 标识(加仓腿=动量市价单,z-limit 费用口径须排除) |
 | 32 | **freeze_v4 定稿执行(会话乙;S1 + S2py10 + conviction#14 + z-limit耐心8;2026 单发已烧)** | **新高水位但未达标**:风险标定冻结 risk=0.75%(IS 21-25 全期 **+47.0%/DD24.3%/三段最小Cal 2.02**);2026 单发 **+15.0%/回撤12.0%/Calmar 1.25**(52笔)。对比 v3(+15.2%/Cal1.09@risk1%):同等收益下风险降 1/4,Calmar 1.09→1.25。距年化50%仍差 ~3.3 倍,频率与 IS→OOS 衰减仍是主瓶颈。明细 research/from_session_b/freeze_v4_final.json;口径注记:z-limit 也盖到了 py10 加仓腿(约10腿×3bp,对2026影响≤0.1pp 偏乐观,后续按 is_pyramid 剔除重算) |
 
+| 33 | WF-2F:S2 信号类型扩容(4H 高框架 t2/t3 首测,py10 基底;频率矿最后一脉) | **全灭,频率系收官**:t12 Cal 2.30→1.38、t12s 0.67(A段归0)、t13 2.05、t123 0.44——2/3类信号在 4H 与 1H(#15)同样稀释边际。**至此频率三条脉全部证伪:加栈(#23)、低TF(#27)、信号类型(#15/#33)**;提频只能靠多标的组合,与单币种达标口径冲突,频率关闭。research/wf2f_report.json |
+| 34 | z-exit 出场费差(镜像 #21;reverse_bsp/trend_flip/time_stop 离场挂限价,止损类保持 taker;portfolio_eval 增 exit_maker 戳) | **通过,入 v5 组件池**:BTC 256/256 全触及(8根耐心),组合(v4口径)+46.0%→+47.3%、Cal 1.83→1.88、三段全升(1.99/5.26/2.34);多币种触及率 ETH 246/246、SOL 279/279、BNB 217/217 全 100%——纯费差组件无择时赌注。research/zexit_report.json |
+
 **会话乙已收工交接(用户指示,避免双会话撞车;后续研发统一由会话甲负责)**:
 - 全部资产已复制到 `research/from_session_b/`:freeze_v3/v4 脚本与结果、逐笔交易缓存(cache_2125/26_{S1,S2,S2py10}.json,字段 open_ts/close_ts/profit_rate/risk_rate/bs_type/is_buy)、z-limit 参考实现(fee_zlimit_test.py / freeze_v4.py 的 apply_zlimit)、全部报告 JSON、K线聚合脚本(aggregate_klines.py,2H/周线;周线=周一界+周末日时间戳,多级别对齐必需)
 - 交接清单里的 wf8_pyramid.py 已被 #31(WF-2E)覆盖,无需再跑

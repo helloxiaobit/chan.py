@@ -114,7 +114,9 @@ def portfolio_eval(trades: List[CTradeRecord], conf: Optional[CPortfolioConfig] 
             if notional is None:
                 continue
             entry_fee = conf.maker_fee if str(t.bs_type).startswith("z") else conf.taker_fee
-            pnl = notional * (t.profit_rate / 100.0) - notional * (entry_fee + conf.taker_fee)
+            # 出场费:交易可带 exit_maker 戳(非止损类离场挂限价,须先验证触及成交),默认 taker
+            exit_fee = conf.maker_fee if getattr(t, "exit_maker", False) else conf.taker_fee
+            pnl = notional * (t.profit_rate / 100.0) - notional * (entry_fee + exit_fee)
             equity += pnl
             peak = max(peak, equity)
             executed.append((t, notional, pnl))
