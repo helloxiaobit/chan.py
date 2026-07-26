@@ -1,0 +1,6 @@
+# 开仓参数 demo(正式使用请复制为 OpenConfig.yaml 或由 parse_automl_result.py 生成)
+open_para:
+  score_thred: null        # 模型分数阈值(配置 model 时生效)
+  max_sl_rate: 0.05        # 最大止损 5%
+  max_profit_rate: 0.15    # 止盈 15%
+  bsp_type_filter: null    # 如 "1,1p" 只交易一类买卖点

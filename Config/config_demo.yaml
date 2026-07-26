@@ -58,3 +58,8 @@ cos:                               # 图床上传,可选
 
 model:
   dir: ModelStrategy/models/output # 模型文件目录
+
+trade:                             # 线上交易例行(Trade/Script)配置
+  code_list: ["BTC/USDT", "ETH/USDT"]  # 监控标的池
+  lv: K_60M                        # 信号计算级别
+  bench_price: 1000                # 单笔开仓名义金额(USDT)

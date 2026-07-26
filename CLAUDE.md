@@ -48,5 +48,5 @@ Plot/PlotDriver.py 负责全部绘图(DrawElement 为分发入口)
 - [x] M3 模型框架(CModelGenerator/CDataSet + XGB/LGBM/MLP + CCommModel/CXGBModel 接入)
 - [x] M4 回测+AutoML(eval_strategy评估报告、bayes/grid/PBT搜索、parse_automl_result→OpenConfig.yaml)
 - [x] M5 ccxt数据层(ccxt重构、ccxt_update增量落库、OfflineDataAPI、SnapshotAPI含CCXTSnapshot)
-- [ ] M6 交易系统
+- [x] M6 交易系统(CChanDB双后端、信号状态机、CCXTTradeEngine dry-run、Trade/Script全套、send_msg)
 - [ ] M7 收尾
