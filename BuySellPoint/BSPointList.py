@@ -26,6 +26,7 @@ class CBSPointList(Generic[LINE_TYPE, LINE_LIST_TYPE]):
         self.config = bs_point_config
         self.last_sure_pos = -1
         self.last_sure_seg_idx = 0
+        self._latest_cache = None  # getLastestBspList 缓存(每次 cal 失效;策略每根K线高频调用)
 
     def store_add_bsp(self, bsp_type: BSP_TYPE, bsp: CBS_Point[LINE_TYPE]):
         if bsp_type not in self.bsp_store_dict:
@@ -98,6 +99,7 @@ class CBSPointList(Generic[LINE_TYPE, LINE_LIST_TYPE]):
         return len(self.bsp_store_flat_dict)
 
     def cal(self, bi_list: LINE_LIST_TYPE, seg_list: CSegListComm[LINE_TYPE]):
+        self._latest_cache = None  # 买卖点将重算,失效缓存
         self.clear_store_end()
         self.clear_bsp1_end()
         self.cal_seg_bs1point(seg_list, bi_list)
@@ -412,7 +414,10 @@ class CBSPointList(Generic[LINE_TYPE, LINE_LIST_TYPE]):
 
     def getLastestBspList(self) -> List[CBS_Point[LINE_TYPE]]:
         # README cbsp/区间套示例所用接口:全部 bsp,从最新到最旧排序
-        return self.get_latest_bsp(0)
+        # 带缓存:两次 cal 之间存量不变,策略(尤其ensemble多变体)每根K线重复调用时 O(1)
+        if getattr(self, "_latest_cache", None) is None:  # getattr 兼容旧 pickle
+            self._latest_cache = self.get_latest_bsp(0)
+        return self._latest_cache
 
 
 def bsp2s_break_bsp1(bsp2s_bi: LINE_TYPE, bsp2_break_bi: LINE_TYPE) -> bool:
