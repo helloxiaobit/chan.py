@@ -76,6 +76,8 @@
 
 | 35 | WF-2G:E1 出场引擎单组件解捆(S2py10 基底;先修两处静默失效:两级栈 trail 回退交易级笔端点、新增 exit_target_mode="liq_filter" 只做地板不止盈) | **全部不入冻结**:mtr10 质量地板重蹈 E1(砍掉的 41 笔是盈利交易,流动性池近≠交易差,Cal 2.30→1.35);trail30/组合劣化;**trail15 单栈过关(Cal 2.30→2.49、A 1.73→1.83、多币种 9/9 段正)但组合层被否(Cal 1.83→1.75)**——S2 收益让渡全额传导,DD 改善被 S1 主导的组合回撤稀释。教训:单栈 Calmar 改善不保证组合改善,第三关不可省。research/wf2g_report.json、tr15_multi_gate.json、tr15_portfolio_test.json |
 
+| 36 | WF-2H:S2py10 三级形态 [1D,4H,1H](1H 精化止损假设) | **空测,方向放弃**:require_sub_confirm=False 下入场级别不参与止损,95 笔逐笔一致;若改造"qjt 只精化止损不门控"则与教训#3 同构(微观边沿不能当高级别止损位,15M→1H 已付过学费,1H→4H 同理)。**至此结构性矿脉勘毕**:v5 组件池=z-exit(#34)+WF-2B(在途);此外唯余"接受 OOS Calmar≈1.25 的现实并等更多样本外时间"。research/wf2h_s2_3lv.json |
+
 **会话乙已收工交接(用户指示,避免双会话撞车;后续研发统一由会话甲负责)**:
 - 全部资产已复制到 `research/from_session_b/`:freeze_v3/v4 脚本与结果、逐笔交易缓存(cache_2125/26_{S1,S2,S2py10}.json,字段 open_ts/close_ts/profit_rate/risk_rate/bs_type/is_buy)、z-limit 参考实现(fee_zlimit_test.py / freeze_v4.py 的 apply_zlimit)、全部报告 JSON、K线聚合脚本(aggregate_klines.py,2H/周线;周线=周一界+周末日时间戳,多级别对齐必需)
 - 交接清单里的 wf8_pyramid.py 已被 #31(WF-2E)覆盖,无需再跑
