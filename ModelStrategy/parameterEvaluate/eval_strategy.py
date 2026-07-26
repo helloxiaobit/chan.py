@@ -59,6 +59,11 @@ class CTradeRecord:
         self.profit_rate = cbsp.profit_with_final(close_price)  # %,分批平仓按数量加权
         self.mae = cbsp.mae  # 最大不利偏移(%)
         self.mfe = cbsp.mfe  # 最大有利偏移(%)
+        # 初始风险距离比(组合级R仓位用):优先出场引擎记录的初始风险,否则按当前止损价
+        risk = cbsp.exit_state.get("risk") if cbsp.exit_state else None
+        if risk is None and cbsp.sl_price is not None:
+            risk = abs(cbsp.open_price - cbsp.sl_price)
+        self.risk_rate = risk / cbsp.open_price if risk and cbsp.open_price else None
 
     def to_dict(self):
         return {

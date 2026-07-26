@@ -1,0 +1,70 @@
+"""组合级复利核算器测试"""
+import pytest
+
+from ModelStrategy.parameterEvaluate.portfolio_eval import (CPortfolioConfig, portfolio_eval,
+                                                            scale_risk_to_target)
+
+DAY = 86400.0
+
+
+class FakeTrade:
+    def __init__(self, open_ts, close_ts, profit_rate, risk_rate=0.02, bs_type="1", open_price=100.0):
+        self.open_ts = open_ts
+        self.close_ts = close_ts
+        self.profit_rate = profit_rate
+        self.risk_rate = risk_rate
+        self.bs_type = bs_type
+        self.open_price = open_price
+
+
+def test_r_sizing_and_compounding():
+    # 单笔风险1%,止损距离2% → 名义=权益×0.5;亏到止损恰亏1%权益(费前)
+    conf = CPortfolioConfig(risk_pct=0.01, taker_fee=0.0, maker_fee=0.0, max_leverage=10)
+    trades = [FakeTrade(0, DAY, -2.0, risk_rate=0.02)]
+    res = portfolio_eval(trades, conf)
+    assert res.total_return == pytest.approx(-0.01)
+    # 复利:两笔各+2%(名义0.5×权益)→ 权益×(1.01)^2
+    trades = [FakeTrade(0, DAY, 2.0), FakeTrade(2 * DAY, 3 * DAY, 2.0)]
+    res = portfolio_eval(trades, conf)
+    assert res.total_return == pytest.approx(1.01 ** 2 - 1)
+
+
+def test_fees_and_maker():
+    conf = CPortfolioConfig(risk_pct=0.01, taker_fee=0.001, maker_fee=0.0002, max_leverage=10)
+    # 收益0,taker进出 → 亏 0.5×(0.001+0.001)=0.1%
+    res = portfolio_eval([FakeTrade(0, DAY, 0.0)], conf)
+    assert res.total_return == pytest.approx(-0.5 * 0.002)
+    # z前缀限价入场用maker
+    res = portfolio_eval([FakeTrade(0, DAY, 0.0, bs_type="z1")], conf)
+    assert res.total_return == pytest.approx(-0.5 * 0.0012)
+
+
+def test_concurrency_and_leverage_caps():
+    conf = CPortfolioConfig(risk_pct=0.01, taker_fee=0, maker_fee=0, max_concurrent=2, max_leverage=10)
+    trades = [FakeTrade(0, 10 * DAY, 1.0), FakeTrade(1 * DAY, 10 * DAY, 1.0),
+              FakeTrade(2 * DAY, 10 * DAY, 1.0)]  # 第三笔并发超限
+    res = portfolio_eval(trades, conf)
+    assert res.trade_cnt == 2 and res.skipped == 1
+    # 单笔杠杆上限:止损距离0.1% → 理论名义10x,被 max_pos_leverage=1.5 截断
+    conf2 = CPortfolioConfig(risk_pct=0.01, taker_fee=0, maker_fee=0, max_pos_leverage=1.5)
+    res2 = portfolio_eval([FakeTrade(0, DAY, 1.0, risk_rate=0.001)], conf2)
+    assert res2.total_return == pytest.approx(1.5 * 0.01)
+
+
+def test_drawdown_and_cagr():
+    conf = CPortfolioConfig(risk_pct=0.01, taker_fee=0, maker_fee=0)
+    # +2% → -2%(名义0.5权益 → ±1%权益)
+    trades = [FakeTrade(0, DAY, 2.0), FakeTrade(2 * DAY, 365 * DAY, -2.0)]
+    res = portfolio_eval(trades, conf)
+    assert res.max_drawdown == pytest.approx(0.01, rel=1e-6)
+    assert res.span_days == pytest.approx(365)
+    assert res.cagr == pytest.approx(res.total_return, rel=1e-6)  # 恰好一年
+
+
+def test_scale_risk_to_target():
+    trades = [FakeTrade(i * 2 * DAY, (i * 2 + 1) * DAY, 4.0 if i % 3 else -2.0)
+              for i in range(60)]
+    out = scale_risk_to_target(trades, target_dd=0.25)
+    assert len(out["rows"]) >= 5
+    assert out["best_within_dd"] is not None
+    assert out["best_within_dd"]["max_drawdown"] <= 0.25
