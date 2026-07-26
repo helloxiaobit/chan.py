@@ -1,0 +1,60 @@
+# chan.py 完整版全局配置示例
+# 使用方法:复制本文件为同目录下的 config.yaml(已在 .gitignore 中,不会入库),再按需修改。
+# 所有相对路径均相对仓库根目录解析(见 CEnv.abs_path)。
+
+db:
+  type: sqlite                     # sqlite / mysql
+  sqlite_path: Trade/chan_trade.db # sqlite 数据库文件路径
+  mysql:                           # type=mysql 时生效(需 pip install pymysql)
+    host: 127.0.0.1
+    port: 3306
+    user: root
+    password: ""
+    database: chan
+
+offline_data:
+  root: OfflineData/data                 # 离线K线落地根目录
+  sqlite_path: OfflineData/data/kline.db # ccxt 离线K线 sqlite 文件
+
+snapshot_engine: ccxt                    # 实时快照引擎: sina / futu / pytdx / ak / ccxt
+
+notify:
+  backend: none                    # telegram / dingtalk / wecom / email / gotify / none
+  telegram:
+    bot_token: ""
+    chat_id: ""
+    proxy: ""                      # 可选,如 http://127.0.0.1:7890
+  dingtalk:
+    webhook: ""
+    secret: ""
+  wecom:
+    webhook: ""
+  email:
+    smtp_host: ""
+    smtp_port: 465
+    user: ""
+    password: ""
+    to: ""
+  gotify:
+    url: ""
+    token: ""
+
+ccxt:
+  exchange: binance                # ccxt 交易所 id,如 binance / okx
+  api_key: ""
+  secret: ""
+  password: ""                     # okx 等交易所需要
+  testnet: true                    # true 时启用 set_sandbox_mode
+  proxy: ""                        # 可选,如 http://127.0.0.1:7890
+  rate_limit: true                 # enableRateLimit
+  default_type: spot               # spot / swap / future
+
+futu:                              # 可选(需 pip install futu-api)
+  host: 127.0.0.1
+  port: 11111
+
+cos:                               # 图床上传,可选
+  backend: none                    # minio / txcos / none
+
+model:
+  dir: ModelStrategy/models/output # 模型文件目录

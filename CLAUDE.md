@@ -42,4 +42,11 @@ Plot/PlotDriver.py 负责全部绘图(DrawElement 为分发入口)
 ## 当前状态
 
 - [x] 前期分析、差距清单、架构设计(见 DEV_PLAN.md)
-- [ ] M0 环境与配置体系 → M1 cbsp策略框架 → M2 特征引擎 → M3 模型框架 → M4 回测+AutoML → M5 ccxt数据层 → M6 交易系统 → M7 收尾
+- [x] M0 环境与配置体系(Config/、requirements 分层、tests/ 一致性测试)
+- [ ] M1 cbsp策略框架
+- [ ] M2 特征引擎
+- [ ] M3 模型框架
+- [ ] M4 回测+AutoML
+- [ ] M5 ccxt数据层
+- [ ] M6 交易系统
+- [ ] M7 收尾

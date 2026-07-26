@@ -1,0 +1,17 @@
+# 完整版依赖(在 base 之上):pip install -r Script/requirements_full.txt
+# 核心缠论计算只需 requirements.txt;以下依赖均为懒加载,按需安装亦可
+-r requirements.txt
+
+pyyaml>=6.0          # Config/ 配置体系
+pytest>=7.0          # tests/ 单测
+ccxt>=4.0            # 加密货币数据与交易
+scikit-learn>=1.3    # MLP 模型 / 评估指标
+xgboost>=1.7         # XGB 模型
+lightgbm>=4.0        # LGBM 模型
+optuna>=3.0          # AutoML 贝叶斯搜索
+
+# ===== 可选依赖(按需手动安装)=====
+# akshare>=1.10      # A股数据(研究用)
+# pymysql>=1.0       # mysql 交易后端
+# futu-api>=6.0      # futu 行情/交易引擎
+# minio>=7.0         # CosApi 图床(minio 后端)

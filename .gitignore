@@ -8,3 +8,9 @@ config.yaml
 OpenConfig.yaml
 gotify_push.py
 cos_config.yaml
+# ===== 完整版新增 =====
+test.png
+test_synthetic_*.csv
+.pytest_cache/
+Config/config.yaml
+ModelStrategy/models/output/
