@@ -78,6 +78,8 @@
 
 | 36 | WF-2H:S2py10 三级形态 [1D,4H,1H](1H 精化止损假设) | **空测,方向放弃**:require_sub_confirm=False 下入场级别不参与止损,95 笔逐笔一致;若改造"qjt 只精化止损不门控"则与教训#3 同构(微观边沿不能当高级别止损位,15M→1H 已付过学费,1H→4H 同理)。**至此结构性矿脉勘毕**:v5 组件池=z-exit(#34)+WF-2B(在途);此外唯余"接受 OOS Calmar≈1.25 的现实并等更多样本外时间"。research/wf2h_s2_3lv.json |
 
+| 37 | WF-2B:三级[4H,1H,15M]×bos_zone 限价族(ib 基线,6 变体一趟 ensemble,7.5h) | **整族被三段门槛毙,但拆出干净信号**:全变体 B(2024) 段负(-0.61~-0.75)——负来自基线的 sl_intrabar(S1 冻结时弃 ib 正因于此),非 bos_zone;bos_zone 相对自身基线是真增益(+9.7%→+13.0%、Cal 0.44→0.64、A 1.08→1.43、C 1.29→2.54,maker 占比 82%,zone来源 fx/fvg/nochase 等价、ob 略差)。**追加决定性复测 WF-2B'(bos_zone × 冻结无 ib 剖面)在途**,过关才有 v5 资格。research/wf2b_report.json |
+
 **会话乙已收工交接(用户指示,避免双会话撞车;后续研发统一由会话甲负责)**:
 - 全部资产已复制到 `research/from_session_b/`:freeze_v3/v4 脚本与结果、逐笔交易缓存(cache_2125/26_{S1,S2,S2py10}.json,字段 open_ts/close_ts/profit_rate/risk_rate/bs_type/is_buy)、z-limit 参考实现(fee_zlimit_test.py / freeze_v4.py 的 apply_zlimit)、全部报告 JSON、K线聚合脚本(aggregate_klines.py,2H/周线;周线=周一界+周末日时间戳,多级别对齐必需)
 - 交接清单里的 wf8_pyramid.py 已被 #31(WF-2E)覆盖,无需再跑
