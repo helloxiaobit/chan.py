@@ -34,6 +34,14 @@ SMC 限价入场模式(entry_mode,默认 "breakout" 为原突破逻辑):
 - trail_after_r:     浮盈达 R 倍后启动入场级别笔端点结构追踪止损,如 1.5
 - time_stop_bars:    持仓 N 根交易级别K线仍未盈利则离场,如 12
 - min_target_r:      目标距离不足 R 倍初始风险的信号直接放弃(质量地板),如 1.0
+(2026回测教训:趋势剧本下利润集中在少数大赢家尾部,最近池止盈/保本会截断尾部,
+ 默认保持关闭;结构化止盈只应用于震荡剧本)
+
+Regime 状态机(迭代5):
+- 判定:4H最近中枢仍新鲜(距今≤regime_zs_valid_bars根)且现价在[ZD,ZG]内 → "range",否则 "trend"
+- 每笔交易开仓时打戳 exit_state["regime"](当下判定,无后见偏差),供分状态切片分析
+- regime_mode: None(仅打戳)/"silent"(range期不开新仓,在途限价单照常管理)
+- regime_zs_valid_bars: 中枢新鲜度窗口,默认 30
 """
 from typing import TYPE_CHECKING, List, Optional, Tuple
 
@@ -94,6 +102,20 @@ class CMultiLevelStrategy(CStrategy):
                 return 1 if seg.dir == BI_DIR.UP else -1
         return 0
 
+    def cal_regime(self, chan: 'CChan') -> str:
+        """4H 状态:最近中枢仍新鲜且现价在其[ZD,ZG]内 → range(震荡),否则 trend"""
+        if len(chan.lv_list) < 2:
+            return "trend"
+        trend_data = chan[0]
+        if len(trend_data) == 0 or len(trend_data.zs_list) == 0:
+            return "trend"
+        zs = trend_data.zs_list[-1]
+        cur = trend_data[-1][-1]
+        fresh = cur.idx - zs.end.idx <= self.get_p("regime_zs_valid_bars", 30)
+        if fresh and zs.low <= cur.close <= zs.high:
+            return "range"
+        return "trend"
+
     # ===== 框架接口 =====
     def try_open(self, chan: 'CChan', lv: int) -> Optional[CCustomBSP]:
         role = self.get_role(chan, lv)
@@ -146,6 +168,9 @@ class CMultiLevelStrategy(CStrategy):
             if filled := self.process_pending_entries(chan, lv, direction):
                 return self.attach_exit_plan(chan, lv, filled)
         if lv > 0 and direction == 0:
+            return None
+        # 1.5) Regime 门控:silent 模式下震荡期不开新仓
+        if self.get_p("regime_mode") == "silent" and self.cal_regime(chan) == "range":
             return None
         # 2) 交易级别形态学 bsp 触发
         last_bsp_lst = data.bs_point_lst.getLastestBspList()
@@ -390,7 +415,8 @@ class CMultiLevelStrategy(CStrategy):
         if cbsp is None or cbsp.sl_price is None:
             return cbsp
         risk = abs(cbsp.open_price - cbsp.sl_price)
-        cbsp.exit_state = {"risk": risk, "partial_done": False, "trailing": False}
+        cbsp.exit_state = {"risk": risk, "partial_done": False, "trailing": False,
+                           "regime": self.cal_regime(chan)}  # 开仓时打戳,无后见偏差
         if self.get_p("exit_target_mode") == "liq" and risk > 0:
             from Math.SmartMoney import find_liquidity_pools
             highs, lows = find_liquidity_pools(chan[lv].bi_list, lookback_bi=16)

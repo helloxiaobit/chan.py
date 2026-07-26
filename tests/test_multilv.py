@@ -313,6 +313,18 @@ def test_new_features_consistency(tmp_env, bars_3lv):
     assert sig_a == sig_b
 
 
+def test_regime_stamp_and_silent(tmp_env):
+    """每笔交易带 regime 戳;silent 模式交易数不多于基线且戳全为 trend"""
+    chan = run_load(tmp_env, {"strategy_para": {"require_sub_confirm": False}})
+    trades = list(chan[1].cbsp_strategy)
+    assert len(trades) > 0
+    assert all(t.exit_state.get("regime") in ("trend", "range") for t in trades)
+    chan_s = run_load(tmp_env, {"strategy_para": {"require_sub_confirm": False, "regime_mode": "silent"}})
+    trades_s = list(chan_s[1].cbsp_strategy)
+    assert len(trades_s) <= len(trades)
+    assert all(t.exit_state.get("regime") == "trend" for t in trades_s)
+
+
 def test_multilv_eval_lv_idx(tmp_env):
     from ModelStrategy.parameterEvaluate.eval_strategy import CEvalConfig, eval_strategy
     res = eval_strategy(CEvalConfig(

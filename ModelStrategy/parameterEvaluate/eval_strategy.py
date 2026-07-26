@@ -64,6 +64,7 @@ class CTradeRecord:
         if risk is None and cbsp.sl_price is not None:
             risk = abs(cbsp.open_price - cbsp.sl_price)
         self.risk_rate = risk / cbsp.open_price if risk and cbsp.open_price else None
+        self.regime = cbsp.exit_state.get("regime") if cbsp.exit_state else None  # 开仓时的4H状态戳
 
     def to_dict(self):
         return {
@@ -71,7 +72,7 @@ class CTradeRecord:
             "open_time": self.open_time.to_str(), "open_price": self.open_price,
             "close_price": self.close_price, "profit_rate": self.profit_rate,
             "reason": self.reason, "is_closed": self.is_closed, "score": self.score,
-            "mae": self.mae, "mfe": self.mfe,
+            "mae": self.mae, "mfe": self.mfe, "regime": self.regime, "risk_rate": self.risk_rate,
         }
 
 
