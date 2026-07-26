@@ -289,6 +289,16 @@ class CPlotDriver:
     def save2img(self, path):
         plt.savefig(path, bbox_inches='tight')
 
+    def Upload2COS(self, path=None):
+        # 保存图片并上传图床(config.yaml cos 段),返回 url;path=None 时存临时文件
+        import os
+        import tempfile
+        from Plot.CosApi import upload_file
+        if path is None:
+            path = os.path.join(tempfile.gettempdir(), f"chan_plot_{id(self)}.png")
+        self.save2img(path)
+        return upload_file(path)
+
     def draw_klu(self, meta: CChanPlotMeta, ax: Axes, width=0.4, rugd=True, plot_mode="kl"):
         # rugd: red up green down
         up_color = 'r' if rugd else 'g'

@@ -49,4 +49,6 @@ Plot/PlotDriver.py 负责全部绘图(DrawElement 为分发入口)
 - [x] M4 回测+AutoML(eval_strategy评估报告、bayes/grid/PBT搜索、parse_automl_result→OpenConfig.yaml)
 - [x] M5 ccxt数据层(ccxt重构、ccxt_update增量落库、OfflineDataAPI、SnapshotAPI含CCXTSnapshot)
 - [x] M6 交易系统(CChanDB双后端、信号状态机、CCXTTradeEngine dry-run、Trade/Script全套、send_msg)
-- [ ] M7 收尾
+- [x] M7 收尾(FeatureReconciliation、ExamGenerator、CosApi、多级别全量一致性测试、README_FULL.md)
+
+**完整版开发已全部完成**(M0~M7,86 个测试用例)。使用文档见 README_FULL.md。
