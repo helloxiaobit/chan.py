@@ -22,6 +22,8 @@ class CPortfolioConfig:
         max_leverage: float = 3.0,     # 总名义/权益上限
         max_pos_leverage: float = 1.5,  # 单笔名义/权益上限(止损太近时防爆杠杆)
         initial_equity: float = 1.0,
+        throttle_dd: Optional[float] = None,  # 权益自高点回撤超过该比例时节流(None=不启用)
+        throttle_mult: float = 0.5,           # 节流期风险乘数
     ):
         self.risk_pct = risk_pct
         self.taker_fee = taker_fee
@@ -30,6 +32,8 @@ class CPortfolioConfig:
         self.max_leverage = max_leverage
         self.max_pos_leverage = max_pos_leverage
         self.initial_equity = initial_equity
+        self.throttle_dd = throttle_dd
+        self.throttle_mult = throttle_mult
 
 
 class CPortfolioResult:
@@ -77,6 +81,7 @@ def portfolio_eval(trades: List[CTradeRecord], conf: Optional[CPortfolioConfig] 
     events.sort(key=lambda x: (x[0], x[1]))
 
     equity = conf.initial_equity
+    peak = equity  # 回撤节流用的权益高水位
     open_pos = {}  # trade id → notional
     curve = [(trades[0].open_ts if trades else 0, equity)]
     executed, skipped = [], 0
@@ -91,8 +96,12 @@ def portfolio_eval(trades: List[CTradeRecord], conf: Optional[CPortfolioConfig] 
                 continue
             gross = sum(open_pos.values())
             # conviction 风险预算:交易可带 risk_mult 戳(见 conviction.stamp_conviction),默认 1.0
+            risk = conf.risk_pct * getattr(t, "risk_mult", 1.0)
+            # 回撤节流:权益自高水位回撤超过阈值 → 降风险,直至收复
+            if conf.throttle_dd is not None and (peak - equity) / peak > conf.throttle_dd:
+                risk *= conf.throttle_mult
             notional = min(
-                equity * conf.risk_pct * getattr(t, "risk_mult", 1.0) / risk_rate,
+                equity * risk / risk_rate,
                 equity * conf.max_pos_leverage,
                 max(0.0, equity * conf.max_leverage - gross),
             )
@@ -107,6 +116,7 @@ def portfolio_eval(trades: List[CTradeRecord], conf: Optional[CPortfolioConfig] 
             entry_fee = conf.maker_fee if str(t.bs_type).startswith("z") else conf.taker_fee
             pnl = notional * (t.profit_rate / 100.0) - notional * (entry_fee + conf.taker_fee)
             equity += pnl
+            peak = max(peak, equity)
             executed.append((t, notional, pnl))
             curve.append((ts, equity))
             if equity <= 0:  # 爆仓保护

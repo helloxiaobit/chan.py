@@ -46,7 +46,8 @@ def stamp_conviction(
         if opp > 0:
             mult *= opp_dir_mult
         if bs_mults:
-            mult *= bs_mults.get(str(t.bs_type), 1.0)
+            # z 前缀是执行属性(限价入场),信号类型分层按去前缀后的 bs_type 匹配
+            mult *= bs_mults.get(str(t.bs_type).lstrip("z"), 1.0)
         if stack_mults:
             mult *= stack_mults.get(getattr(t, "stack", ""), 1.0)
         t.risk_mult = min(mult, mult_cap)

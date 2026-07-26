@@ -73,6 +73,27 @@ def test_scale_risk_to_target():
     assert out["best_within_dd"]["max_drawdown"] <= 0.25
 
 
+def test_drawdown_throttle_recovery():
+    # 无节流:三笔 -2%、-2%、-2%(风险1%/笔)→ 各亏1%权益
+    conf = CPortfolioConfig(risk_pct=0.01, taker_fee=0, maker_fee=0,
+                            throttle_dd=0.015, throttle_mult=0.5)
+    trades = [FakeTrade(0, DAY, -2.0), FakeTrade(2 * DAY, 3 * DAY, -2.0),
+              FakeTrade(4 * DAY, 5 * DAY, -2.0)]
+    res = portfolio_eval(trades, conf)
+    # 前两笔全额(累计回撤~1.99%>1.5%),第三笔节流半仓
+    expect = 1.0 * 0.99 * 0.99
+    expect -= expect * 0.005
+    assert res.total_return == pytest.approx(expect - 1.0, rel=1e-6)
+    # 收复高点后恢复全仓
+    trades2 = [FakeTrade(0, DAY, -2.0), FakeTrade(2 * DAY, 3 * DAY, -2.0),
+               FakeTrade(4 * DAY, 5 * DAY, 10.0), FakeTrade(6 * DAY, 7 * DAY, -2.0)]
+    res2 = portfolio_eval(trades2, conf)
+    eq = 1.0 * 0.99 * 0.99
+    eq += eq * 0.5 * 0.01 * (10.0 / 2.0)   # 节流半仓的+10%(名义=权益×0.5×0.25)
+    eq -= eq * 0.01                        # 已收复 → 全仓
+    assert res2.total_return == pytest.approx(eq - 1.0, rel=1e-6)
+
+
 def test_conviction_risk_mult():
     conf = CPortfolioConfig(risk_pct=0.01, taker_fee=0, maker_fee=0, max_leverage=10)
     # risk_mult 戳直接缩放单笔风险:2.0 → 亏损翻倍
