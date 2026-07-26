@@ -573,7 +573,8 @@ class CMultiLevelStrategy(CStrategy):
         cbsp.exit_state = {"risk": risk, "partial_done": False, "trailing": False,
                            "regime": self.cal_regime(chan)}  # 开仓时打戳,无后见偏差
         self.attach_funding_feat(cbsp, cbsp.klu)
-        if self.get_p("exit_target_mode") == "liq" and risk > 0:
+        # "liq"=目标止盈+质量地板;"liq_filter"=只算目标做 min_target_r 地板,不触发止盈
+        if self.get_p("exit_target_mode") in ("liq", "liq_filter") and risk > 0:
             from Math.SmartMoney import find_liquidity_pools
             highs, lows = find_liquidity_pools(chan[lv].bi_list, lookback_bi=16)
             if cbsp.is_buy:
@@ -589,10 +590,10 @@ class CMultiLevelStrategy(CStrategy):
         return cbsp
 
     def entry_lv_trail_price(self, chan: 'CChan', lv: int, is_buy: bool) -> Optional[float]:
-        # 入场级别最近一笔反向笔端点(多头取最近下笔低点)作为结构追踪位
-        if lv + 1 >= len(chan.lv_list):
-            return None
-        for bi in chan[lv + 1].bi_list[::-1]:
+        # 入场级别最近一笔反向笔端点(多头取最近下笔低点)作为结构追踪位;
+        # 两级栈无入场级别时回退用交易级别自身笔端点(粒度粗但结构语义一致)
+        trail_lv = lv + 1 if lv + 1 < len(chan.lv_list) else lv
+        for bi in chan[trail_lv].bi_list[::-1]:
             if is_buy and bi.is_down():
                 return bi.get_end_val()
             if not is_buy and bi.is_up():

@@ -74,6 +74,8 @@
 | 33 | WF-2F:S2 信号类型扩容(4H 高框架 t2/t3 首测,py10 基底;频率矿最后一脉) | **全灭,频率系收官**:t12 Cal 2.30→1.38、t12s 0.67(A段归0)、t13 2.05、t123 0.44——2/3类信号在 4H 与 1H(#15)同样稀释边际。**至此频率三条脉全部证伪:加栈(#23)、低TF(#27)、信号类型(#15/#33)**;提频只能靠多标的组合,与单币种达标口径冲突,频率关闭。research/wf2f_report.json |
 | 34 | z-exit 出场费差(镜像 #21;reverse_bsp/trend_flip/time_stop 离场挂限价,止损类保持 taker;portfolio_eval 增 exit_maker 戳) | **通过,入 v5 组件池**:BTC 256/256 全触及(8根耐心),组合(v4口径)+46.0%→+47.3%、Cal 1.83→1.88、三段全升(1.99/5.26/2.34);多币种触及率 ETH 246/246、SOL 279/279、BNB 217/217 全 100%——纯费差组件无择时赌注。research/zexit_report.json |
 
+| 35 | WF-2G:E1 出场引擎单组件解捆(S2py10 基底;先修两处静默失效:两级栈 trail 回退交易级笔端点、新增 exit_target_mode="liq_filter" 只做地板不止盈) | **全部不入冻结**:mtr10 质量地板重蹈 E1(砍掉的 41 笔是盈利交易,流动性池近≠交易差,Cal 2.30→1.35);trail30/组合劣化;**trail15 单栈过关(Cal 2.30→2.49、A 1.73→1.83、多币种 9/9 段正)但组合层被否(Cal 1.83→1.75)**——S2 收益让渡全额传导,DD 改善被 S1 主导的组合回撤稀释。教训:单栈 Calmar 改善不保证组合改善,第三关不可省。research/wf2g_report.json、tr15_multi_gate.json、tr15_portfolio_test.json |
+
 **会话乙已收工交接(用户指示,避免双会话撞车;后续研发统一由会话甲负责)**:
 - 全部资产已复制到 `research/from_session_b/`:freeze_v3/v4 脚本与结果、逐笔交易缓存(cache_2125/26_{S1,S2,S2py10}.json,字段 open_ts/close_ts/profit_rate/risk_rate/bs_type/is_buy)、z-limit 参考实现(fee_zlimit_test.py / freeze_v4.py 的 apply_zlimit)、全部报告 JSON、K线聚合脚本(aggregate_klines.py,2H/周线;周线=周一界+周末日时间戳,多级别对齐必需)
 - 交接清单里的 wf8_pyramid.py 已被 #31(WF-2E)覆盖,无需再跑
