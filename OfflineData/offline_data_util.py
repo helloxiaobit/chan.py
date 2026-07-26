@@ -12,6 +12,19 @@ from Common.CEnum import KL_TYPE
 
 ROW_TYPE = Tuple[int, float, float, float, float, float]  # ts, o, h, l, c, v
 
+# 各日内级别周期毫秒数(K线开始时间→结束时间换算用;框架约定日内K线时间为结束时间)
+KLTYPE_TO_MS = {
+    KL_TYPE.K_1M: 60_000,
+    KL_TYPE.K_3M: 180_000,
+    KL_TYPE.K_5M: 300_000,
+    KL_TYPE.K_10M: 600_000,
+    KL_TYPE.K_15M: 900_000,
+    KL_TYPE.K_30M: 1_800_000,
+    KL_TYPE.K_60M: 3_600_000,
+    KL_TYPE.K_2H: 7_200_000,
+    KL_TYPE.K_4H: 14_400_000,
+}
+
 
 def lv_name(lv: Union[KL_TYPE, str]) -> str:
     return lv.name if isinstance(lv, KL_TYPE) else str(lv)

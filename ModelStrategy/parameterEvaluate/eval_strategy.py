@@ -22,6 +22,7 @@ class CEvalConfig:
         max_sl_rate: Optional[float] = None,    # 止损(并入 strategy_para)
         max_profit_rate: Optional[float] = None,  # 止盈(并入 strategy_para)
         strategy_para: Optional[Dict] = None,   # 其他策略参数覆盖
+        lv_idx: int = 0,                        # 交易发生在哪个级别(多级别联立策略用,如 1=中周期)
     ):
         self.code_list = code_list
         self.begin_time = begin_time
@@ -32,6 +33,7 @@ class CEvalConfig:
         self.chan_config = dict(chan_config or {})
         self.score_thred = score_thred
         self.bsp_type_filter = bsp_type_filter
+        self.lv_idx = lv_idx
         para = dict(self.chan_config.get("strategy_para", {}))
         para.update(strategy_para or {})
         if max_sl_rate is not None:
@@ -156,8 +158,8 @@ def eval_strategy(conf: CEvalConfig) -> CEvalResult:
             config=CChanConfig(chan_conf),
             autype=conf.autype,
         )
-        last_klu = chan[0][-1][-1]
-        strategy = chan[0].cbsp_strategy
+        last_klu = chan[conf.lv_idx][-1][-1]
+        strategy = chan[conf.lv_idx].cbsp_strategy
         assert strategy is not None
         for cbsp in strategy:
             if type_filter is not None and not (set(cbsp.bs_type.replace("q", "").split(",")) & type_filter):

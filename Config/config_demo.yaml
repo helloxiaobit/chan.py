@@ -61,5 +61,6 @@ model:
 
 trade:                             # 线上交易例行(Trade/Script)配置
   code_list: ["BTC/USDT", "ETH/USDT"]  # 监控标的池
-  lv: K_60M                        # 信号计算级别
+  strategy: multi_lv               # multi_lv(三级联立) / custom(单级别demo策略)
+  lv_list: [K_4H, K_60M, K_15M]    # 多级别从大到小:趋势/交易/入场;单级别用 lv: K_60M
   bench_price: 1000                # 单笔开仓名义金额(USDT)

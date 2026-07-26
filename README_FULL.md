@@ -129,6 +129,43 @@ signal → watching → open(突破+分数达标) → tracking(峰值/止损/止
 
 崩溃重启后 `CTradeEngine.restore()` 从 DB 恢复现场,不会重复开仓。
 
+## 三级联立策略(4H定方向 / 1H交易 / 15M区间套入场)
+
+`CustomBuySellPoint/MultiLevelStrategy.py` 的 `CMultiLevelStrategy` 把形态学/动力学买卖点与多级别K线联立整合成一个策略:
+
+```
+4H(趋势级别) ──定方向──► 窗口内最新形态学bsp方向,否则最新确认线段方向
+1H(交易级别) ──定交易──► 同向形态学bsp + 分型确认 + 突破分型极值 → 开仓
+15M(入场级别)──定入场──► 区间套:1H bsp出现后 qjt_window 根内,15M出现同向1类
+                          买卖点(动力学标记)才确认入场,并用15M分型收紧止损
+```
+
+```python
+from CustomBuySellPoint.MultiLevelStrategy import CMultiLevelStrategy
+config = CChanConfig({
+    "cbsp_strategy": CMultiLevelStrategy,
+    "strategy_para": {
+        "trend_valid_bars": 60,      # 4H bsp 方向有效窗口
+        "qjt_window": 8,             # 1H bsp 后多少根内接受15M确认
+        "require_sub_confirm": True, # 必须15M区间套确认(交易类型带q前缀)
+        "trade_bs_types": "1,1p,2,2s,3a,3b",
+        "cover_on_trend_flip": True, # 4H方向翻转即平仓
+        "max_sl_rate": 0.03, "max_profit_rate": 0.10,
+    },
+    "kl_data_check": False,          # crypto 跨日对齐无需检查
+})
+chan = CChan(code="BTC/USDT", data_src="custom:OfflineDataAPI.CStockFileReader",
+             lv_list=[KL_TYPE.K_4H, KL_TYPE.K_60M, KL_TYPE.K_15M], config=config)
+trades = list(chan[1].cbsp_strategy)   # 交易发生在中间的交易级别(lv_idx=1)
+```
+
+要点:
+
+- **K线时间口径**:框架约定日内K线时间为**结束时间**,而交易所数据是开始时间;`CStockFileReader` 读取时自动 +周期 转换,这是 4H/1H/15M 父子对齐的前提
+- 平仓条件:15M收紧后的分型止损 / 4H方向翻转(trend_flip)/ 1H反向bsp分型确认 / max_sl_rate/max_profit_rate 兜底
+- 回测评估用 `CEvalConfig(..., lv_list=[K_4H,K_60M,K_15M], lv_idx=1)`;线上例行把 `config.yaml` trade 段设 `strategy: multi_lv` + `lv_list: [K_4H, K_60M, K_15M]` 即可
+- 防未来:趋势判定只认当前4H K线**之前**确认的 bsp(回测引擎整根喂入父级别K线,不做此限制会看到未完成的4H分型)
+
 ## 模块总览(相对开源版新增)
 
 | 模块 | 内容 |

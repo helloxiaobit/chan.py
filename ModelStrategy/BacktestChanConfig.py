@@ -18,6 +18,7 @@ class CBacktestConfig:
         output_dir: str = "./backtest_output",
         primary_label: str = "label_bsp_hold",  # 写入 libsvm 的主标签
         label_para: Optional[Dict] = None,
+        lv_idx: int = 0,                        # 交易发生在哪个级别(多级别联立策略用)
     ):
         self.code_list = code_list
         self.begin_time = begin_time
@@ -28,6 +29,7 @@ class CBacktestConfig:
         self.chan_config: Dict = dict(chan_config or {})
         self.output_dir = output_dir
         self.primary_label = primary_label
+        self.lv_idx = lv_idx
         # 标签参数:label_ret_N 的 N 与阈值;label_max_drawdown 的止盈/止损阈值
         self.label_para = {
             "ret_n": 5,           # label_ret_N: 开仓后N根K线

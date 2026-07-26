@@ -50,9 +50,9 @@ class CBacktestResult:
         return os.path.join(self.output_dir, "sample_info.jsonl")
 
 
-def cal_labels(chan: CChan, cbsp, label_para: Dict) -> Dict[str, int]:
+def cal_labels(chan: CChan, cbsp, label_para: Dict, lv_idx: int = 0) -> Dict[str, int]:
     """五种标签,均只用 cbsp.klu 之后的数据(打标允许看未来)"""
-    lv_data = chan[0]
+    lv_data = chan[lv_idx]
     labels: Dict[str, int] = {}
     all_klus = list(lv_data.klu_iter())
     open_idx = cbsp.klu.idx
@@ -113,10 +113,10 @@ def run_backtest(bt_conf: CBacktestConfig) -> CBacktestResult:
             config=CChanConfig(chan_conf),
             autype=bt_conf.autype,
         )
-        strategy = chan[0].cbsp_strategy
+        strategy = chan[bt_conf.lv_idx].cbsp_strategy
         assert strategy is not None
         samples.extend(
-            CSample(code, cbsp, cal_labels(chan, cbsp, bt_conf.label_para))
+            CSample(code, cbsp, cal_labels(chan, cbsp, bt_conf.label_para, bt_conf.lv_idx))
             for cbsp in strategy
         )
     feature_meta, unregistered = write_samples(samples, bt_conf.output_dir, bt_conf.primary_label)

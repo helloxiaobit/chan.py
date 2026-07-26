@@ -35,6 +35,11 @@ class CStockFileReader(CCommonStockApi):
         yield from self.read_csv_fallback()
 
     def make_klu(self, ts, o, h, l, c, v) -> CKLine_Unit:
+        # 落地数据的 ts 是K线开始时间(binance约定);框架约定日内K线时间为结束时间,
+        # 多级别父子对齐依赖这一转换(如 4H 08:00-12:00 的子K线 1H 09:00~12:00 均 ≤ 12:00)
+        from OfflineData.offline_data_util import KLTYPE_TO_MS
+        if kltype_lt_day(self.k_type) and self.k_type in KLTYPE_TO_MS:
+            ts = ts + KLTYPE_TO_MS[self.k_type]
         dt = datetime.fromtimestamp(ts / 1000, tz=timezone.utc)
         return CKLine_Unit({
             DATA_FIELD.FIELD_TIME: CTime(dt.year, dt.month, dt.day, dt.hour, dt.minute,

@@ -16,6 +16,8 @@ KLTYPE2TIMEFRAME = {
     KL_TYPE.K_15M: '15m',
     KL_TYPE.K_30M: '30m',
     KL_TYPE.K_60M: '1h',
+    KL_TYPE.K_2H: '2h',
+    KL_TYPE.K_4H: '4h',
     KL_TYPE.K_DAY: '1d',
     KL_TYPE.K_WEEK: '1w',
     KL_TYPE.K_MON: '1M',

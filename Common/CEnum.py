@@ -24,11 +24,13 @@ class KL_TYPE(Enum):
     K_15M = 12
     K_30M = 13
     K_60M = 14
-    K_DAY = 15
-    K_WEEK = 16
-    K_MON = 17
-    K_QUARTER = 18
-    K_YEAR = 19
+    K_2H = 15   # 加密货币常用
+    K_4H = 16   # 加密货币常用
+    K_DAY = 17
+    K_WEEK = 18
+    K_MON = 19
+    K_QUARTER = 20
+    K_YEAR = 21
 
 
 class KLINE_DIR(Enum):
