@@ -150,9 +150,27 @@ class CEvalResult:
         return "\n".join(lines)
 
 
+def trades_from_strategy(code: str, strategy, last_klu,
+                         bsp_type_filter: Optional[str] = None,
+                         score_thred: Optional[float] = None) -> List[CTradeRecord]:
+    """把一个策略实例(或集合变体)的 cbsp 列表转成交易记录(未平仓按期末价强平)"""
+    type_filter = set(bsp_type_filter.split(",")) if bsp_type_filter else None
+    trades: List[CTradeRecord] = []
+    for cbsp in strategy:
+        if type_filter is not None and not (set(cbsp.bs_type.replace("q", "").replace("z", "").split(",")) & type_filter):
+            continue
+        if score_thred is not None and cbsp.score is not None and cbsp.score < score_thred:
+            continue
+        if cbsp.is_cover:
+            last_action = cbsp.close_actions[-1]
+            trades.append(CTradeRecord(code, cbsp, last_action.price, last_action.klu.time.ts, last_action.reason, True))
+        else:
+            trades.append(CTradeRecord(code, cbsp, last_klu.close, last_klu.time.ts, "eval_end", False))
+    return trades
+
+
 def eval_strategy(conf: CEvalConfig) -> CEvalResult:
     trades: List[CTradeRecord] = []
-    type_filter = set(conf.bsp_type_filter.split(",")) if conf.bsp_type_filter else None
     for code in conf.code_list:
         chan_conf = dict(conf.chan_config)
         if chan_conf.get("cbsp_strategy") is None:
@@ -170,14 +188,5 @@ def eval_strategy(conf: CEvalConfig) -> CEvalResult:
         last_klu = chan[conf.lv_idx][-1][-1]
         strategy = chan[conf.lv_idx].cbsp_strategy
         assert strategy is not None
-        for cbsp in strategy:
-            if type_filter is not None and not (set(cbsp.bs_type.replace("q", "").replace("z", "").split(",")) & type_filter):
-                continue
-            if conf.score_thred is not None and cbsp.score is not None and cbsp.score < conf.score_thred:
-                continue
-            if cbsp.is_cover:
-                last_action = cbsp.close_actions[-1]
-                trades.append(CTradeRecord(code, cbsp, last_action.price, last_action.klu.time.ts, last_action.reason, True))
-            else:  # 未平仓的按评估期末收盘价强平
-                trades.append(CTradeRecord(code, cbsp, last_klu.close, last_klu.time.ts, "eval_end", False))
+        trades.extend(trades_from_strategy(code, strategy, last_klu, conf.bsp_type_filter, conf.score_thred))
     return CEvalResult(trades)

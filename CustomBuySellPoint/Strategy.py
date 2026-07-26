@@ -59,7 +59,8 @@ class CStrategy(metaclass=abc.ABCMeta):
             self.try_close(chan, lv)
             self.check_force_cover(cur_klu)
         if cbsp := self.try_open(chan, lv):
-            if self.conf.cal_feature:
+            # skip_features: 参数扫描等不需要特征的场景关闭计算(提速;模型打分场景勿开)
+            if self.conf.cal_feature and not self.conf.strategy_para.get("skip_features"):
                 from ChanModel.FeatureEngine import CFeatureEngine  # 懒加载
                 cbsp.add_feat(CFeatureEngine.cal_features(chan, lv, cbsp))
             if self.model_filter(cbsp):

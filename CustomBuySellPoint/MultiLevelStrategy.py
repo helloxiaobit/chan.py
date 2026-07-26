@@ -40,6 +40,8 @@ SMC 限价入场模式(entry_mode,默认 "breakout" 为原突破逻辑):
 止损执行(迭代6,R系列数据驱动:收盘判断止损导致40%交易亏损>1R,肥左尾摧毁复利Calmar):
 - sl_intrabar: True 时止损盘中触价即出,成交价=止损价±滑点(入场仍按收盘确认,互不影响)
 - sl_slippage: 盘中止损滑点比例,默认 0.0005(万5)
+- sl_buffer: 止损缓冲(迭代9):1H分型极值本身是流动性聚集地(影线扫损重灾区),
+  止损外推 buffer 比例(如 0.002=千2)放到流动性之外;R仓位自动以小仓位消化宽止损
 
 Regime 状态机(迭代5):
 - 判定:4H最近中枢仍新鲜(距今≤regime_zs_valid_bars根)且现价在[ZD,ZG]内 → "range",否则 "trend"
@@ -81,6 +83,11 @@ class CMultiLevelStrategy(CStrategy):
         return "entry"
 
     def get_p(self, name: str, default=None):
+        # para_override 供 CStrategyEnsemble 注入变体参数(共享一次chan计算跑N组参数)
+        override = getattr(self, "para_override", None)
+        if override is not None and name in override:
+            v = override[name]
+            return default if v is None else v
         v = self.conf.strategy_para.get(name, default)
         return default if v is None else v
 
@@ -233,6 +240,8 @@ class CMultiLevelStrategy(CStrategy):
             sl_price = fx_klc.high
             if sub_ref is not None and sub_ref.sl_price is not None:
                 sl_price = min(sl_price, sub_ref.sl_price)
+        if buf := self.get_p("sl_buffer", 0.0):  # 止损外推到流动性之外
+            sl_price = sl_price * (1 - buf) if is_buy else sl_price * (1 + buf)
         sl_price = self.truncate_sl(open_price, sl_price, is_buy)
         # bos_zone v2:突破已确认(BOS),不市价追,在位移回撤区挂限价 + chase 防错过
         if self.get_p("entry_mode", "breakout") == "bos_zone":

@@ -313,6 +313,40 @@ def test_new_features_consistency(tmp_env, bars_3lv):
     assert sig_a == sig_b
 
 
+def test_strategy_ensemble_equivalence(tmp_env):
+    """集合评估的正确性铁闸:同一变体在 ensemble 中与单独跑结果逐笔一致"""
+    from CustomBuySellPoint.StrategyEnsemble import CStrategyEnsemble
+    chan_e = CChan(
+        code="TEST/USDT",
+        data_src="custom:OfflineDataAPI.CStockFileReader",
+        lv_list=LV_LIST,
+        config=CChanConfig({**BASE_CONF, "cbsp_strategy": CStrategyEnsemble, "strategy_para": {
+            "skip_features": True,
+            "require_sub_confirm": False,
+            "variants": [
+                {"name": "base"},
+                {"name": "intrabar", "sl_intrabar": True},
+            ],
+        }}),
+        autype=AUTYPE.NONE,
+    )
+    ensemble = chan_e[1].cbsp_strategy
+    assert len(ensemble.variants) == 2
+
+    def sig(strategy):
+        return [(c.klu.idx, c.is_buy, c.bs_type, round(c.open_price, 6), c.is_cover,
+                 [(ca.reason, round(ca.price, 6)) for ca in c.close_actions])
+                for c in strategy.cbsp_lst]
+
+    # 与单独跑逐笔比对
+    for name, para in (("base", {}), ("intrabar", {"sl_intrabar": True})):
+        chan_s = run_load(tmp_env, {"strategy_para": {
+            "skip_features": True, "require_sub_confirm": False, **para}})
+        assert sig(ensemble.get_variant(name)) == sig(chan_s[1].cbsp_strategy), f"变体{name}与单独跑不一致"
+    # 两个变体应有差异(否则测试无意义)——盘中止损会改变部分平仓
+    assert sig(ensemble.get_variant("base")) != sig(ensemble.get_variant("intrabar"))
+
+
 def test_regime_stamp_and_silent(tmp_env):
     """每笔交易带 regime 戳;silent 模式交易数不多于基线且戳全为 trend"""
     chan = run_load(tmp_env, {"strategy_para": {"require_sub_confirm": False}})
