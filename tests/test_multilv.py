@@ -231,6 +231,88 @@ def test_zone_entry_consistency(tmp_env, bars_3lv):
     assert cbsp_sig(chan_a, 1) == cbsp_sig(chan_b, 1)
 
 
+def test_weighted_profit_partial_close():
+    from CustomBuySellPoint.CustomBSP import CCustomBSP
+    t0 = 1700000000000
+    k_open = make_klu_end(t0, 100, 101, 99, 100, 1, KL_TYPE.K_60M)
+    k1 = make_klu_end(t0 + 3600000, 100, 111, 100, 110, 1, KL_TYPE.K_60M)
+    k2 = make_klu_end(t0 + 7200000, 110, 121, 109, 120, 1, KL_TYPE.K_60M)
+    cbsp = CCustomBSP(bsp=None, klu=k_open, bs_type="1", is_buy=True, price=100.0, sl_price=95.0)
+    cbsp.do_close(110.0, k1, reason="partial_tp", quota=0.5)  # 一半在+10%
+    assert not cbsp.is_cover
+    cbsp.do_close(120.0, k2, reason="take_profit")            # 剩余在+20%
+    assert cbsp.is_cover
+    assert cbsp.profit == pytest.approx(0.5 * 10 + 0.5 * 20)  # 加权 15%
+    assert cbsp.profit_with_final(999) == pytest.approx(15)   # 已全平,final价无关
+
+
+def test_bos_zone_mode(tmp_env):
+    """BOS→回撤 v2:先突破确认再挂回撤限价,chase 防错过;限价成交z前缀,追入原类型"""
+    chan = run_load(tmp_env, {"strategy_para": {
+        "entry_mode": "bos_zone", "require_sub_confirm": False, "chase_bars": 4}})
+    strategy = chan[1].cbsp_strategy
+    trades = list(strategy)
+    assert len(trades) > 0, "bos_zone(带chase)应有成交"
+    for t in trades:
+        assert t.sl_price is not None
+        if t.is_buy:
+            assert t.open_price > t.sl_price
+        else:
+            assert t.open_price < t.sl_price
+
+
+def test_exit_engine(tmp_env):
+    """出场引擎:结构化目标/分批止盈/时间止损产生对应平仓动作,加权收益生效"""
+    chan = run_load(tmp_env, {"strategy_para": {
+        "require_sub_confirm": False,
+        "exit_target_mode": "liq",
+        "partial_tp_r": 1.0,
+        "trail_after_r": 1.5,
+        "time_stop_bars": 12,
+    }})
+    trades = list(chan[1].cbsp_strategy)
+    assert len(trades) > 0
+    reasons = {ca.reason for t in trades for ca in t.close_actions}
+    assert reasons & {"take_profit", "partial_tp", "time_stop"}, f"出场引擎未生效: {reasons}"
+    # 有分批的交易,加权收益应等于手工加权
+    for t in trades:
+        if t.is_cover and len(t.close_actions) >= 2 and t.close_actions[0].quota == 0.5:
+            manual = 0.5 * t.profit_at(t.close_actions[0].price) + 0.5 * t.profit_at(t.close_actions[-1].price)
+            assert t.profit == pytest.approx(manual)
+            break
+    # MAE/MFE 已采集
+    assert any(t.mfe > 0 or t.mae < 0 for t in trades)
+
+
+def test_new_features_consistency(tmp_env, bars_3lv):
+    """bos_zone + 出场引擎全开下的 load vs trigger 一致性(最高验收)"""
+    para = {"entry_mode": "bos_zone", "require_sub_confirm": False, "chase_bars": 4,
+            "exit_target_mode": "liq", "partial_tp_r": 1.0, "trail_after_r": 1.5,
+            "time_stop_bars": 12}
+    chan_a = run_load(tmp_env, {"strategy_para": dict(para)})
+    chan_b = CChan(
+        code="TEST/USDT",
+        data_src="custom:OfflineDataAPI.CStockFileReader",
+        lv_list=LV_LIST,
+        config=CChanConfig({**BASE_CONF, "strategy_para": dict(para), "trigger_step": True}),
+        autype=AUTYPE.NONE,
+    )
+    b15, b1h, b4h = bars_3lv["15m"], bars_3lv["1h"], bars_3lv["4h"]
+    for i, bar4h in enumerate(b4h):
+        chan_b.trigger_load({
+            KL_TYPE.K_4H: [make_klu_end(*bar4h, KL_TYPE.K_4H)],
+            KL_TYPE.K_60M: [make_klu_end(*b, KL_TYPE.K_60M) for b in b1h[i * 4:(i + 1) * 4]],
+            KL_TYPE.K_15M: [make_klu_end(*b, KL_TYPE.K_15M) for b in b15[i * 16:(i + 1) * 16]],
+        })
+    sig_a = [(c.klu.idx, c.is_buy, c.bs_type, round(c.open_price, 6), c.is_cover,
+              [(ca.reason, round(ca.price, 6), ca.quota) for ca in c.close_actions])
+             for c in chan_a[1].cbsp_strategy]
+    sig_b = [(c.klu.idx, c.is_buy, c.bs_type, round(c.open_price, 6), c.is_cover,
+              [(ca.reason, round(ca.price, 6), ca.quota) for ca in c.close_actions])
+             for c in chan_b[1].cbsp_strategy]
+    assert sig_a == sig_b
+
+
 def test_multilv_eval_lv_idx(tmp_env):
     from ModelStrategy.parameterEvaluate.eval_strategy import CEvalConfig, eval_strategy
     res = eval_strategy(CEvalConfig(

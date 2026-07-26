@@ -48,6 +48,10 @@ class CCustomBSP:
         self.close_actions: List[CCloseAction] = []
         self.score: Optional[float] = None  # 模型分数
         self.peak_price: float = self.open_price  # 开仓后至今最有利价格(动态止损用)
+        self.target_price: Optional[float] = None  # 结构化止盈目标(出场引擎用)
+        self.exit_state: dict = {}  # 出场引擎状态(初始风险/是否已分批/是否已启动追踪等)
+        self.mae: float = 0.0  # 最大不利偏移(%)
+        self.mfe: float = 0.0  # 最大有利偏移(%)
 
         # 特征:继承关联 bsp 的特征,策略可继续 add_feat
         self.features = CFeatures(None)
@@ -72,11 +76,25 @@ class CCustomBSP:
 
     @property
     def profit(self) -> Optional[float]:
-        # 收益率(%):做多为 (平仓价-开仓价)/开仓价;做空取反;未平仓返回 None
+        # 收益率(%):按分批平仓数量加权;未平仓返回 None
         if not self.close_actions:
             return None
-        rate = (self.close_actions[-1].price - self.open_price) / self.open_price
-        return rate * 100 if self.is_buy else -rate * 100
+        return self.profit_with_final(self.close_actions[-1].price)
+
+    def profit_with_final(self, final_price: float) -> float:
+        """加权收益率(%):按 close_actions 的 quota(仓位比例,None=剩余全部)加权,
+        未平部分按 final_price 结算——分批止盈后评估口径必须用它"""
+        remaining = 1.0
+        total = 0.0
+        for ca in self.close_actions:
+            if remaining <= 0:
+                break
+            q = remaining if ca.quota is None else min(ca.quota, remaining)
+            total += q * self.profit_at(ca.price)
+            remaining -= q
+        if remaining > 0:
+            total += remaining * self.profit_at(final_price)
+        return total
 
     def profit_at(self, price: float) -> float:
         # 以给定价格计算浮动收益率(%)
@@ -84,11 +102,15 @@ class CCustomBSP:
         return rate * 100 if self.is_buy else -rate * 100
 
     def update_peak_price(self, klu: CKLine_Unit):
-        # 更新开仓后至今最有利价格
+        # 更新开仓后至今最有利价格与 MAE/MFE(最大不利/有利偏移,出场参数校准用)
         if self.is_buy:
             self.peak_price = max(self.peak_price, klu.high)
+            self.mfe = max(self.mfe, self.profit_at(klu.high))
+            self.mae = min(self.mae, self.profit_at(klu.low))
         else:
             self.peak_price = min(self.peak_price, klu.low)
+            self.mfe = max(self.mfe, self.profit_at(klu.low))
+            self.mae = min(self.mae, self.profit_at(klu.high))
 
     def add_feat(self, inp1, inp2=None):
         self.features.add_feat(inp1, inp2)

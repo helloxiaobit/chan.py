@@ -56,7 +56,9 @@ class CTradeRecord:
         self.reason = reason
         self.is_closed = is_closed  # False 表示评估结束时仍持仓,按最后收盘价强平
         self.score = cbsp.score
-        self.profit_rate = cbsp.profit_at(close_price)  # %
+        self.profit_rate = cbsp.profit_with_final(close_price)  # %,分批平仓按数量加权
+        self.mae = cbsp.mae  # 最大不利偏移(%)
+        self.mfe = cbsp.mfe  # 最大有利偏移(%)
 
     def to_dict(self):
         return {
@@ -64,6 +66,7 @@ class CTradeRecord:
             "open_time": self.open_time.to_str(), "open_price": self.open_price,
             "close_price": self.close_price, "profit_rate": self.profit_rate,
             "reason": self.reason, "is_closed": self.is_closed, "score": self.score,
+            "mae": self.mae, "mfe": self.mfe,
         }
 
 

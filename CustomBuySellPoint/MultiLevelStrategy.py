@@ -17,14 +17,23 @@ strategy_para(在 CStrategy 通用参数之外):
 - cover_on_trend_flip: 趋势级别方向翻转即平仓,默认 True
 其余沿用:strict_open/short_shelling/judge_on_close/max_sl_rate/max_profit_rate
 
-SMC 限价入场模式(entry_mode="zone",默认 "breakout" 为原突破逻辑):
-1H 信号确认后不追突破,从入场级别(15M)结构找回撤区挂限价单:
-未回补 FVG 中线 / 未失效订单块边沿,取离现价最近者;
-有效期内触价即成交(带 z 前缀),超时/趋势翻转/破止损位撤单。
+SMC 限价入场模式(entry_mode,默认 "breakout" 为原突破逻辑):
+- "zone":   1H 信号确认即挂回撤限价(v1;2026回测证实存在逆向选择,不推荐,保留做对照)
+- "bos_zone": 教科书顺序 v2——先突破确认(BOS),再在位移留下的回撤区挂限价
+  (15M FVG中线/OB边沿/突破位回踩,取离现价最近);chase_bars 根内未成交且
+  收盘仍站稳突破位则市价追入(防错过强势单);限价成交带 z 前缀,追入为原类型
 - entry_valid_bars:  限价单有效期(交易级别K线数),默认 8
 - entry_zone_source: 回撤区来源 both/fvg/ob,默认 both
 - entry_sl_mode:     止损口径 fx(1H分型)/zone(区间下沿),默认 fx
 - entry_fallback:    找不到回撤区时 skip(放弃)/breakout(退回突破逻辑),默认 skip
+- chase_bars:        bos_zone 防错过追入等待根数,默认 6(None 关闭追入)
+
+出场引擎(E1,全部默认关闭,开启后开仓即带出场蓝图):
+- exit_target_mode:  "liq" 用交易级别对侧流动性池作结构化止盈目标(触及全平)
+- partial_tp_r:      浮盈达 R 倍初始风险时平一半并把止损移到保本,如 1.0
+- trail_after_r:     浮盈达 R 倍后启动入场级别笔端点结构追踪止损,如 1.5
+- time_stop_bars:    持仓 N 根交易级别K线仍未盈利则离场,如 12
+- min_target_r:      目标距离不足 R 倍初始风险的信号直接放弃(质量地板),如 1.0
 """
 from typing import TYPE_CHECKING, List, Optional, Tuple
 
@@ -132,10 +141,10 @@ class CMultiLevelStrategy(CStrategy):
             return None
         # 1) 高周期方向
         direction = self.cal_trend_direction(chan) if lv > 0 else 0
-        # zone 模式:先处理在途限价单(成交/撤销),成交则本根直接返回
-        if self.get_p("entry_mode", "breakout") == "zone":
+        # zone/bos_zone 模式:先处理在途限价单(成交/追入/撤销),成交则本根直接返回
+        if self.get_p("entry_mode", "breakout") in ("zone", "bos_zone"):
             if filled := self.process_pending_entries(chan, lv, direction):
-                return filled
+                return self.attach_exit_plan(chan, lv, filled)
         if lv > 0 and direction == 0:
             return None
         # 2) 交易级别形态学 bsp 触发
@@ -169,7 +178,7 @@ class CMultiLevelStrategy(CStrategy):
             if sub_ref is None and self.get_p("require_sub_confirm", True):
                 return None
         cur_klu = data[-1][-1]
-        # zone 模式:不追突破,从入场级别结构找回撤区挂限价单
+        # zone v1 模式:不做突破确认直接挂回撤限价(对照组,已证实存在逆向选择)
         if self.get_p("entry_mode", "breakout") == "zone":
             armed = self.arm_pending_entry(chan, lv, last_bsp, is_buy, fx_klc, cur_klu)
             if armed or self.get_p("entry_fallback", "skip") == "skip":
@@ -196,8 +205,16 @@ class CMultiLevelStrategy(CStrategy):
             if sub_ref is not None and sub_ref.sl_price is not None:
                 sl_price = min(sl_price, sub_ref.sl_price)
         sl_price = self.truncate_sl(open_price, sl_price, is_buy)
+        # bos_zone v2:突破已确认(BOS),不市价追,在位移回撤区挂限价 + chase 防错过
+        if self.get_p("entry_mode", "breakout") == "bos_zone":
+            if self.arm_bos_pending(chan, lv, last_bsp, is_buy, fx_klc, cur_klu, sl_price):
+                return None
+            # 找不到回撤区:按 entry_fallback 决定放弃还是直接开(突破条件本就已满足)
+            if self.get_p("entry_fallback", "skip") == "skip":
+                self.opened_bsp_klu_idx.add(last_bsp.klu.idx)
+                return None
         self.opened_bsp_klu_idx.add(last_bsp.klu.idx)
-        return CCustomBSP(
+        cbsp = CCustomBSP(
             bsp=last_bsp,
             klu=cur_klu,
             bs_type=last_bsp.qjt_type() if sub_ref is not None else last_bsp.type2str(),
@@ -206,6 +223,7 @@ class CMultiLevelStrategy(CStrategy):
             price=open_price,
             sl_price=sl_price,
         )
+        return self.attach_exit_plan(chan, lv, cbsp)
 
     # ---- SMC 限价入场(entry_mode="zone")----
     @staticmethod
@@ -271,23 +289,58 @@ class CMultiLevelStrategy(CStrategy):
         })
         return True
 
+    def arm_bos_pending(self, chan: 'CChan', lv: int, trade_bsp, is_buy: bool,
+                        fx_klc, cur_klu, sl_price: float) -> bool:
+        """bos_zone:突破确认后挂回撤限价;候选区含突破位回踩(fx极值)与15M FVG/OB"""
+        trigger = fx_klc.high if is_buy else fx_klc.low  # 突破位
+        candidates = [(trigger, fx_klc.low, fx_klc.high, "retest")]
+        if zone := self.find_entry_zone(chan, lv, is_buy, cur_klu.close):
+            candidates.append(zone[:4])
+        best = None
+        for entry_price, zb, zt, src in candidates:
+            if is_buy and (entry_price >= cur_klu.close or entry_price <= sl_price):
+                continue
+            if not is_buy and (entry_price <= cur_klu.close or entry_price >= sl_price):
+                continue
+            if best is None or (is_buy and entry_price > best[0]) or (not is_buy and entry_price < best[0]):
+                best = (entry_price, zb, zt, src)
+        if best is None:
+            return False
+        self.opened_bsp_klu_idx.add(trade_bsp.klu.idx)
+        self.pending_entries.append({
+            "bsp": trade_bsp, "is_buy": is_buy, "price": best[0], "sl": sl_price,
+            "expire_idx": cur_klu.idx + self.get_p("entry_valid_bars", 8),
+            "fx_klc": fx_klc, "source": best[3],
+            "trigger": trigger, "armed_idx": cur_klu.idx,  # chase 用
+        })
+        return True
+
     def process_pending_entries(self, chan: 'CChan', lv: int, direction: int) -> Optional[CCustomBSP]:
-        """限价单撮合与撤销:触价成交(每根至多一单);过期/趋势翻转/收盘破止损撤单"""
+        """限价单撮合与撤销:触价成交(每根至多一单,z前缀);
+        bos_zone 的 chase:等待 chase_bars 根未成交且收盘仍站稳突破位 → 市价追入(原类型);
+        过期/趋势翻转/收盘破止损撤单"""
         if not self.pending_entries:
             return None
         cur = chan[lv][-1][-1]
+        chase_bars = self.get_p("chase_bars", 6)
         fill: Optional[CCustomBSP] = None
         remain = []
         for p in self.pending_entries:
             touched = (cur.low <= p["price"]) if p["is_buy"] else (cur.high >= p["price"])
-            if fill is None and touched:
+            chase = False
+            if not touched and fill is None and chase_bars is not None and "trigger" in p:
+                waited = cur.idx - p["armed_idx"]
+                still_valid = (cur.close > p["trigger"]) if p["is_buy"] else (cur.close < p["trigger"])
+                chase = waited >= chase_bars and still_valid
+            if fill is None and (touched or chase):
                 cbsp = CCustomBSP(
                     bsp=p["bsp"],
                     klu=cur,
-                    bs_type=",".join(f"z{t}" for t in p["bsp"].type2str().split(",")),
+                    bs_type=",".join(f"z{t}" for t in p["bsp"].type2str().split(","))
+                    if touched else p["bsp"].type2str(),
                     is_buy=p["is_buy"],
                     target_klc=p["fx_klc"],
-                    price=p["price"],
+                    price=p["price"] if touched else cur.close,
                     sl_price=p["sl"],
                 )
                 # 成交当根收盘已破止损 → 立即止损离场(不留隔根乐观)
@@ -330,6 +383,81 @@ class CMultiLevelStrategy(CStrategy):
             return max(sl_price, open_price * (1 - abs(max_sl_rate)))
         return min(sl_price, open_price * (1 + abs(max_sl_rate)))
 
+    # ---- 出场引擎(E1,默认全关)----
+    def attach_exit_plan(self, chan: 'CChan', lv: int, cbsp: Optional[CCustomBSP]) -> Optional[CCustomBSP]:
+        """开仓即带出场蓝图:结构化目标(对侧流动性池)+ 初始风险记录;
+        min_target_r 质量地板:目标距离不足 R 倍初始风险直接放弃该交易"""
+        if cbsp is None or cbsp.sl_price is None:
+            return cbsp
+        risk = abs(cbsp.open_price - cbsp.sl_price)
+        cbsp.exit_state = {"risk": risk, "partial_done": False, "trailing": False}
+        if self.get_p("exit_target_mode") == "liq" and risk > 0:
+            from Math.SmartMoney import find_liquidity_pools
+            highs, lows = find_liquidity_pools(chan[lv].bi_list, lookback_bi=16)
+            if cbsp.is_buy:
+                above = [p.price for p in highs if p.price > cbsp.open_price]
+                cbsp.target_price = min(above) if above else None
+            else:
+                below = [p.price for p in lows if p.price < cbsp.open_price]
+                cbsp.target_price = max(below) if below else None
+            min_target_r = self.get_p("min_target_r")
+            if min_target_r is not None and cbsp.target_price is not None \
+               and abs(cbsp.target_price - cbsp.open_price) < min_target_r * risk:
+                return None  # 盈亏空间不够,放弃
+        return cbsp
+
+    def entry_lv_trail_price(self, chan: 'CChan', lv: int, is_buy: bool) -> Optional[float]:
+        # 入场级别最近一笔反向笔端点(多头取最近下笔低点)作为结构追踪位
+        if lv + 1 >= len(chan.lv_list):
+            return None
+        for bi in chan[lv + 1].bi_list[::-1]:
+            if is_buy and bi.is_down():
+                return bi.get_end_val()
+            if not is_buy and bi.is_up():
+                return bi.get_end_val()
+        return None
+
+    def manage_exits(self, chan: 'CChan', lv: int, cur_klu) -> None:
+        """结构化止盈/分批/保本/追踪/时间止损(在常规止损与反向信号检查之前执行)"""
+        partial_tp_r = self.get_p("partial_tp_r")
+        trail_after_r = self.get_p("trail_after_r")
+        time_stop_bars = self.get_p("time_stop_bars")
+        use_target = self.get_p("exit_target_mode") == "liq"
+        if partial_tp_r is None and trail_after_r is None and time_stop_bars is None and not use_target:
+            return
+        for cbsp in self.holding_cbsp():
+            if cbsp.klu.idx >= cur_klu.idx or not cbsp.exit_state:
+                continue
+            risk = cbsp.exit_state.get("risk", 0)
+            close = cur_klu.close
+            gain = (close - cbsp.open_price) if cbsp.is_buy else (cbsp.open_price - close)
+            # 1) 结构化目标:触及全平
+            if use_target and cbsp.target_price is not None:
+                hit = close >= cbsp.target_price if cbsp.is_buy else close <= cbsp.target_price
+                if hit:
+                    cbsp.do_close(close, cur_klu, reason="take_profit")
+                    continue
+            if risk <= 0:
+                continue
+            # 2) 分批止盈 + 保本
+            if partial_tp_r is not None and not cbsp.exit_state["partial_done"] and gain >= partial_tp_r * risk:
+                cbsp.do_close(close, cur_klu, reason="partial_tp", quota=0.5)
+                cbsp.exit_state["partial_done"] = True
+                cbsp.sl_price = max(cbsp.sl_price, cbsp.open_price) if cbsp.is_buy \
+                    else min(cbsp.sl_price, cbsp.open_price)  # 移到保本
+            # 3) 结构追踪止损(入场级别笔端点)
+            if trail_after_r is not None:
+                if not cbsp.exit_state["trailing"] and gain >= trail_after_r * risk:
+                    cbsp.exit_state["trailing"] = True
+                if cbsp.exit_state["trailing"]:
+                    trail = self.entry_lv_trail_price(chan, lv, cbsp.is_buy)
+                    if trail is not None:
+                        cbsp.sl_price = max(cbsp.sl_price, trail) if cbsp.is_buy \
+                            else min(cbsp.sl_price, trail)
+            # 4) 时间止损:持仓 N 根仍未盈利
+            if time_stop_bars is not None and cur_klu.idx - cbsp.klu.idx >= time_stop_bars and gain <= 0:
+                cbsp.do_close(close, cur_klu, reason="time_stop")
+
     # ---- 平仓 ----
     def try_close(self, chan: 'CChan', lv: int) -> None:
         if self.get_role(chan, lv) != "trade":
@@ -338,6 +466,7 @@ class CMultiLevelStrategy(CStrategy):
         if len(data) < 2:
             return
         cur_klu = data[-1][-1]
+        self.manage_exits(chan, lv, cur_klu)
         trend_dir = self.cal_trend_direction(chan) if lv > 0 else 0
         judge_on_close = self.get_p("judge_on_close", True)
         for cbsp in self.holding_cbsp():
