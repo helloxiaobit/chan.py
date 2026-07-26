@@ -65,6 +65,8 @@ class CTradeRecord:
             risk = abs(cbsp.open_price - cbsp.sl_price)
         self.risk_rate = risk / cbsp.open_price if risk and cbsp.open_price else None
         self.regime = cbsp.exit_state.get("regime") if cbsp.exit_state else None  # 开仓时的4H状态戳
+        # 加仓腿标识(pyramid_add_r):动量市价单,费用口径不得按 z-limit 处理
+        self.is_pyramid = bool(cbsp.exit_state.get("pyramid")) if cbsp.exit_state else False
 
     def to_dict(self):
         return {
@@ -73,6 +75,7 @@ class CTradeRecord:
             "close_price": self.close_price, "profit_rate": self.profit_rate,
             "reason": self.reason, "is_closed": self.is_closed, "score": self.score,
             "mae": self.mae, "mfe": self.mfe, "regime": self.regime, "risk_rate": self.risk_rate,
+            "is_pyramid": self.is_pyramid,
         }
 
 
