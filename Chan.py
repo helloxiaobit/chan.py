@@ -26,6 +26,7 @@ class CChan:
         lv_list=None,
         config=None,
         autype: AUTYPE = AUTYPE.QFQ,
+        extra_kl=None,
     ):
         if lv_list is None:
             lv_list = [KL_TYPE.K_DAY, KL_TYPE.K_60M]
@@ -36,6 +37,7 @@ class CChan:
         self.autype = autype
         self.data_src = data_src
         self.lv_list: List[KL_TYPE] = lv_list
+        self.extra_kl = extra_kl  # 额外K线(补充data_src,如离线数据+当日实时K线拼接)
 
         if config is None:
             config = CChanConfig()
@@ -86,6 +88,21 @@ class CChan:
         self.kl_datas: Dict[KL_TYPE, CKLine_List] = {}
         for idx in range(len(self.lv_list)):
             self.kl_datas[self.lv_list[idx]] = CKLine_List(self.lv_list[idx], conf=self.conf)
+        # cbsp 策略:每个级别一个独立实例
+        if self.conf.cbsp_strategy is not None:
+            for lv in self.lv_list:
+                self.kl_datas[lv].cbsp_strategy = self.conf.cbsp_strategy(self.conf)
+
+    def update_cbsp_strategy(self, lv_idx: int):
+        # 调用某级别的策略判断(策略内部保证同一根K线只判断一次)
+        strategy = self.kl_datas[self.lv_list[lv_idx]].cbsp_strategy
+        if strategy is not None and len(self[lv_idx]) > 0:
+            strategy.update(self, lv_idx)
+
+    def update_all_cbsp_strategy(self):
+        # 从最低级别往最高级别,保证区间套拿到次级别最新状态
+        for lv_idx in range(len(self.lv_list) - 1, -1, -1):
+            self.update_cbsp_strategy(lv_idx)
 
     def load_stock_data(self, stockapi_instance: CCommonStockApi, lv) -> Iterable[CKLine_Unit]:
         for KLU_IDX, klu in enumerate(stockapi_instance.get_kl_data()):
@@ -149,6 +166,9 @@ class CChan:
         if not self.conf.trigger_step:  # 非回放模式全部算完之后才算一次中枢和线段
             for lv in self.lv_list:
                 self.kl_datas[lv].cal_seg_and_zs()
+        # trigger_load 尾部触发策略判断(每根K线只判断一次,重复调用无副作用)
+        if self.conf.cbsp_strategy is not None:
+            self.update_all_cbsp_strategy()
 
     def init_lv_klu_iter(self, stockapi_cls):
         # 为了跳过一些获取数据失败的级别
@@ -167,6 +187,26 @@ class CChan:
                 raise e
         self.lv_list = valid_lv_list
         return lv_klu_iter
+
+    def add_extra_kl_iter(self):
+        # extra_kl: list → 仅单级别;dict{KL_TYPE: [CKLine_Unit]} → 多级别
+        if self.extra_kl is None:
+            return
+        if isinstance(self.extra_kl, dict):
+            for kl_type, klu_lst in self.extra_kl.items():
+                if kl_type not in self.kl_datas:
+                    raise CChanException(f"extra_kl 中级别 {kl_type} 不在 lv_list 中", ErrCode.EXTRA_KLU_ERR)
+                for klu in klu_lst:
+                    klu.kl_type = kl_type
+                self.add_lv_iter(kl_type, iter(klu_lst))
+        elif isinstance(self.extra_kl, list):
+            if len(self.lv_list) != 1:
+                raise CChanException("extra_kl 为 list 时只支持单级别,多级别请传 dict", ErrCode.EXTRA_KLU_ERR)
+            for klu in self.extra_kl:
+                klu.kl_type = self.lv_list[0]
+            self.add_lv_iter(0, iter(self.extra_kl))
+        else:
+            raise CChanException("extra_kl 类型必须是 list 或 dict", ErrCode.EXTRA_KLU_ERR)
 
     def GetStockAPI(self):
         _dict = {}
@@ -199,6 +239,7 @@ class CChan:
             stockapi_cls.do_init()
             for lv_idx, klu_iter in enumerate(self.init_lv_klu_iter(stockapi_cls)):
                 self.add_lv_iter(lv_idx, klu_iter)
+            self.add_extra_kl_iter()  # 额外K线追加在数据源之后
             self.klu_cache: List[Optional[CKLine_Unit]] = [None for _ in self.lv_list]
             self.klu_last_t = [CTime(1980, 1, 1, 0, 0) for _ in self.lv_list]
 
@@ -206,6 +247,8 @@ class CChan:
             if not step:  # 非回放模式全部算完之后才算一次中枢和线段
                 for lv in self.lv_list:
                     self.kl_datas[lv].cal_seg_and_zs()
+            if self.conf.cbsp_strategy is not None:
+                self.update_all_cbsp_strategy()  # only_judge_last 快速路径在此触发;逐K模式下重复调用无副作用
         except Exception:
             raise
         finally:
@@ -267,6 +310,10 @@ class CChan:
                 for _ in self.load_iterator(lv_idx+1, kline_unit, step):
                     ...
                 self.check_kl_align(kline_unit, lv_idx)
+            # 每根K线完成(含次级别递归完成)后触发本级别策略判断(次级别在递归中已先触发)
+            if self.conf.cbsp_strategy is not None and not self.conf.only_judge_last \
+               and self.kl_datas[cur_lv].step_calculation:
+                self.update_cbsp_strategy(lv_idx)
             if lv_idx == 0 and step:
                 yield self
 
@@ -309,6 +356,62 @@ class CChan:
             return self[idx].bs_point_lst.get_latest_bsp(number)
         assert len(self.lv_list) == 1
         return self[0].bs_point_lst.get_latest_bsp(number)
+
+    def toJson(self):
+        # 服务化接口:输出各级别 klu/bi/seg/zs/bsp/cbsp 信息(dict,可直接 json.dumps)
+        res = {}
+        for lv in self.lv_list:
+            kl_list = self.kl_datas[lv]
+            lv_dict = {
+                "klu": [
+                    {
+                        "idx": klu.idx, "time": klu.time.to_str(),
+                        "open": klu.open, "high": klu.high, "low": klu.low, "close": klu.close,
+                    }
+                    for klu in kl_list.klu_iter()
+                ],
+                "bi": [
+                    {
+                        "idx": bi.idx, "dir": bi.dir.name, "is_sure": bi.is_sure,
+                        "begin_klu_idx": bi.get_begin_klu().idx, "end_klu_idx": bi.get_end_klu().idx,
+                        "begin_val": bi.get_begin_val(), "end_val": bi.get_end_val(),
+                    }
+                    for bi in kl_list.bi_list
+                ],
+                "seg": [
+                    {
+                        "idx": seg.idx, "dir": seg.dir.name, "is_sure": seg.is_sure,
+                        "begin_bi_idx": seg.start_bi.idx, "end_bi_idx": seg.end_bi.idx,
+                    }
+                    for seg in kl_list.seg_list
+                ],
+                "zs": [
+                    {
+                        "begin_bi_idx": zs.begin_bi.idx, "end_bi_idx": zs.end_bi.idx,
+                        "low": zs.low, "high": zs.high, "is_sure": zs.is_sure,
+                    }
+                    for zs in kl_list.zs_list
+                ],
+                "bsp": [
+                    {
+                        "klu_idx": bsp.klu.idx, "time": bsp.klu.time.to_str(),
+                        "is_buy": bsp.is_buy, "type": bsp.type2str(),
+                    }
+                    for bsp in kl_list.bs_point_lst.getSortedBspList()
+                ],
+            }
+            if kl_list.cbsp_strategy is not None:
+                lv_dict["cbsp"] = [
+                    {
+                        "klu_idx": cbsp.klu.idx, "time": cbsp.klu.time.to_str(),
+                        "is_buy": cbsp.is_buy, "type": cbsp.type2str(),
+                        "open_price": cbsp.open_price, "sl_price": cbsp.sl_price,
+                        "is_cover": cbsp.is_cover, "profit": cbsp.profit, "score": cbsp.score,
+                    }
+                    for cbsp in kl_list.cbsp_strategy
+                ]
+            res[lv.name] = lv_dict
+        return res
 
     def chan_dump_pickle(self, file_path):
         _pre_limit = sys.getrecursionlimit()

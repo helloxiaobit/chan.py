@@ -115,6 +115,34 @@ class CBS_Point_meta:
         return f'{is_seg_flag}b{self.type}' if self.is_buy else f'{is_seg_flag}s{self.type}'
 
 
+class CCloseAction_meta:
+    def __init__(self, x, y):
+        self.x = x
+        self.y = y
+
+
+class CCustomBSP_meta:
+    def __init__(self, cbsp, final_bsp_ids):
+        # cbsp: CCustomBSP;final_bsp_ids: 最终形态学bsp的id集合(判断"回头看找对了"打√)
+        self.is_buy = cbsp.is_buy
+        self.type = cbsp.type2str()
+        self.is_segbsp = cbsp.is_segbsp
+        self.x = cbsp.klu.idx
+        self.y = cbsp.klu.low if self.is_buy else cbsp.klu.high
+        self.open_price = cbsp.open_price
+        self.is_cover = cbsp.is_cover
+        self.profit = cbsp.profit
+        self.score = cbsp.score
+        self.is_correct = cbsp.bsp is not None and id(cbsp.bsp) in final_bsp_ids
+        self.close_action = [CCloseAction_meta(ca.klu.idx, ca.price) for ca in cbsp.close_actions]
+
+    def desc(self):
+        correct_flag = "√" if self.is_correct else ""
+        seg_flag = "※" if self.is_segbsp else ""
+        bs = 'b' if self.is_buy else 's'
+        return f'{correct_flag}{seg_flag}{bs}{self.type}'
+
+
 class CChanPlotMeta:
     def __init__(self, kl_list: CKLine_List):
         self.data = kl_list
@@ -144,6 +172,12 @@ class CChanPlotMeta:
 
         self.bs_point_lst: List[CBS_Point_meta] = [CBS_Point_meta(bs_point, is_seg=False) for bs_point in kl_list.bs_point_lst.bsp_iter()]
         self.seg_bsp_lst: List[CBS_Point_meta] = [CBS_Point_meta(seg_bsp, is_seg=True) for seg_bsp in kl_list.seg_bs_point_lst.bsp_iter()]
+
+        self.cbsp_lst: List[CCustomBSP_meta] = []
+        if kl_list.cbsp_strategy is not None:
+            final_bsp_ids = {id(bsp) for bsp in kl_list.bs_point_lst.bsp_iter()}
+            final_bsp_ids.update(id(bsp) for bsp in kl_list.seg_bs_point_lst.bsp_iter())
+            self.cbsp_lst = [CCustomBSP_meta(cbsp, final_bsp_ids) for cbsp in kl_list.cbsp_strategy]
 
     def klu_iter(self):
         for klc in self.klc_list:

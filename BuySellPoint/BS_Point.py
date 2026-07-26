@@ -44,3 +44,7 @@ class CBS_Point(Generic[LINE_TYPE]):
         self.add_feat({
             'bsp_bi_amp': self.bi.amp(),
         })
+
+    def qjt_type(self) -> str:
+        # 区间套买卖点类型标记:在原类型前加 q,如 "q1,q1p"
+        return ",".join(f"q{x.value}" for x in self.type)

@@ -268,6 +268,8 @@ class CPlotDriver:
             self.draw_bs_point(meta, ax, **plot_para.get('bsp', {}))
         if plot_config.get("plot_segbsp", False):
             self.draw_seg_bs_point(meta, ax, **plot_para.get('seg_bsp', {}))
+        if plot_config.get("plot_cbsp", False):
+            self.draw_cbsp(meta, ax, **plot_para.get('cbsp', {}))
         if plot_config.get("plot_demark", False):
             self.draw_demark(meta, ax, **plot_para.get('demark', {}))
         if plot_config.get("plot_marker", False):
@@ -645,6 +647,72 @@ class CPlotDriver:
             arrow_h=arrow_h,
             arrow_w=arrow_w,
         )
+
+    def draw_cbsp(
+        self,
+        meta: CChanPlotMeta,
+        ax: Axes,
+        buy_color='r',
+        sell_color='g',
+        fontsize=15,
+        arrow_l=0.3,
+        arrow_h=0.1,
+        arrow_w=1,
+        plot_cover=True,
+        adjust_text=False,
+        only_segbsp=False,
+        show_profit=True,
+    ):
+        # cbsp 用虚线箭头标注;√ 表示回头看该 cbsp 找对了(其关联 bsp 最终仍成立)
+        x_begin = ax.get_xlim()[0]
+        y_range = self.y_max - self.y_min
+        text_instances = []
+        for cbsp in meta.cbsp_lst:
+            if cbsp.x < x_begin:
+                continue
+            if only_segbsp and not cbsp.is_segbsp:
+                continue
+            color = buy_color if cbsp.is_buy else sell_color
+            verticalalignment = 'top' if cbsp.is_buy else 'bottom'
+            arrow_dir = 1 if cbsp.is_buy else -1
+            arrow_len = arrow_l * y_range
+            arrow_head = arrow_len * arrow_h
+            desc = cbsp.desc()
+            if show_profit and cbsp.profit is not None:
+                desc = f'{desc} {cbsp.profit:+.1f}%'
+            text_y = cbsp.y - arrow_len * arrow_dir
+            txt = ax.text(
+                cbsp.x,
+                text_y,
+                desc,
+                fontsize=fontsize,
+                color=color,
+                verticalalignment=verticalalignment,
+                horizontalalignment='center',
+            )
+            ax.arrow(
+                cbsp.x,
+                text_y,
+                0,
+                (arrow_len - arrow_head) * arrow_dir,
+                head_width=arrow_w,
+                head_length=arrow_head,
+                color=color,
+                linestyle='--',
+                linewidth=1,
+                length_includes_head=False,
+            )
+            self.plot_closeAction(plot_cover, cbsp, ax, text_y, arrow_len, arrow_dir, color)
+            if adjust_text:
+                text_instances.append(txt)
+            else:
+                self.update_y_range(getTextBox(ax, txt), text_y)
+        if adjust_text and text_instances:
+            try:  # adjustText 为可选依赖,未安装则保持原位
+                from adjustText import adjust_text as _adjust
+                _adjust(text_instances, ax=ax)
+            except ImportError:
+                pass
 
     def update_y_range(self, text_box, text_y):
         text_height = text_box.y1 - text_box.y0

@@ -410,6 +410,10 @@ class CBSPointList(Generic[LINE_TYPE, LINE_LIST_TYPE]):
                 break
         return res
 
+    def getLastestBspList(self) -> List[CBS_Point[LINE_TYPE]]:
+        # README cbsp/区间套示例所用接口:全部 bsp,从最新到最旧排序
+        return self.get_latest_bsp(0)
+
 
 def bsp2s_break_bsp1(bsp2s_bi: LINE_TYPE, bsp2_break_bi: LINE_TYPE) -> bool:
     return (bsp2s_bi.is_down() and bsp2s_bi._low() < bsp2_break_bi._low()) or \

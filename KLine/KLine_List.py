@@ -49,6 +49,8 @@ class CKLine_List:
 
         self.metric_model_lst = conf.GetMetricModel()
 
+        self.cbsp_strategy = None  # cbsp 策略实例(CChan.do_init 时挂上)
+
         self.step_calculation = self.need_cal_step_by_step()
 
         self.last_sure_seg_start_bi_idx = -1
@@ -87,6 +89,7 @@ class CKLine_List:
         new_obj.metric_model_lst = copy.deepcopy(self.metric_model_lst, memo)
         new_obj.step_calculation = copy.deepcopy(self.step_calculation, memo)
         new_obj.seg_bs_point_lst = copy.deepcopy(self.seg_bs_point_lst, memo)
+        new_obj.cbsp_strategy = copy.deepcopy(self.cbsp_strategy, memo)
         return new_obj
 
     @overload
@@ -117,7 +120,10 @@ class CKLine_List:
         self.bs_point_lst.cal(self.bi_list, self.seg_list)  # 再算笔买卖点
 
     def need_cal_step_by_step(self):
-        return self.config.trigger_step
+        # cbsp 策略需要每根K线都有最新的笔/段/买卖点状态(only_judge_last 快速路径除外)
+        return self.config.trigger_step or (
+            self.config.cbsp_strategy is not None and not self.config.only_judge_last
+        )
 
     def add_single_klu(self, klu: CKLine_Unit):
         klu.set_metric(self.metric_model_lst)

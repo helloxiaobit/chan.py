@@ -68,9 +68,75 @@ class CChanConfig:
         })
         self.boll_n = conf.get("boll_n", 20)
 
+        # ===== 完整版参数(必须在 conf.check() 之前消费掉)=====
+        # 模型
+        self.model = conf.get("model", None)
+        self.score_thred = conf.get("score_thred", None)
+        self.cal_feature = conf.get("cal_feature", False)
+        # 自定义策略(cbsp)
+        self.cbsp_strategy = conf.get("cbsp_strategy", None)
+        self.strategy_para = {
+            "strict_open": True,
+            "use_qjt": True,
+            "short_shelling": True,
+            "judge_on_close": True,
+            "max_sl_rate": None,
+            "max_profit_rate": None,
+        }
+        self.strategy_para.update(conf.get("strategy_para", {}) or {})
+        self.only_judge_last = conf.get("only_judge_last", False)
+        self.cal_cover = conf.get("cal_cover", True)
+        self.cbsp_check_active = conf.get("cbsp_check_active", True)
+        self.print_inactive_reason = conf.get("print_inactive_reason", False)
+        self.stock_no_active_day = conf.get("stock_no_active_day", 30)
+        self.stock_no_active_thred = conf.get("stock_no_active_thred", 3)
+        self.stock_distinct_price_thred = conf.get("stock_distinct_price_thred", 25)
+        # 开启模型或策略时强制计算特征
+        if self.model is not None or self.cbsp_strategy is not None:
+            self.cal_feature = True
+        # 离群点检测
+        self.od_win_width = conf.get("od_win_width", 100)
+        self.od_mean_thred = conf.get("od_mean_thred", 3.0)
+        self.od_max_zero_cnt = conf.get("od_max_zero_cnt", None)
+        self.od_skip_zero = conf.get("od_skip_zero", True)
+        # score_thred / strategy_para 的精确后缀设置(-buy/-sell/-segbuy/-segsell/-seg)
+        self.score_thred_detail = {}
+        self.strategy_para_detail = {}
+        for suffix in ("buy", "sell", "segbuy", "segsell", "seg"):
+            if (v := conf.get(f"score_thred-{suffix}", "__NA__")) != "__NA__":
+                self.score_thred_detail[suffix] = v
+            if (v := conf.get(f"strategy_para-{suffix}", "__NA__")) != "__NA__":
+                self.strategy_para_detail[suffix] = v or {}
+
         self.set_bsp_config(conf)
 
         conf.check()
+
+    def get_score_thred(self, is_buy: bool, is_seg: bool = False):
+        # 精确后缀优先级:segbuy/segsell > seg > buy/sell > 全局
+        if is_seg:
+            key = "segbuy" if is_buy else "segsell"
+            if key in self.score_thred_detail:
+                return self.score_thred_detail[key]
+            if "seg" in self.score_thred_detail:
+                return self.score_thred_detail["seg"]
+        key = "buy" if is_buy else "sell"
+        if not is_seg and key in self.score_thred_detail:
+            return self.score_thred_detail[key]
+        return self.score_thred
+
+    def get_strategy_para(self, para: str, is_buy: bool = True, is_seg: bool = False):
+        # 同 get_score_thred,后缀 dict 覆盖基础 strategy_para
+        if is_seg:
+            key = "segbuy" if is_buy else "segsell"
+            if key in self.strategy_para_detail and para in self.strategy_para_detail[key]:
+                return self.strategy_para_detail[key][para]
+            if "seg" in self.strategy_para_detail and para in self.strategy_para_detail["seg"]:
+                return self.strategy_para_detail["seg"][para]
+        key = "buy" if is_buy else "sell"
+        if not is_seg and key in self.strategy_para_detail and para in self.strategy_para_detail[key]:
+            return self.strategy_para_detail[key][para]
+        return self.strategy_para.get(para)
 
     def GetMetricModel(self):
         res: List[CMACD | CTrendModel | BollModel | CDemarkEngine | RSI | KDJ] = [

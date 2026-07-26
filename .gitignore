@@ -14,3 +14,4 @@ test_synthetic_*.csv
 .pytest_cache/
 Config/config.yaml
 ModelStrategy/models/output/
+Debug/*.png
