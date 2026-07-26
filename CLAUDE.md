@@ -45,7 +45,7 @@ Plot/PlotDriver.py 负责全部绘图(DrawElement 为分发入口)
 - [x] M0 环境与配置体系(Config/、requirements 分层、tests/ 一致性测试)
 - [x] M1 cbsp策略框架(CustomBuySellPoint/、CChan调度、extra_kl、toJson、Plot cbsp)
 - [x] M2 特征引擎(10特征族506特征、FeatureDesc注册表、OutlinerDetection、backtest样本落地)
-- [ ] M3 模型框架
+- [x] M3 模型框架(CModelGenerator/CDataSet + XGB/LGBM/MLP + CCommModel/CXGBModel 接入)
 - [ ] M4 回测+AutoML
 - [ ] M5 ccxt数据层
 - [ ] M6 交易系统

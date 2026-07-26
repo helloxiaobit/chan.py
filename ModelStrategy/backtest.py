@@ -57,10 +57,12 @@ def cal_labels(chan: CChan, cbsp, label_para: Dict) -> Dict[str, int]:
     all_klus = list(lv_data.klu_iter())
     open_idx = cbsp.klu.idx
 
-    # 1. label_bsp_hold:关联 bsp 最终仍在形态学 bsp 列表里
-    final_bsp_ids = {id(b) for b in lv_data.bs_point_lst.bsp_iter()}
-    final_bsp_ids.update(id(b) for b in lv_data.seg_bs_point_lst.bsp_iter())
-    labels["label_bsp_hold"] = int(cbsp.bsp is not None and id(cbsp.bsp) in final_bsp_ids)
+    # 1. label_bsp_hold:关联 bsp 最终仍在形态学 bsp 列表里(按 klu.idx+方向比对,
+    #    bsp 对象在计算过程中会被重建,不能用对象身份比对;与 demo5 的 bsp_academy 逻辑一致)
+    final_bsp_keys = {(b.klu.idx, b.is_buy) for b in lv_data.bs_point_lst.bsp_iter()}
+    final_bsp_keys.update((b.klu.idx, b.is_buy) for b in lv_data.seg_bs_point_lst.bsp_iter())
+    labels["label_bsp_hold"] = int(
+        cbsp.bsp is not None and (cbsp.bsp.klu.idx, cbsp.bsp.is_buy) in final_bsp_keys)
 
     # 2. label_ret_N:开仓后 N 根K线收益率 > 阈值
     n, thred = label_para["ret_n"], label_para["ret_thred"]

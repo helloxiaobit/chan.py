@@ -122,8 +122,9 @@ class CCloseAction_meta:
 
 
 class CCustomBSP_meta:
-    def __init__(self, cbsp, final_bsp_ids):
-        # cbsp: CCustomBSP;final_bsp_ids: 最终形态学bsp的id集合(判断"回头看找对了"打√)
+    def __init__(self, cbsp, final_bsp_keys):
+        # cbsp: CCustomBSP;final_bsp_keys: 最终形态学bsp的(klu.idx, is_buy)集合
+        # (判断"回头看找对了"打√;bsp对象计算过程中会重建,不能按对象身份比对)
         self.is_buy = cbsp.is_buy
         self.type = cbsp.type2str()
         self.is_segbsp = cbsp.is_segbsp
@@ -133,7 +134,7 @@ class CCustomBSP_meta:
         self.is_cover = cbsp.is_cover
         self.profit = cbsp.profit
         self.score = cbsp.score
-        self.is_correct = cbsp.bsp is not None and id(cbsp.bsp) in final_bsp_ids
+        self.is_correct = cbsp.bsp is not None and (cbsp.bsp.klu.idx, cbsp.bsp.is_buy) in final_bsp_keys
         self.close_action = [CCloseAction_meta(ca.klu.idx, ca.price) for ca in cbsp.close_actions]
 
     def desc(self):
@@ -175,9 +176,9 @@ class CChanPlotMeta:
 
         self.cbsp_lst: List[CCustomBSP_meta] = []
         if kl_list.cbsp_strategy is not None:
-            final_bsp_ids = {id(bsp) for bsp in kl_list.bs_point_lst.bsp_iter()}
-            final_bsp_ids.update(id(bsp) for bsp in kl_list.seg_bs_point_lst.bsp_iter())
-            self.cbsp_lst = [CCustomBSP_meta(cbsp, final_bsp_ids) for cbsp in kl_list.cbsp_strategy]
+            final_bsp_keys = {(bsp.klu.idx, bsp.is_buy) for bsp in kl_list.bs_point_lst.bsp_iter()}
+            final_bsp_keys.update((bsp.klu.idx, bsp.is_buy) for bsp in kl_list.seg_bs_point_lst.bsp_iter())
+            self.cbsp_lst = [CCustomBSP_meta(cbsp, final_bsp_keys) for cbsp in kl_list.cbsp_strategy]
 
     def klu_iter(self):
         for klc in self.klc_list:
