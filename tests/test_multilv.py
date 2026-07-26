@@ -194,6 +194,43 @@ def test_multilv_consistency_load_vs_trigger(tmp_env, bars_3lv):
         assert cbsp_sig(chan_a, lv) == cbsp_sig(chan_b, lv), f"lv{lv} cbsp不一致"
 
 
+def test_zone_entry_mode(tmp_env):
+    """SMC限价入场:成交的交易带z前缀,挂单价优于突破价,止损在正确一侧"""
+    chan = run_load(tmp_env, {"strategy_para": {"entry_mode": "zone", "require_sub_confirm": False}})
+    strategy = chan[1].cbsp_strategy
+    assert len(strategy.opened_bsp_klu_idx) > 0, "应至少挂过限价单"
+    trades = list(strategy)
+    assert len(trades) > 0, "合成数据上限价单应有成交"
+    for t in trades:
+        assert t.bs_type.startswith("z"), f"zone成交应带z前缀: {t.bs_type}"
+        assert t.sl_price is not None
+        if t.is_buy:
+            assert t.open_price > t.sl_price
+        else:
+            assert t.open_price < t.sl_price
+
+
+def test_zone_entry_consistency(tmp_env, bars_3lv):
+    """zone模式的 load vs trigger 一致性(限价单状态机确定性)"""
+    para = {"entry_mode": "zone", "require_sub_confirm": False}
+    chan_a = run_load(tmp_env, {"strategy_para": dict(para)})
+    chan_b = CChan(
+        code="TEST/USDT",
+        data_src="custom:OfflineDataAPI.CStockFileReader",
+        lv_list=LV_LIST,
+        config=CChanConfig({**BASE_CONF, "strategy_para": dict(para), "trigger_step": True}),
+        autype=AUTYPE.NONE,
+    )
+    b15, b1h, b4h = bars_3lv["15m"], bars_3lv["1h"], bars_3lv["4h"]
+    for i, bar4h in enumerate(b4h):
+        chan_b.trigger_load({
+            KL_TYPE.K_4H: [make_klu_end(*bar4h, KL_TYPE.K_4H)],
+            KL_TYPE.K_60M: [make_klu_end(*b, KL_TYPE.K_60M) for b in b1h[i * 4:(i + 1) * 4]],
+            KL_TYPE.K_15M: [make_klu_end(*b, KL_TYPE.K_15M) for b in b15[i * 16:(i + 1) * 16]],
+        })
+    assert cbsp_sig(chan_a, 1) == cbsp_sig(chan_b, 1)
+
+
 def test_multilv_eval_lv_idx(tmp_env):
     from ModelStrategy.parameterEvaluate.eval_strategy import CEvalConfig, eval_strategy
     res = eval_strategy(CEvalConfig(

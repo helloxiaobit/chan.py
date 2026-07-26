@@ -16,6 +16,15 @@ strategy_para(在 CStrategy 通用参数之外):
 - trade_bs_types:    交易级别允许触发的 bsp 类型,默认 "1,1p,2,2s,3a,3b"
 - cover_on_trend_flip: 趋势级别方向翻转即平仓,默认 True
 其余沿用:strict_open/short_shelling/judge_on_close/max_sl_rate/max_profit_rate
+
+SMC 限价入场模式(entry_mode="zone",默认 "breakout" 为原突破逻辑):
+1H 信号确认后不追突破,从入场级别(15M)结构找回撤区挂限价单:
+未回补 FVG 中线 / 未失效订单块边沿,取离现价最近者;
+有效期内触价即成交(带 z 前缀),超时/趋势翻转/破止损位撤单。
+- entry_valid_bars:  限价单有效期(交易级别K线数),默认 8
+- entry_zone_source: 回撤区来源 both/fvg/ob,默认 both
+- entry_sl_mode:     止损口径 fx(1H分型)/zone(区间下沿),默认 fx
+- entry_fallback:    找不到回撤区时 skip(放弃)/breakout(退回突破逻辑),默认 skip
 """
 from typing import TYPE_CHECKING, List, Optional, Tuple
 
@@ -33,8 +42,9 @@ if TYPE_CHECKING:
 class CMultiLevelStrategy(CStrategy):
     def __init__(self, conf):
         super(CMultiLevelStrategy, self).__init__(conf=conf)
-        self.opened_bsp_klu_idx = set()  # 交易级别:已开仓过的 bsp(按klu.idx)
+        self.opened_bsp_klu_idx = set()  # 交易级别:已开仓/已挂单过的 bsp(按klu.idx)
         self.marked_bsp_klu_idx = set()  # 入场级别:已标记过的 1类 bsp
+        self.pending_entries = []        # zone 模式在途限价单
 
     # ===== 角色 =====
     @staticmethod
@@ -122,6 +132,10 @@ class CMultiLevelStrategy(CStrategy):
             return None
         # 1) 高周期方向
         direction = self.cal_trend_direction(chan) if lv > 0 else 0
+        # zone 模式:先处理在途限价单(成交/撤销),成交则本根直接返回
+        if self.get_p("entry_mode", "breakout") == "zone":
+            if filled := self.process_pending_entries(chan, lv, direction):
+                return filled
         if lv > 0 and direction == 0:
             return None
         # 2) 交易级别形态学 bsp 触发
@@ -154,8 +168,14 @@ class CMultiLevelStrategy(CStrategy):
             sub_ref = self.find_qjt_entry(chan, lv, last_bsp, is_buy)
             if sub_ref is None and self.get_p("require_sub_confirm", True):
                 return None
-        # 4) 突破判断(与 CCustomStrategy 同口径)
         cur_klu = data[-1][-1]
+        # zone 模式:不追突破,从入场级别结构找回撤区挂限价单
+        if self.get_p("entry_mode", "breakout") == "zone":
+            armed = self.arm_pending_entry(chan, lv, last_bsp, is_buy, fx_klc, cur_klu)
+            if armed or self.get_p("entry_fallback", "skip") == "skip":
+                return None
+            # entry_fallback=breakout 且找不到回撤区 → 退回突破逻辑
+        # 4) 突破判断(与 CCustomStrategy 同口径)
         judge_on_close = self.get_p("judge_on_close", True)
         if is_buy:
             if judge_on_close and cur_klu.close <= fx_klc.high:
@@ -186,6 +206,102 @@ class CMultiLevelStrategy(CStrategy):
             price=open_price,
             sl_price=sl_price,
         )
+
+    # ---- SMC 限价入场(entry_mode="zone")----
+    @staticmethod
+    def _recent_entry_klus(entry_data: 'CKLine_List', cnt: int = 240) -> List:
+        res: List = []
+        for klc in entry_data[::-1]:
+            for klu in klc[::-1]:
+                res.append(klu)
+                if len(res) >= cnt:
+                    return res[::-1]
+        return res[::-1]
+
+    def find_entry_zone(self, chan: 'CChan', lv: int, is_buy: bool, close: float):
+        """从入场级别找回撤区:(挂单价, 区间下沿, 区间上沿, 来源) 或 None;取离现价最近者"""
+        if lv + 1 >= len(chan.lv_list):
+            return None
+        from Math.SmartMoney import find_fvgs, find_order_blocks
+        entry_data = chan[lv + 1]
+        klus = self._recent_entry_klus(entry_data)
+        if len(klus) < 5:
+            return None
+        source = self.get_p("entry_zone_source", "both")
+        candidates = []
+        if source in ("both", "fvg"):
+            for fvg in find_fvgs(klus)[::-1]:  # 最新优先
+                if fvg.is_bull != is_buy or fvg.is_filled:
+                    continue
+                if (is_buy and fvg.mid < close) or (not is_buy and fvg.mid > close):
+                    candidates.append((fvg.mid, fvg.bottom, fvg.top, "fvg"))
+                    break
+        if source in ("both", "ob"):
+            for ob in find_order_blocks(entry_data.bi_list, klus)[::-1]:
+                if ob.is_bull != is_buy or ob.is_broken:
+                    continue
+                edge = ob.top if is_buy else ob.bottom  # 买:回落到OB上沿即接;卖反之
+                if (is_buy and edge < close) or (not is_buy and edge > close):
+                    candidates.append((edge, ob.bottom, ob.top, "ob"))
+                    break
+        if not candidates:
+            return None
+        return max(candidates) if is_buy else min(candidates)
+
+    def arm_pending_entry(self, chan: 'CChan', lv: int, trade_bsp, is_buy: bool, fx_klc, cur_klu) -> bool:
+        zone = self.find_entry_zone(chan, lv, is_buy, cur_klu.close)
+        if zone is None:
+            return False
+        entry_price, zone_bottom, zone_top, source = zone
+        if self.get_p("entry_sl_mode", "fx") == "zone":
+            sl = zone_bottom if is_buy else zone_top
+        else:
+            sl = fx_klc.low if is_buy else fx_klc.high
+        sl = self.truncate_sl(entry_price, sl, is_buy)
+        # 挂单价必须优于现价且在止损位的正确一侧
+        if is_buy and (entry_price >= cur_klu.close or entry_price <= sl):
+            return False
+        if not is_buy and (entry_price <= cur_klu.close or entry_price >= sl):
+            return False
+        self.opened_bsp_klu_idx.add(trade_bsp.klu.idx)
+        self.pending_entries.append({
+            "bsp": trade_bsp, "is_buy": is_buy, "price": entry_price, "sl": sl,
+            "expire_idx": cur_klu.idx + self.get_p("entry_valid_bars", 8),
+            "fx_klc": fx_klc, "source": source,
+        })
+        return True
+
+    def process_pending_entries(self, chan: 'CChan', lv: int, direction: int) -> Optional[CCustomBSP]:
+        """限价单撮合与撤销:触价成交(每根至多一单);过期/趋势翻转/收盘破止损撤单"""
+        if not self.pending_entries:
+            return None
+        cur = chan[lv][-1][-1]
+        fill: Optional[CCustomBSP] = None
+        remain = []
+        for p in self.pending_entries:
+            touched = (cur.low <= p["price"]) if p["is_buy"] else (cur.high >= p["price"])
+            if fill is None and touched:
+                cbsp = CCustomBSP(
+                    bsp=p["bsp"],
+                    klu=cur,
+                    bs_type=",".join(f"z{t}" for t in p["bsp"].type2str().split(",")),
+                    is_buy=p["is_buy"],
+                    target_klc=p["fx_klc"],
+                    price=p["price"],
+                    sl_price=p["sl"],
+                )
+                # 成交当根收盘已破止损 → 立即止损离场(不留隔根乐观)
+                if (p["is_buy"] and cur.close < p["sl"]) or (not p["is_buy"] and cur.close > p["sl"]):
+                    cbsp.do_close(cur.close, cur, reason="stop_loss")
+                fill = cbsp
+                continue
+            expired = cur.idx >= p["expire_idx"]
+            flipped = direction != 0 and (direction > 0) != p["is_buy"]
+            sl_broken = (cur.close < p["sl"]) if p["is_buy"] else (cur.close > p["sl"])
+            if not (expired or flipped or sl_broken):
+                remain.append(p)
+        self.pending_entries = remain
+        return fill
 
     def find_qjt_entry(self, chan: 'CChan', lv: int, trade_bsp, is_buy: bool) -> Optional[CCustomBSP]:
         """区间套:交易级别 bsp 出现后 qjt_window 根内,入场级别出现同向1类标记"""

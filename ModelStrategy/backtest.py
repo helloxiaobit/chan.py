@@ -150,6 +150,8 @@ def write_samples(samples: List[CSample], output_dir: str, primary_label: str):
                 "bs_type": sample.cbsp.bs_type,
                 "is_segbsp": sample.cbsp.is_segbsp,
                 "open_price": sample.cbsp.open_price,
+                "profit": sample.cbsp.profit,  # 已平仓交易的实际收益率%(评估模型分数与收益相关性用)
+                "cover_reason": sample.cbsp.close_actions[-1].reason if sample.cbsp.close_actions else None,
                 "labels": sample.labels,
             }, ensure_ascii=False) + "\n")
     with open(os.path.join(output_dir, "feature.meta"), "w", encoding="utf-8") as fmeta:

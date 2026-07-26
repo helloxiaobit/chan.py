@@ -34,7 +34,7 @@ class COpenConfig:
     def pass_bsp_type(self, bstype: str) -> bool:
         if not self.bsp_type_filter:
             return True
-        return bool(set(str(bstype).replace("q", "").split(",")) & set(self.bsp_type_filter.split(",")))
+        return bool(set(str(bstype).replace("q", "").replace("z", "").split(",")) & set(self.bsp_type_filter.split(",")))
 
     def pass_score(self, score: Optional[float]) -> bool:
         if self.score_thred is None:

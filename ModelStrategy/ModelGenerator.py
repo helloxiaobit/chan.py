@@ -195,7 +195,7 @@ class CModelGenerator(metaclass=abc.ABCMeta):
         if self.market is not None and get_market(info.get("code", "")) != self.market:
             return False
         if self.bsp_type is not None:
-            sample_types = set(str(info.get("bs_type", "")).replace("q", "").split(","))
+            sample_types = set(str(info.get("bs_type", "")).replace("q", "").replace("z", "").split(","))
             if not sample_types & set(self.bsp_type.split(",")):
                 return False
         return True

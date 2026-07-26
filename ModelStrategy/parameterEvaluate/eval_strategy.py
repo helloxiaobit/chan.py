@@ -162,7 +162,7 @@ def eval_strategy(conf: CEvalConfig) -> CEvalResult:
         strategy = chan[conf.lv_idx].cbsp_strategy
         assert strategy is not None
         for cbsp in strategy:
-            if type_filter is not None and not (set(cbsp.bs_type.replace("q", "").split(",")) & type_filter):
+            if type_filter is not None and not (set(cbsp.bs_type.replace("q", "").replace("z", "").split(",")) & type_filter):
                 continue
             if conf.score_thred is not None and cbsp.score is not None and cbsp.score < conf.score_thred:
                 continue
