@@ -37,6 +37,10 @@ SMC 限价入场模式(entry_mode,默认 "breakout" 为原突破逻辑):
 (2026回测教训:趋势剧本下利润集中在少数大赢家尾部,最近池止盈/保本会截断尾部,
  默认保持关闭;结构化止盈只应用于震荡剧本)
 
+止损执行(迭代6,R系列数据驱动:收盘判断止损导致40%交易亏损>1R,肥左尾摧毁复利Calmar):
+- sl_intrabar: True 时止损盘中触价即出,成交价=止损价±滑点(入场仍按收盘确认,互不影响)
+- sl_slippage: 盘中止损滑点比例,默认 0.0005(万5)
+
 Regime 状态机(迭代5):
 - 判定:4H最近中枢仍新鲜(距今≤regime_zs_valid_bars根)且现价在[ZD,ZG]内 → "range",否则 "trend"
 - 每笔交易开仓时打戳 exit_state["regime"](当下判定,无后见偏差),供分状态切片分析
@@ -495,12 +499,21 @@ class CMultiLevelStrategy(CStrategy):
         self.manage_exits(chan, lv, cur_klu)
         trend_dir = self.cal_trend_direction(chan) if lv > 0 else 0
         judge_on_close = self.get_p("judge_on_close", True)
+        sl_intrabar = self.get_p("sl_intrabar", False)
+        slip = self.get_p("sl_slippage", 0.0005)
         for cbsp in self.holding_cbsp():
             if cbsp.klu.idx >= cur_klu.idx:
                 continue
             # 1) 止损(入场级别分型收紧过的 sl_price)
             if cbsp.sl_price is not None:
-                if cbsp.is_buy:
+                if sl_intrabar:  # 盘中触价即出:把单笔亏损钉在≈1R(+滑点),消灭肥左尾
+                    if cbsp.is_buy:
+                        hit = cur_klu.low < cbsp.sl_price
+                        price = cbsp.sl_price * (1 - slip)
+                    else:
+                        hit = cur_klu.high > cbsp.sl_price
+                        price = cbsp.sl_price * (1 + slip)
+                elif cbsp.is_buy:
                     hit = cur_klu.close < cbsp.sl_price if judge_on_close else cur_klu.low < cbsp.sl_price
                     price = cur_klu.close if judge_on_close else cbsp.sl_price
                 else:
