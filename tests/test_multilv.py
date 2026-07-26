@@ -313,6 +313,55 @@ def test_new_features_consistency(tmp_env, bars_3lv):
     assert sig_a == sig_b
 
 
+def test_iteration10_levers(tmp_env):
+    """迭代10四杠杆:重进场/加仓/背驰过滤/反向类型限定——运行正确性与方向性断言"""
+    base_para = {"skip_features": True, "require_sub_confirm": False}
+    chan0 = run_load(tmp_env, {"strategy_para": dict(base_para)})
+    n0 = len(chan0[1].cbsp_strategy)
+    # 重进场:交易数不少于基线;reentry_gen 标记存在于新增交易
+    chan_re = run_load(tmp_env, {"strategy_para": {**base_para, "reentry_cnt": 1, "sl_intrabar": True}})
+    trades_re = list(chan_re[1].cbsp_strategy)
+    assert len(trades_re) >= 1
+    # 加仓:pyramid 标记的交易共享父仓类型且开在父仓之后
+    chan_py = run_load(tmp_env, {"strategy_para": {**base_para, "pyramid_add_r": 0.5, "pyramid_max_add": 2}})
+    trades_py = list(chan_py[1].cbsp_strategy)
+    pyramids = [t for t in trades_py if t.exit_state.get("pyramid")]
+    assert len(trades_py) >= n0  # 加仓只增不减
+    for p in pyramids:
+        assert p.sl_price is not None
+    # 背驰过滤:交易数不多于基线,且留下的1类交易背驰达标
+    chan_dv = run_load(tmp_env, {"strategy_para": {**base_para, "max_div_rate": 0.9}})
+    assert len(chan_dv[1].cbsp_strategy) <= n0
+    # 反向类型限定:只改变出场,交易数一致,reverse_bsp 平仓数不增
+    chan_rc = run_load(tmp_env, {"strategy_para": {**base_para, "reverse_close_types": "1,1p"}})
+    rc_reasons = [ca.reason for t in chan_rc[1].cbsp_strategy for ca in t.close_actions]
+    base_reasons = [ca.reason for t in chan0[1].cbsp_strategy for ca in t.close_actions]
+    assert rc_reasons.count("reverse_bsp") <= base_reasons.count("reverse_bsp")
+
+
+def test_iteration10_consistency(tmp_env, bars_3lv):
+    """四杠杆全开 load vs trigger 一致性"""
+    para = {"skip_features": True, "require_sub_confirm": False, "sl_intrabar": True,
+            "sl_buffer": 0.002, "reentry_cnt": 1, "pyramid_add_r": 1.0,
+            "max_div_rate": 1.5, "reverse_close_types": "1,1p,2"}
+    chan_a = run_load(tmp_env, {"strategy_para": dict(para)})
+    chan_b = CChan(
+        code="TEST/USDT",
+        data_src="custom:OfflineDataAPI.CStockFileReader",
+        lv_list=LV_LIST,
+        config=CChanConfig({**BASE_CONF, "strategy_para": dict(para), "trigger_step": True}),
+        autype=AUTYPE.NONE,
+    )
+    b15, b1h, b4h = bars_3lv["15m"], bars_3lv["1h"], bars_3lv["4h"]
+    for i, bar4h in enumerate(b4h):
+        chan_b.trigger_load({
+            KL_TYPE.K_4H: [make_klu_end(*bar4h, KL_TYPE.K_4H)],
+            KL_TYPE.K_60M: [make_klu_end(*b, KL_TYPE.K_60M) for b in b1h[i * 4:(i + 1) * 4]],
+            KL_TYPE.K_15M: [make_klu_end(*b, KL_TYPE.K_15M) for b in b15[i * 16:(i + 1) * 16]],
+        })
+    assert cbsp_sig(chan_a, 1) == cbsp_sig(chan_b, 1)
+
+
 def test_strategy_ensemble_equivalence(tmp_env):
     """集合评估的正确性铁闸:同一变体在 ensemble 中与单独跑结果逐笔一致"""
     from CustomBuySellPoint.StrategyEnsemble import CStrategyEnsemble

@@ -48,6 +48,16 @@ Regime 状态机(迭代5):
 - 每笔交易开仓时打戳 exit_state["regime"](当下判定,无后见偏差),供分状态切片分析
 - regime_mode: None(仅打戳)/"silent"(range期不开新仓,在途限价单照常管理)
 - regime_zs_valid_bars: 中枢新鲜度窗口,默认 30
+
+迭代10 四杠杆(默认全关,均可 ensemble 扫参):
+- max_div_rate:        动力学背驰过滤——1类买卖点要求 divergence_rate ≤ 该值(越小背驰越强),
+                       非1类不受影响;如 0.9
+- reentry_cnt:         洗损重进场次数——止损离场后,价格在 reentry_window(默认12)根内重新
+                       站回原突破位则按原结构再进(找回被影线洗掉的赢家);如 1
+- pyramid_add_r:       趋势加仓——持仓浮盈每达 R 倍初始风险加一笔(市价,用当时止损位),
+                       最多 pyramid_max_add(默认1)次;放大右尾
+- reverse_close_types: 反向信号离场限定类型(如 "1,1p"=只有反向一类买卖点才离场,
+                       忽略反向2/3类的骚扰),默认 None=任意反向即离场
 """
 from typing import TYPE_CHECKING, List, Optional, Tuple
 
@@ -68,6 +78,8 @@ class CMultiLevelStrategy(CStrategy):
         self.opened_bsp_klu_idx = set()  # 交易级别:已开仓/已挂单过的 bsp(按klu.idx)
         self.marked_bsp_klu_idx = set()  # 入场级别:已标记过的 1类 bsp
         self.pending_entries = []        # zone 模式在途限价单
+        self.reentry_watches = []        # 洗损重进场观察单
+        self.pyramid_queue = []          # 待执行的趋势加仓
 
     # ===== 角色 =====
     @staticmethod
@@ -178,6 +190,11 @@ class CMultiLevelStrategy(CStrategy):
         if self.get_p("entry_mode", "breakout") in ("zone", "bos_zone"):
             if filled := self.process_pending_entries(chan, lv, direction):
                 return self.attach_exit_plan(chan, lv, filled)
+        # 洗损重进场与趋势加仓(每根至多开一单,优先级:重进场 > 加仓 > 新信号)
+        if filled := self.process_reentry_watches(chan, lv, direction):
+            return filled
+        if filled := self.process_pyramid_queue(chan, lv):
+            return filled
         if lv > 0 and direction == 0:
             return None
         # 1.5) Regime 门控:silent 模式下震荡期不开新仓
@@ -198,6 +215,12 @@ class CMultiLevelStrategy(CStrategy):
         allow_types = set(str(self.get_p("trade_bs_types", "1,1p,2,2s,3a,3b")).split(","))
         if not {t.value for t in last_bsp.type} & allow_types:
             return None
+        # 动力学背驰过滤:1类买卖点要求背驰足够强(divergence_rate 越小越强)
+        max_div = self.get_p("max_div_rate")
+        if max_div is not None and {t.value for t in last_bsp.type} & {"1", "1p"}:
+            div = dict(last_bsp.features.items()).get("divergence_rate")
+            if div is not None and div > max_div:
+                return None
         fx_klc = data[-2]
         if last_bsp.klu.klc.idx != fx_klc.idx:
             return None
@@ -394,6 +417,85 @@ class CMultiLevelStrategy(CStrategy):
         self.pending_entries = remain
         return fill
 
+    # ---- 洗损重进场(迭代10)----
+    def process_reentry_watches(self, chan: 'CChan', lv: int, direction: int) -> Optional[CCustomBSP]:
+        if not self.reentry_watches:
+            return None
+        cur = chan[lv][-1][-1]
+        fill = None
+        remain = []
+        for w in self.reentry_watches:
+            expired = cur.idx >= w["expire_idx"]
+            flipped = direction != 0 and (direction > 0) != w["is_buy"]
+            triggered = (cur.close > w["trigger"]) if w["is_buy"] else (cur.close < w["trigger"])
+            if fill is None and not expired and not flipped and triggered:
+                cbsp = CCustomBSP(
+                    bsp=w["bsp"], klu=cur, bs_type=w["bs_type"], is_buy=w["is_buy"],
+                    target_klc=w["fx_klc"], price=cur.close, sl_price=w["sl"],
+                )
+                cbsp = self.attach_exit_plan(chan, lv, cbsp)
+                if cbsp is not None:
+                    cbsp.exit_state["reentry_gen"] = w["gen"]
+                    fill = cbsp
+                continue  # 无论成交与否,该观察单消耗掉
+            if not (expired or flipped):
+                remain.append(w)
+        self.reentry_watches = remain
+        return fill
+
+    def try_register_reentry(self, cbsp: CCustomBSP, cur_klu) -> None:
+        reentry_cnt = self.get_p("reentry_cnt", 0)
+        if not reentry_cnt or cbsp.target_klc is None:
+            return
+        gen = (cbsp.exit_state or {}).get("reentry_gen", 0)
+        if gen >= reentry_cnt:
+            return
+        self.reentry_watches.append({
+            "bsp": cbsp.bsp, "is_buy": cbsp.is_buy, "bs_type": cbsp.bs_type,
+            "fx_klc": cbsp.target_klc,
+            "trigger": cbsp.target_klc.high if cbsp.is_buy else cbsp.target_klc.low,
+            "sl": cbsp.sl_price if not (cbsp.exit_state or {}).get("sl_moved") else None,
+            "gen": gen + 1,
+            "expire_idx": cur_klu.idx + self.get_p("reentry_window", 12),
+        })
+        if self.reentry_watches[-1]["sl"] is None:  # 止损被移动过则按原始风险距重建
+            risk = (cbsp.exit_state or {}).get("risk", 0)
+            trigger = self.reentry_watches[-1]["trigger"]
+            self.reentry_watches[-1]["sl"] = trigger - risk if cbsp.is_buy else trigger + risk
+
+    # ---- 趋势加仓(迭代10)----
+    def process_pyramid_queue(self, chan: 'CChan', lv: int) -> Optional[CCustomBSP]:
+        if not self.pyramid_queue:
+            return None
+        cur = chan[lv][-1][-1]
+        spec = self.pyramid_queue.pop(0)
+        parent = spec["parent"]
+        if parent.is_cover:  # 父仓已平,放弃加仓
+            return None
+        cbsp = CCustomBSP(
+            bsp=parent.bsp, klu=cur, bs_type=parent.bs_type, is_buy=parent.is_buy,
+            target_klc=parent.target_klc, price=cur.close, sl_price=parent.sl_price,
+        )
+        cbsp = self.attach_exit_plan(chan, lv, cbsp)
+        if cbsp is not None:
+            cbsp.exit_state["pyramid"] = True
+        return cbsp
+
+    def try_register_pyramid(self, cbsp: CCustomBSP, cur_klu) -> None:
+        add_r = self.get_p("pyramid_add_r")
+        if add_r is None or not cbsp.exit_state or cbsp.exit_state.get("pyramid"):
+            return  # 加仓单本身不再繁殖
+        risk = cbsp.exit_state.get("risk", 0)
+        if risk <= 0:
+            return
+        adds = cbsp.exit_state.get("pyramid_adds", 0)
+        if adds >= self.get_p("pyramid_max_add", 1):
+            return
+        gain = (cur_klu.close - cbsp.open_price) if cbsp.is_buy else (cbsp.open_price - cur_klu.close)
+        if gain >= (adds + 1) * add_r * risk:
+            cbsp.exit_state["pyramid_adds"] = adds + 1
+            self.pyramid_queue.append({"parent": cbsp})
+
     def find_qjt_entry(self, chan: 'CChan', lv: int, trade_bsp, is_buy: bool) -> Optional[CCustomBSP]:
         """区间套:交易级别 bsp 出现后 qjt_window 根内,入场级别出现同向1类标记"""
         entry_strategy = chan[lv + 1].cbsp_strategy
@@ -482,6 +584,7 @@ class CMultiLevelStrategy(CStrategy):
             if partial_tp_r is not None and not cbsp.exit_state["partial_done"] and gain >= partial_tp_r * risk:
                 cbsp.do_close(close, cur_klu, reason="partial_tp", quota=0.5)
                 cbsp.exit_state["partial_done"] = True
+                cbsp.exit_state["sl_moved"] = True
                 cbsp.sl_price = max(cbsp.sl_price, cbsp.open_price) if cbsp.is_buy \
                     else min(cbsp.sl_price, cbsp.open_price)  # 移到保本
             # 3) 结构追踪止损(入场级别笔端点)
@@ -491,8 +594,10 @@ class CMultiLevelStrategy(CStrategy):
                 if cbsp.exit_state["trailing"]:
                     trail = self.entry_lv_trail_price(chan, lv, cbsp.is_buy)
                     if trail is not None:
-                        cbsp.sl_price = max(cbsp.sl_price, trail) if cbsp.is_buy \
-                            else min(cbsp.sl_price, trail)
+                        new_sl = max(cbsp.sl_price, trail) if cbsp.is_buy else min(cbsp.sl_price, trail)
+                        if new_sl != cbsp.sl_price:
+                            cbsp.exit_state["sl_moved"] = True
+                        cbsp.sl_price = new_sl
             # 4) 时间止损:持仓 N 根仍未盈利
             if time_stop_bars is not None and cur_klu.idx - cbsp.klu.idx >= time_stop_bars and gain <= 0:
                 cbsp.do_close(close, cur_klu, reason="time_stop")
@@ -513,6 +618,7 @@ class CMultiLevelStrategy(CStrategy):
         for cbsp in self.holding_cbsp():
             if cbsp.klu.idx >= cur_klu.idx:
                 continue
+            self.try_register_pyramid(cbsp, cur_klu)  # 浮盈达标登记加仓(下根执行)
             # 1) 止损(入场级别分型收紧过的 sl_price)
             if cbsp.sl_price is not None:
                 if sl_intrabar:  # 盘中触价即出:把单笔亏损钉在≈1R(+滑点),消灭肥左尾
@@ -530,6 +636,7 @@ class CMultiLevelStrategy(CStrategy):
                     price = cur_klu.close if judge_on_close else cbsp.sl_price
                 if hit:
                     cbsp.do_close(price, cur_klu, reason="stop_loss")
+                    self.try_register_reentry(cbsp, cur_klu)  # 洗损后观察重进场
                     continue
             # 2) 高周期方向翻转
             if self.get_p("cover_on_trend_flip", True) and trend_dir != 0 \
@@ -542,6 +649,10 @@ class CMultiLevelStrategy(CStrategy):
                 continue
             last_bsp = last_bsp_lst[0]
             if last_bsp.is_buy == cbsp.is_buy:
+                continue
+            # 反向离场限定类型(如只认反向1类,忽略2/3类骚扰)
+            rc_types = self.get_p("reverse_close_types")
+            if rc_types and not ({t.value for t in last_bsp.type} & set(str(rc_types).split(","))):
                 continue
             fx_klc = data[-2]
             if last_bsp.klu.klc.idx != fx_klc.idx:
