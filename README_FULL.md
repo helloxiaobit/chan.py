@@ -172,7 +172,8 @@ trades = list(chan[1].cbsp_strategy)   # 交易发生在中间的交易级别(lv
 |---|---|
 | `Config/` | config.yaml 全局配置体系(CEnv) |
 | `CustomBuySellPoint/` | CStrategy 抽象 + CCustomStrategy/CSegBspStrategy/CExamStrategy + CCustomBSP/CSignal;区间套(use_qjt) |
-| `ChanModel/` | FeatureDesc 注册表、FeatureEngine 10特征族(500+)、CCommModel/CXGBModel |
+| `ChanModel/` | FeatureDesc 注册表、FeatureEngine 11特征族(540+,含SMC族)、CCommModel/CXGBModel |
+| `Math/SmartMoney.py` | SMC检测器:FVG/订单块(笔结构定位)/流动性池+sweep/Premium-Discount位置 |
 | `ModelStrategy/` | backtest 样本落地(五种标签)、CModelGenerator(XGB/LGBM/MLP)、eval_strategy、para_automl、FeatureReconciliation |
 | `DataAPI/` | ccxt 重构(分页/volume/代理)、OfflineDataAPI、SnapshotAPI(sina/pytdx/ak/futu/ccxt)、ETFStockAPI、MarketValueFilter |
 | `OfflineData/` | sqlite 落地层、ccxt_update/bao_download/bao_update/ak_update 等增量脚本 |

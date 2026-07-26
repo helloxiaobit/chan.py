@@ -67,6 +67,7 @@ FEATURE_REG.register_pattern(r"vol_\w+", "volume", "量能族")
 FEATURE_REG.register_pattern(r"sub_lv_\w+", "multi_lv", "次级别族")
 FEATURE_REG.register_pattern(r"sup_lv_\w+", "multi_lv", "父级别族")
 FEATURE_REG.register_pattern(r"time_\w+", "time", "时间族")
+FEATURE_REG.register_pattern(r"smc_\w+", "smc", "SMC族:FVG/订单块/流动性/PD位置")
 
 
 def _safe_div(a: Optional[float], b: Optional[float]) -> Optional[float]:
@@ -102,6 +103,7 @@ class CFeatureEngine:
         feat.update(cls.cal_volume_family(recent_klus))
         feat.update(cls.cal_multi_lv_family(chan, lv, cbsp))
         feat.update(cls.cal_time_family(lv_data, cbsp))
+        feat.update(cls.cal_smc_family(lv_data, recent_klus, cbsp))
         return {k: float(v) for k, v in feat.items() if _valid(v)}
 
     @staticmethod
@@ -433,6 +435,92 @@ class CFeatureEngine:
                     feat["sup_lv_last_bi_is_up"] = sup_data.bi_list[-1].is_up()
                 if len(sup_data.seg_list) > 0:
                     feat["sup_lv_last_seg_is_up"] = sup_data.seg_list[-1].dir == BI_DIR.UP
+        return feat
+
+    # ===== 11. SMC族(FVG/订单块/流动性/PD位置)=====
+    SMC_WINDOW = 240       # 检测窗口(根)
+    SMC_LOOKBACK_BI = 12   # OB 回看笔数
+    SMC_POOL_BI = 16       # 流动性池回看笔数
+    SMC_SWEEP_LOOKBACK = 8  # sweep 回看K线数
+
+    @classmethod
+    def cal_smc_family(cls, lv_data, recent_klus, cbsp) -> dict:
+        from Math.SmartMoney import (detect_sweeps, find_fvgs, find_liquidity_pools,
+                                     find_order_blocks, premium_discount_pos)
+        feat = {}
+        if len(recent_klus) < 5:
+            return feat
+        klus = recent_klus[:cls.SMC_WINDOW][::-1]  # 转为时间正序
+        cur = klus[-1]
+        close = cur.close
+
+        # --- FVG:最近的未回补多/空缺口 ---
+        fvgs = find_fvgs(klus)
+        unfilled_bull = [f for f in fvgs if f.is_bull and not f.is_filled]
+        unfilled_bear = [f for f in fvgs if not f.is_bull and not f.is_filled]
+        feat["smc_fvg_bull_cnt"] = len(unfilled_bull)
+        feat["smc_fvg_bear_cnt"] = len(unfilled_bear)
+        for side, lst in (("bull", unfilled_bull), ("bear", unfilled_bear)):
+            if not lst:
+                continue
+            fvg = lst[-1]  # 最新的
+            feat[f"smc_fvg_{side}_dist"] = _safe_div(close - fvg.mid, close)
+            feat[f"smc_fvg_{side}_size"] = _safe_div(fvg.top - fvg.bottom, close)
+            feat[f"smc_fvg_{side}_age"] = cur.idx - fvg.klu_idx
+            feat[f"smc_fvg_{side}_fill"] = fvg.fill_ratio
+            feat[f"smc_in_fvg_{side}"] = fvg.bottom <= close <= fvg.top
+
+        # --- 订单块:最近的未失效多/空OB ---
+        obs = find_order_blocks(lv_data.bi_list, klus, lookback_bi=cls.SMC_LOOKBACK_BI)
+        valid_bull = [o for o in obs if o.is_bull and not o.is_broken]
+        valid_bear = [o for o in obs if not o.is_bull and not o.is_broken]
+        feat["smc_ob_bull_cnt"] = len(valid_bull)
+        feat["smc_ob_bear_cnt"] = len(valid_bear)
+        for side, lst in (("bull", valid_bull), ("bear", valid_bear)):
+            if not lst:
+                continue
+            ob = lst[-1]
+            feat[f"smc_ob_{side}_dist"] = _safe_div(close - ob.mid, close)
+            feat[f"smc_ob_{side}_size"] = _safe_div(ob.top - ob.bottom, close)
+            feat[f"smc_ob_{side}_age"] = cur.idx - ob.klu_idx
+            feat[f"smc_ob_{side}_test_cnt"] = ob.test_cnt
+            feat[f"smc_in_ob_{side}"] = ob.bottom <= close <= ob.top
+
+        # --- 流动性池与 sweep ---
+        high_pools, low_pools = find_liquidity_pools(lv_data.bi_list, lookback_bi=cls.SMC_POOL_BI)
+        above = [p for p in high_pools if p.price > close]
+        below = [p for p in low_pools if p.price < close]
+        if above:
+            nearest = above[0]
+            feat["smc_liq_above_dist"] = _safe_div(nearest.price - close, close)
+            feat["smc_liq_above_cnt"] = nearest.cnt
+        if below:
+            nearest = below[-1]
+            feat["smc_liq_below_dist"] = _safe_div(close - nearest.price, close)
+            feat["smc_liq_below_cnt"] = nearest.cnt
+        if high_pools:
+            feat["smc_eq_high_max_cnt"] = max(p.cnt for p in high_pools)
+        if low_pools:
+            feat["smc_eq_low_max_cnt"] = max(p.cnt for p in low_pools)
+        sweeps = detect_sweeps(klus, high_pools, low_pools, lookback=cls.SMC_SWEEP_LOOKBACK)
+        bull_sweeps = [s for s in sweeps if s.is_bull]
+        bear_sweeps = [s for s in sweeps if not s.is_bull]
+        if bull_sweeps:
+            feat["smc_sweep_bull_dist"] = cur.idx - bull_sweeps[-1].klu_idx
+            feat["smc_sweep_bull_pool_cnt"] = bull_sweeps[-1].pool_cnt
+        if bear_sweeps:
+            feat["smc_sweep_bear_dist"] = cur.idx - bear_sweeps[-1].klu_idx
+            feat["smc_sweep_bear_pool_cnt"] = bear_sweeps[-1].pool_cnt
+        # 开仓分型是否为同向 sweep 分型(sweep后3根内且方向一致)
+        same_side = bull_sweeps if cbsp.is_buy else bear_sweeps
+        feat["smc_bsp_after_sweep"] = bool(same_side) and cur.idx - same_side[-1].klu_idx <= 3
+
+        # --- Premium/Discount 位置 ---
+        pd_pos = premium_discount_pos(lv_data, close)
+        if "pos_in_zs" in pd_pos:
+            feat["smc_pos_in_zs"] = pd_pos["pos_in_zs"]
+        if "pos_in_seg" in pd_pos:
+            feat["smc_pos_in_seg"] = pd_pos["pos_in_seg"]
         return feat
 
     # ===== 10. 时间族 =====
