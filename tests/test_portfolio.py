@@ -1,6 +1,7 @@
 """组合级复利核算器测试"""
 import pytest
 
+from ModelStrategy.parameterEvaluate.conviction import stamp_conviction
 from ModelStrategy.parameterEvaluate.portfolio_eval import (CPortfolioConfig, portfolio_eval,
                                                             scale_risk_to_target)
 
@@ -8,13 +9,15 @@ DAY = 86400.0
 
 
 class FakeTrade:
-    def __init__(self, open_ts, close_ts, profit_rate, risk_rate=0.02, bs_type="1", open_price=100.0):
+    def __init__(self, open_ts, close_ts, profit_rate, risk_rate=0.02, bs_type="1", open_price=100.0,
+                 is_buy=True):
         self.open_ts = open_ts
         self.close_ts = close_ts
         self.profit_rate = profit_rate
         self.risk_rate = risk_rate
         self.bs_type = bs_type
         self.open_price = open_price
+        self.is_buy = is_buy
 
 
 def test_r_sizing_and_compounding():
@@ -68,3 +71,35 @@ def test_scale_risk_to_target():
     assert len(out["rows"]) >= 5
     assert out["best_within_dd"] is not None
     assert out["best_within_dd"]["max_drawdown"] <= 0.25
+
+
+def test_conviction_risk_mult():
+    conf = CPortfolioConfig(risk_pct=0.01, taker_fee=0, maker_fee=0, max_leverage=10)
+    # risk_mult 戳直接缩放单笔风险:2.0 → 亏损翻倍
+    t = FakeTrade(0, DAY, -2.0)
+    t.risk_mult = 2.0
+    assert portfolio_eval([t], conf).total_return == pytest.approx(-0.02)
+
+    # 同向共振加码:第二笔开仓时首笔仍在场且同向 → co_dir_mult
+    a = FakeTrade(0, 10 * DAY, 2.0, is_buy=True)
+    b = FakeTrade(1 * DAY, 10 * DAY, 2.0, is_buy=True)
+    stamp_conviction([a, b], co_dir_mult=1.5, opp_dir_mult=0.5)
+    assert getattr(a, "risk_mult") == pytest.approx(1.0)
+    assert getattr(b, "risk_mult") == pytest.approx(1.5)
+
+    # 对向在场减码;先平后开不算在场
+    c = FakeTrade(0, 5 * DAY, 2.0, is_buy=True)
+    d = FakeTrade(2 * DAY, 10 * DAY, 2.0, is_buy=False)   # c 在场 → 对向减码
+    e = FakeTrade(5 * DAY, 10 * DAY, 2.0, is_buy=False)   # c 恰在同刻平掉 → 只剩 d 同向
+    stamp_conviction([c, d, e], co_dir_mult=1.5, opp_dir_mult=0.5)
+    assert getattr(d, "risk_mult") == pytest.approx(0.5)
+    assert getattr(e, "risk_mult") == pytest.approx(1.5)
+
+    # bs_type 分层与乘数上限
+    f = FakeTrade(0, DAY, 2.0, bs_type="1p")
+    stamp_conviction([f], bs_mults={"1p": 0.8})
+    assert getattr(f, "risk_mult") == pytest.approx(0.8)
+    g = FakeTrade(0, 10 * DAY, 2.0)
+    h = FakeTrade(1 * DAY, 10 * DAY, 2.0, bs_type="1")
+    stamp_conviction([g, h], co_dir_mult=3.0, bs_mults={"1": 1.5}, mult_cap=2.0)
+    assert getattr(h, "risk_mult") == pytest.approx(2.0)

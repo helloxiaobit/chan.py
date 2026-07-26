@@ -90,8 +90,9 @@ def portfolio_eval(trades: List[CTradeRecord], conf: Optional[CPortfolioConfig] 
                 skipped += 1
                 continue
             gross = sum(open_pos.values())
+            # conviction 风险预算:交易可带 risk_mult 戳(见 conviction.stamp_conviction),默认 1.0
             notional = min(
-                equity * conf.risk_pct / risk_rate,
+                equity * conf.risk_pct * getattr(t, "risk_mult", 1.0) / risk_rate,
                 equity * conf.max_pos_leverage,
                 max(0.0, equity * conf.max_leverage - gross),
             )
