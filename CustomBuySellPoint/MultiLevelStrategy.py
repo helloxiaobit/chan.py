@@ -49,6 +49,12 @@ Regime 状态机(迭代5):
 - regime_mode: None(仅打戳)/"silent"(range期不开新仓,在途限价单照常管理)
 - regime_zs_valid_bars: 中枢新鲜度窗口,默认 30
 
+资金费率过滤(迭代11,加密永续拥挤度——与价格结构正交的信息源,默认关):
+- funding_csv:       费率csv路径(symbol,fundingTime,fundingRate,markPrice),None=关闭
+- funding_long_max:  3日均费率高于该值时禁多(多头过度拥挤,如 0.0003)
+- funding_short_min: 3日均费率低于该值时禁空(空头过度拥挤,如 -0.0003)
+  开仓时把 funding_rate/funding_ma3d 写入特征,供后续模型使用
+
 迭代10 四杠杆(默认全关,均可 ensemble 扫参):
 - max_div_rate:        动力学背驰过滤——1类买卖点要求 divergence_rate ≤ 该值(越小背驰越强),
                        非1类不受影响;如 0.9
@@ -220,6 +226,15 @@ class CMultiLevelStrategy(CStrategy):
         if max_div is not None and {t.value for t in last_bsp.type} & {"1", "1p"}:
             div = dict(last_bsp.features.items()).get("divergence_rate")
             if div is not None and div > max_div:
+                return None
+        # 资金费率拥挤度过滤(3日均值口径)
+        funding_ma = self.query_funding_ma(data[-1][-1])
+        if funding_ma is not None:
+            long_max = self.get_p("funding_long_max")
+            if is_buy and long_max is not None and funding_ma > long_max:
+                return None
+            short_min = self.get_p("funding_short_min")
+            if not is_buy and short_min is not None and funding_ma < short_min:
                 return None
         fx_klc = data[-2]
         if last_bsp.klu.klc.idx != fx_klc.idx:
@@ -417,6 +432,31 @@ class CMultiLevelStrategy(CStrategy):
         self.pending_entries = remain
         return fill
 
+    # ---- 资金费率(迭代11)----
+    def query_funding_ma(self, cur_klu) -> Optional[float]:
+        csv_path = self.get_p("funding_csv")
+        if not csv_path:
+            return None
+        from DataAPI.FundingRate import CFundingRate
+        return CFundingRate.get(csv_path).query_mean(cur_klu.time.ts)
+
+    def attach_funding_feat(self, cbsp: Optional[CCustomBSP], cur_klu) -> None:
+        # 开仓时把费率写入特征(供模型管线使用)
+        csv_path = self.get_p("funding_csv")
+        if cbsp is None or not csv_path:
+            return
+        from DataAPI.FundingRate import CFundingRate
+        fr = CFundingRate.get(csv_path)
+        rate = fr.query(cur_klu.time.ts)
+        ma = fr.query_mean(cur_klu.time.ts)
+        feat = {}
+        if rate is not None:
+            feat["funding_rate"] = rate
+        if ma is not None:
+            feat["funding_ma3d"] = ma
+        if feat:
+            cbsp.add_feat(feat)
+
     # ---- 洗损重进场(迭代10)----
     def process_reentry_watches(self, chan: 'CChan', lv: int, direction: int) -> Optional[CCustomBSP]:
         if not self.reentry_watches:
@@ -532,6 +572,7 @@ class CMultiLevelStrategy(CStrategy):
         risk = abs(cbsp.open_price - cbsp.sl_price)
         cbsp.exit_state = {"risk": risk, "partial_done": False, "trailing": False,
                            "regime": self.cal_regime(chan)}  # 开仓时打戳,无后见偏差
+        self.attach_funding_feat(cbsp, cbsp.klu)
         if self.get_p("exit_target_mode") == "liq" and risk > 0:
             from Math.SmartMoney import find_liquidity_pools
             highs, lows = find_liquidity_pools(chan[lv].bi_list, lookback_bi=16)

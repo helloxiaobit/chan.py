@@ -54,3 +54,5 @@ for _name in (
     FEATURE_REG.register(_name, group="bsp_builtin", desc="bsp计算路径内置特征")
 # demo5 的开仓K线特征
 FEATURE_REG.register("open_klu_rate", group="klu", desc="开仓K线涨跌幅(demo5)")
+# 资金费率(策略侧写入,迭代11)
+FEATURE_REG.register_pattern(r"funding_\w+", "funding", "资金费率族:拥挤度")
