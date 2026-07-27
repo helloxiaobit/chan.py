@@ -159,6 +159,7 @@ def load_spec(path: str | Path) -> ResearchSpec:
     else:
         execution_raw = _mapping(execution_value, "execution")
         execution_keys = {
+            "source_timestamp_offset_seconds",
             "mark_level",
             "mark_ms",
             "entry_patience",
@@ -172,6 +173,17 @@ def load_spec(path: str | Path) -> ResearchSpec:
         if set(execution_raw) != execution_keys:
             raise ValueError(
                 f"execution keys must be exactly {sorted(execution_keys)}"
+            )
+        source_timestamp_offset_seconds = execution_raw.get(
+            "source_timestamp_offset_seconds"
+        )
+        if (
+            type(source_timestamp_offset_seconds) is not int
+            or abs(source_timestamp_offset_seconds) > 86400
+        ):
+            raise ValueError(
+                "execution.source_timestamp_offset_seconds must be a whole-second "
+                "integer between -86400 and 86400"
             )
         mark_level = execution_raw.get("mark_level")
         if not isinstance(mark_level, str) or not mark_level:
@@ -225,6 +237,7 @@ def load_spec(path: str | Path) -> ResearchSpec:
                 "execution.max_mark_gap_intervals must be a positive integer"
             )
         execution = {
+            "source_timestamp_offset_seconds": source_timestamp_offset_seconds,
             "mark_level": mark_level,
             "mark_ms": mark_ms,
             "entry_patience": entry_patience,

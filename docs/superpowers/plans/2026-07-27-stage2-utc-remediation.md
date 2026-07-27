@@ -43,12 +43,12 @@ Asia/Shanghai-generated caches.
 - Modify: `ModelStrategy/research/configs/freeze_v4_conservative_v2.json`
 - Modify: `tests/research/test_spec.py`
 
-- [ ] Add a failing strict-spec test for the exact
+- [x] Add a failing strict-spec test for the exact
   `source_timestamp_offset_seconds` execution key.
-- [ ] Accept only a whole-second integer in a bounded range; legacy-v1 continues to
+- [x] Accept only a whole-second integer in a bounded range; legacy-v1 continues to
   have no execution block.
-- [ ] Track `28800` for freeze-v4 conservative; fixture specs explicitly use zero.
-- [ ] Verify spec hash drift is intentional and commit.
+- [x] Track `28800` for freeze-v4 conservative; fixture specs explicitly use zero.
+- [x] Verify spec hash drift is intentional and commit.
 
 ### Task 3: Normalize before every conservative timeline decision
 
