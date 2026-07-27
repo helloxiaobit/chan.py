@@ -210,8 +210,10 @@ def conservative_portfolio_eval(
         else:
             events.append((trade.close_ts, 1, key, "close", trade))
             events.append((trade.fill_ts, 3, key, "open", trade))
+    mark_updates_by_ts: dict[float, list[tuple[str, MarketBar]]] = {}
     for symbol, series in marks.items():
         for bar in series.bars:
+            mark_updates_by_ts.setdefault(bar.ts, []).append((symbol, bar))
             events.append((bar.ts, 4, (symbol,), "mark", (symbol, bar)))
     if not events:
         raise PortfolioError("portfolio timeline is empty")
@@ -320,7 +322,17 @@ def conservative_portfolio_eval(
         )
         record(ts, "close")
 
+    active_ts: float | None = None
     for ts, _, _, kind, payload in events:
+        if ts != active_ts:
+            active_ts = ts
+            # Refresh positions before same-timestamp funding, closes, and
+            # sizing. The later mark event also marks newly opened positions
+            # and is the single recorded mark point for this timestamp.
+            for symbol, bar in mark_updates_by_ts.get(ts, ()):
+                for position in positions.values():
+                    if position.trade.symbol == symbol:
+                        position.last_price = bar.close
         if kind == "funding":
             event = payload
             affected = False

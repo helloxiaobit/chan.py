@@ -4,7 +4,12 @@ import sys
 from pathlib import Path
 
 from ModelStrategy.research.baseline import run_baseline
+from ModelStrategy.research.conservative_baseline import (
+    conservative_reference_payload,
+    run_conservative_comparison,
+)
 from tests.research.test_baseline import make_spec, write_fixture_inputs
+from tests.research.test_conservative_baseline import make_conservative_fixture
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -88,3 +93,77 @@ def test_cli_rejects_oos_spec_before_data_loading(tmp_path):
     assert completed.returncode != 0
     assert "2026-01-01" in completed.stderr
     assert not output_path.exists()
+
+
+def run_compare_cli(
+    tmp_path,
+    spec_path,
+    legacy_reference_path,
+    output_path,
+    conservative_reference_path=None,
+):
+    command = [
+        sys.executable,
+        "-m",
+        "ModelStrategy.research.cli",
+        "compare",
+        "--spec",
+        str(spec_path),
+        "--research-root",
+        str(tmp_path),
+        "--market-data-root",
+        str(tmp_path),
+        "--legacy-reference",
+        str(legacy_reference_path),
+        "--output",
+        str(output_path),
+    ]
+    if conservative_reference_path is not None:
+        command.extend(
+            ["--conservative-reference", str(conservative_reference_path)]
+        )
+    return subprocess.run(
+        command,
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+    )
+
+
+def test_compare_cli_writes_report_atomically(tmp_path):
+    spec_path, legacy_path, _ = make_conservative_fixture(tmp_path)
+    output_path = tmp_path / "output" / "comparison.json"
+    completed = run_compare_cli(
+        tmp_path, spec_path, legacy_path, output_path
+    )
+    assert completed.returncode == 0, completed.stderr
+    report = json.loads(output_path.read_text(encoding="utf-8"))
+    assert report["execution_model"] == "conservative-v2"
+    assert "保守回测通过" in completed.stdout
+
+
+def test_compare_cli_reference_mismatch_leaves_no_output(tmp_path):
+    spec_path, legacy_path, legacy_reference = make_conservative_fixture(tmp_path)
+    report = run_conservative_comparison(
+        spec_path,
+        research_root=tmp_path,
+        market_data_root=tmp_path,
+        legacy_reference=legacy_reference,
+        provenance={"commit": "test", "dirty": False},
+    )
+    reference = conservative_reference_payload(report)
+    reference["risk_pct"] = 0.123
+    reference_path = tmp_path / "conservative-reference.json"
+    reference_path.write_text(json.dumps(reference), encoding="utf-8")
+    output_path = tmp_path / "output" / "comparison.json"
+    completed = run_compare_cli(
+        tmp_path,
+        spec_path,
+        legacy_path,
+        output_path,
+        conservative_reference_path=reference_path,
+    )
+    assert completed.returncode != 0
+    assert "risk_pct" in completed.stderr
+    assert not output_path.exists()
+    assert not list(output_path.parent.glob("*.tmp"))

@@ -8,6 +8,7 @@ from ModelStrategy.research.boundary import parse_utc
 from ModelStrategy.research.execution import build_intent, replay_trade
 from ModelStrategy.research.market import (
     MarketBar,
+    MarketDataError,
     MarketSeries,
     load_market_series,
 )
@@ -74,6 +75,7 @@ def test_maker_fill_occurs_on_first_touch_not_signal_bar():
         bar(1, close=100),
         bar(2, open_price=102, close=102, low=101),
         bar(3, open_price=102, close=101, low=99),
+        bar(4, open_price=105, close=105),
         bar(5, open_price=109, close=110),
     )
     outcome = replay_trade(
@@ -122,7 +124,13 @@ def test_unfilled_limit_chases_at_patience_close_as_taker():
 def test_same_bar_entry_and_stop_uses_adverse_slippage(
     is_buy, bar_values, expected
 ):
-    bars = series(bar(1, close=100), bar(2, **bar_values))
+    bars = series(
+        bar(1, close=100),
+        bar(2, **bar_values),
+        bar(3),
+        bar(4),
+        bar(5),
+    )
     outcome = replay_trade(
         intent_for(trade(is_buy=is_buy), bars),
         bars,
@@ -141,6 +149,9 @@ def test_better_than_limit_fill_is_never_assumed():
     bars = series(
         bar(1, close=100),
         bar(2, open_price=98, high=101, low=97, close=99),
+        bar(3),
+        bar(4),
+        bar(5),
     )
     outcome = replay_trade(
         intent_for(trade(), bars),
@@ -152,21 +163,19 @@ def test_better_than_limit_fill_is_never_assumed():
     assert outcome.trade.open_price == 100
 
 
-def test_synthetic_mark_cannot_fill_limit_or_count_toward_patience():
+def test_synthetic_mark_cannot_hide_real_execution_gap():
     bars = series(
         bar(1, close=100),
         bar(2, close=100, synthetic=True),
         bar(3, open_price=102, close=102, low=101),
     )
-    outcome = replay_trade(
-        intent_for(trade(), bars),
-        bars,
-        patience=1,
-        stop_slippage=0.0005,
-    )
-    assert outcome.trade is not None
-    assert outcome.trade.fill_ts == 3 * HOUR
-    assert outcome.trade.entry_role == "taker"
+    with pytest.raises(MarketDataError, match="execution market gap"):
+        replay_trade(
+            intent_for(trade(), bars),
+            bars,
+            patience=1,
+            stop_slippage=0.0005,
+        )
 
 
 def test_touch_at_original_close_without_same_bar_stop_is_unfilled():

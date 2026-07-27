@@ -1,0 +1,64 @@
+{
+  "schema_version": 1,
+  "strategy_id": "freeze_v4",
+  "execution_model": "conservative-v2",
+  "spec_hash": "e75df236e7c40c66320a7ad692e67387dbde4c76c426442e619b6b1d5154495b",
+  "risk_pct": 0.005,
+  "is_2125": {
+    "cagr": 0.24999061038538395,
+    "calmar": 1.2109429602505308,
+    "full_dd": 0.2064429280250026,
+    "splits": {
+      "A(21-23)": {
+        "cagr": 0.26365814151236644,
+        "calmar": 1.2771478492130008,
+        "dd": 0.2064429280250026,
+        "skipped": 1,
+        "total_return": 1.0189279963664206,
+        "trade_cnt": 234,
+        "win_rate": 0.4188034188034188
+      },
+      "B(2024)": {
+        "cagr": 0.2359732143108142,
+        "calmar": 2.1458095973505027,
+        "dd": 0.10996931629077324,
+        "skipped": 0,
+        "total_return": 0.23666091563411173,
+        "trade_cnt": 106,
+        "win_rate": 0.3867924528301887
+      },
+      "C(2025)": {
+        "cagr": 0.22300069447384652,
+        "calmar": 2.352385224182894,
+        "dd": 0.09479769392417702,
+        "skipped": 0,
+        "total_return": 0.2229725898743964,
+        "trade_cnt": 83,
+        "win_rate": 0.4578313253012048
+      }
+    },
+    "total_return": 2.053431552763536,
+    "worst_dd": 0.2064429280250026
+  },
+  "fees": 0.2484967327019954,
+  "funding_pnl": 0.10012689494482577,
+  "price_pnl": 2.2018013905207106,
+  "trade_cnt": 423,
+  "win_rate": 0.41843971631205673,
+  "skipped": 1,
+  "execution": {
+    "filled": 424,
+    "maker_fills": 393,
+    "same_bar_stops": 33,
+    "taker_fills": 31,
+    "unfilled": 3
+  },
+  "input_hashes": {
+    "funding": "5f78bfff3339cdf188cecfd365108ae07072066c2242506e287f2ba5bbe94e45",
+    "marks": "4912452f8a607fbb8e8922b6149069d57e0c1b9387ed95e562afec3be899bc85",
+    "s1_bars": "4912452f8a607fbb8e8922b6149069d57e0c1b9387ed95e562afec3be899bc85",
+    "s1_trades": "c2477057673f0210e048850f56de96b4ea0b61b89e31f9e7b3bcf1a98e70b89a",
+    "s2_bars": "61b06fb18401887cae975ae24c82e95e8f0ab5dd6bcb5071a9144c16a858bd2d",
+    "s2_trades": "3cb3498bb8fb9d2dd9f7e768cf89b64a76b5109055f3b7c3148f9e59066426d2"
+  }
+}

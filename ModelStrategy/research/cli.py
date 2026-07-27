@@ -9,6 +9,10 @@ from pathlib import Path
 from typing import Sequence
 
 from .baseline import compare_reference, run_baseline
+from .conservative_baseline import (
+    compare_conservative_reference,
+    run_conservative_comparison,
+)
 from .provenance import canonical_json_bytes
 from .spec import load_spec
 
@@ -21,6 +25,13 @@ def _parser() -> argparse.ArgumentParser:
     baseline.add_argument("--research-root", type=Path, required=True)
     baseline.add_argument("--reference", type=Path, required=True)
     baseline.add_argument("--output", type=Path, required=True)
+    compare = commands.add_parser("compare", help="运行保守口径并对比旧基线")
+    compare.add_argument("--spec", type=Path, required=True)
+    compare.add_argument("--research-root", type=Path, required=True)
+    compare.add_argument("--market-data-root", type=Path, required=True)
+    compare.add_argument("--legacy-reference", type=Path, required=True)
+    compare.add_argument("--conservative-reference", type=Path)
+    compare.add_argument("--output", type=Path, required=True)
     return parser
 
 
@@ -74,11 +85,46 @@ def _run_baseline(args: argparse.Namespace) -> int:
     return 0
 
 
+def _run_compare(args: argparse.Namespace) -> int:
+    legacy_reference = _load_reference(args.legacy_reference)
+    report = run_conservative_comparison(
+        args.spec,
+        research_root=args.research_root,
+        market_data_root=args.market_data_root,
+        legacy_reference=legacy_reference,
+    )
+    if args.conservative_reference is not None:
+        conservative_reference = _load_reference(
+            args.conservative_reference
+        )
+        mismatches = compare_conservative_reference(
+            report, conservative_reference
+        )
+        if mismatches:
+            details = json.dumps(
+                mismatches, ensure_ascii=False, sort_keys=True
+            )
+            raise ValueError(f"保守参考不一致: {details}")
+    _write_atomic(args.output, canonical_json_bytes(report))
+    result = report["conservative"]
+    print(
+        "保守回测通过: "
+        f"{report['strategy_id']} {report['execution_model']} "
+        f"risk={result['risk_pct']:.4f} "
+        f"CAGR={result['is_2125']['cagr']:.6f} "
+        f"DD={result['is_2125']['full_dd']:.6f} "
+        f"报告={args.output}"
+    )
+    return 0
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     try:
         if args.command == "baseline":
             return _run_baseline(args)
+        if args.command == "compare":
+            return _run_compare(args)
         raise ValueError(f"unsupported command: {args.command}")
     except Exception as exc:
         print(f"研究基线失败: {exc}", file=sys.stderr)

@@ -101,6 +101,16 @@ def test_funding_payment_direction(is_buy, expected_sign):
     assert math.copysign(1, result.funding_pnl) == expected_sign
 
 
+def test_funding_uses_current_timestamp_mark_price():
+    trade = execution_trade(close_ts=2 * HOUR, close_price=100)
+    result = evaluate(
+        [trade],
+        mark_series([100, 120, 100]),
+        [FundingEvent(HOUR, "BTC/USDT", 0.001)],
+    )
+    assert result.funding_pnl == pytest.approx(-0.0012)
+
+
 def test_entry_fee_reduces_equity_immediately():
     trade = execution_trade(entry_role="maker", close_price=100)
     result = evaluate(
@@ -146,8 +156,8 @@ def test_position_leverage_cap_limits_entry_notional():
 def test_new_position_sizes_from_current_marked_equity():
     first = execution_trade(stack="S1")
     second = execution_trade(
-        signal_ts=2 * HOUR,
-        fill_ts=2 * HOUR,
+        signal_ts=HOUR,
+        fill_ts=HOUR,
         stack="S2",
         close_price=100,
     )

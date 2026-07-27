@@ -252,6 +252,28 @@ def replay_trade(
         )
         return ReplayOutcome("filled", replayed, "pyramid_market")
 
+    coverage_begin = intent.signal_ts + bars.interval_seconds
+    coverage_end = min(
+        intent.close_ts,
+        intent.signal_ts + patience * bars.interval_seconds,
+    )
+    if coverage_begin <= coverage_end:
+        steps = (coverage_end - coverage_begin) / bars.interval_seconds
+        rounded_steps = round(steps)
+        if not math.isclose(steps, rounded_steps, abs_tol=1e-9):
+            raise MarketDataError(
+                "execution replay window is not interval-aligned"
+            )
+        real_timestamps = {
+            current.ts for current in bars.bars if not current.synthetic
+        }
+        for index in range(int(rounded_steps) + 1):
+            expected = coverage_begin + index * bars.interval_seconds
+            if expected not in real_timestamps:
+                raise MarketDataError(
+                    f"execution market gap for {intent.symbol} at {expected}"
+                )
+
     real_bars_seen = 0
     for current in bars.bars:
         if current.ts <= intent.signal_ts or current.synthetic:
