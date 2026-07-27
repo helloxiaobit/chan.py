@@ -44,6 +44,7 @@
     "s2_ms": 14400000
   },
   "execution": {
+    "source_timestamp_offset_seconds": 28800,
     "mark_level": "K_60M",
     "mark_ms": 3600000,
     "entry_patience": 8,

@@ -62,6 +62,7 @@ def conservative_spec(**overrides):
     value["execution_model"] = "conservative-v2"
     value["inputs"]["funding_rates"] = "btc/btc_funding_rate.csv"
     value["execution"] = {
+        "source_timestamp_offset_seconds": 0,
         "mark_level": "K_60M",
         "mark_ms": 3600000,
         "entry_patience": 8,
@@ -103,6 +104,19 @@ def test_conservative_spec_requires_funding_input_and_policy(tmp_path):
     assert spec.execution["funding_interval_ms"] == 28800000
     assert spec.execution["market_gap_policy"] == "carry_forward"
     assert spec.execution["max_mark_gap_intervals"] == 16
+    assert spec.execution["source_timestamp_offset_seconds"] == 0
+
+
+def test_tracked_conservative_spec_declares_historical_utc_correction():
+    root = Path(__file__).resolve().parents[2]
+    spec = load_spec(
+        root
+        / "ModelStrategy"
+        / "research"
+        / "configs"
+        / "freeze_v4_conservative_v2.json"
+    )
+    assert spec.execution["source_timestamp_offset_seconds"] == 28800
 
 
 def test_tracked_conservative_spec_changes_only_execution_assumptions():
@@ -147,6 +161,16 @@ def test_conservative_spec_rejects_unbounded_mark_gap_policy(tmp_path):
     value = conservative_spec()
     value["execution"]["max_mark_gap_intervals"] = None
     with pytest.raises(ValueError, match="max_mark_gap_intervals"):
+        load_spec(write_spec(tmp_path, value))
+
+
+@pytest.mark.parametrize("offset", [28800.0, True, 90000, -90000])
+def test_conservative_spec_rejects_ambiguous_timestamp_offset(
+    tmp_path, offset
+):
+    value = conservative_spec()
+    value["execution"]["source_timestamp_offset_seconds"] = offset
+    with pytest.raises(ValueError, match="source_timestamp_offset_seconds"):
         load_spec(write_spec(tmp_path, value))
 
 

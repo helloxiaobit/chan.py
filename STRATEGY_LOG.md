@@ -82,7 +82,8 @@
 
 | 38 | WF-2B':bos_zone × 冻结 S1 剖面(无 ib;#37 拆因后的决定性复测) | **第一关大幅通过,全天最大 S1 改善**:基线精确复现 Cal 1.13(A 1.48/B 0.74/C 1.13);bz_fx = **+25.6%/DD16.7%/Cal 1.53,三段 1.73/1.25/1.82 全升**——把 S1 最弱的 B 段 0.74 修到 1.25;maker 82%,仅丢 3/332 笔;fvg 源等价,fx(both)为准。**S1bz 多币种门槛(ETH/SOL/BNB 三级重跑)+组合层在途**;v5 冻结候选:S1bz + S2py10 + conviction#14 + z-limit(S2) + z-exit。research/wf2b2_report.json |
 | 39 | 研究工程化 Stage 1（不新增策略试验） | **corrected freeze-v4 的 IS 基线已迁入仓库内可复现链**：版本化规范 + UTC/OOS 硬边界 + 交易 schema + 逻辑 K 线哈希 + 原子 CLI；从外置缓存和 `btc_mlv.db` 精确复现 risk 0.75%、2021-25 CAGR 46.917%/DD24.313% 及 A/B/C 指标。流程没有加载 2026 交易流，策略结论不变。`ModelStrategy/research/`、`tests/research/` |
-| 40 | 回测可信度 Stage 2（freeze-v4 conservative-v2，仅 2021-25 IS） | **旧记分牌的乐观偏差已量化并冻结**：完整真实成交窗口、真实首触 fill_ts、同柱 adverse-first、逐小时 MTM、即时进出费、按当时标记价结算的 8h 资金费与费后杠杆全部纳入后，只有 risk 0.50% 通过 DD≤25%；全期 CAGR **24.999%**、DD **20.644%**、Calmar **1.211**，A/B/C Calmar 1.277/2.146/2.352。相对 legacy CAGR -21.918pp、DD -3.668pp。427 个意图中 424 成交（maker393/taker31）、33 同柱止损、3 未成交，组合接受423/跳过1；8段29根缺失小时线仅生成带标记的盯市点，绝不用于成交。累计手续费0.248497、资金费净+0.100127（初始权益=1）。**结论：freeze-v4 在可信口径下未达 CAGR>50%/Calmar≥2，v5 必须用 conservative-v2 重认证；本阶段未读取新 2026 OOS。** `ModelStrategy/research/baselines/freeze_v4_conservative_v2.json` |
+| 40 | 回测可信度 Stage 2 初版（已由 #41 取代） | 初版引入完整成交窗口、MTM、费用与资金费后得到 CAGR 24.999%/DD20.644%/Calmar1.211；Stage 3 首笔实际成交审计发现历史 `CTime` 用 Asia/Shanghai 本地时间生成 epoch，缓存数值相对 UTC 行情早 8 小时，因此该参考虽可复现但时间语义无效，不再用于任何认证。 |
+| 41 | 回测可信度 Stage 2 UTC 重认证（freeze-v4 conservative-v2，仅 2021-25 IS） | **时间语义已修复并重新冻结**：crypto reader 新记录显式 UTC；旧缓存通过规范声明 `+28800s`，并在成交、资金费、conviction、分段前校正。只有 risk 0.50% 通过 DD≤25%；全期 CAGR **30.076%**、DD **20.733%**、Calmar **1.451**，A/B/C Calmar 1.501/3.284/2.398。相对 legacy CAGR -16.842pp、DD -3.580pp。427 个意图中 425 成交（maker394/taker31）、7 同柱止损、2 未成交，组合接受424/跳过1；累计手续费0.288132、资金费净+0.113841。**结论仍为未达 Calmar≥2；v5 必须沿用 UTC 校正 conservative-v2。本次未读取任何 2026 候选结果。** `ModelStrategy/research/baselines/freeze_v4_conservative_v2.json` |
 
 **会话乙已收工交接(用户指示,避免双会话撞车;后续研发统一由会话甲负责)**:
 - 全部资产已复制到 `research/from_session_b/`:freeze_v3/v4 脚本与结果、逐笔交易缓存(cache_2125/26_{S1,S2,S2py10}.json,字段 open_ts/close_ts/profit_rate/risk_rate/bs_type/is_buy)、z-limit 参考实现(fee_zlimit_test.py / freeze_v4.py 的 apply_zlimit)、全部报告 JSON、K线聚合脚本(aggregate_klines.py,2H/周线;周线=周一界+周末日时间戳,多级别对齐必需)
@@ -91,7 +92,7 @@
 - 会话乙的 scratchpad db(mlv.db)含 K_WEEK 聚合,research/btc_mlv.db 若缺周线可用 aggregate_klines.py 补
 
 **当前最优冻结配置(freeze_v4,#32,费用修正口径)**:S1 + S2py10(ib_t1_rc1 + pyramid_add_r=1.0)+ conviction(co=1.5/opp=1.0/bs1=0.8/bs1p=1.2)+ z-limit 入场(非加仓腿)、risk 0.75%(IS 21-25 全期 +46.9%/DD24.3%/三段最小Cal 2.01;2026 +14.9%/DD12.0%/Cal1.24)。
-**可信认证口径更新（#40）**：相同 freeze-v4 信号在 `conservative-v2` 下的 IS 风险上限为 0.50%，CAGR 24.999%/DD20.644%/Calmar1.211；上述 0.75% legacy 数值只保留为历史复现记录，不再作为 v5 认证记分牌。
+**可信认证口径更新（#41）**：相同 freeze-v4 信号在 UTC 校正 `conservative-v2` 下的 IS 风险上限为 0.50%，CAGR 30.076%/DD20.733%/Calmar1.451；上述 0.75% legacy 数值和 #40 时间错位数值只保留为历史记录，不再作为 v5 认证记分牌。
 多币种(冻结参数原样):S2 跨币种稳,S1 跨币种弱(ETH 2026H1 -30%)——高时间框架栈迁移性更好。
 
 ## 已确认的教训

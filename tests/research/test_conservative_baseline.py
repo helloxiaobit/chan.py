@@ -10,8 +10,10 @@ from ModelStrategy.research.boundary import parse_utc
 from ModelStrategy.research.conservative_baseline import (
     compare_conservative_reference,
     conservative_reference_payload,
+    normalize_source_timestamps,
     run_conservative_comparison,
 )
+from ModelStrategy.research.schema import ResearchTrade
 from tests.research.test_spec import conservative_spec, write_spec
 
 
@@ -175,6 +177,65 @@ def test_conservative_reference_reports_exact_mismatch_path(tmp_path):
             "actual": report["conservative"]["risk_pct"],
         }
     ]
+
+
+def test_source_timestamp_offset_is_applied_before_execution_replay(tmp_path):
+    spec_path, _, legacy_reference = make_conservative_fixture(tmp_path)
+    baseline = run_conservative_comparison(
+        spec_path,
+        research_root=tmp_path,
+        market_data_root=tmp_path,
+        legacy_reference=legacy_reference,
+        provenance={"commit": "test", "dirty": False},
+    )
+    for relative in (
+        Path("from_session_b/cache_2125_S1.json"),
+        Path("cache_2125_S2py10_ispyr.json"),
+    ):
+        path = tmp_path / relative
+        values = json.loads(path.read_text(encoding="utf-8"))
+        for value in values:
+            value["open_ts"] -= HOUR
+            value["close_ts"] -= HOUR
+        path.write_text(json.dumps(values), encoding="utf-8")
+    raw_spec = json.loads(spec_path.read_text(encoding="utf-8"))
+    raw_spec["execution"]["source_timestamp_offset_seconds"] = HOUR
+    spec_path.write_text(json.dumps(raw_spec), encoding="utf-8")
+    corrected = run_conservative_comparison(
+        spec_path,
+        research_root=tmp_path,
+        market_data_root=tmp_path,
+        legacy_reference=legacy_reference,
+        provenance={"commit": "test", "dirty": False},
+    )
+    assert corrected["conservative"] == baseline["conservative"]
+    assert corrected["execution"] == baseline["execution"]
+    manifest = corrected["inputs"]["s1_trades"]
+    assert manifest["timestamp_offset_seconds"] == HOUR
+    assert manifest["corrected_first_open_ts"] == (
+        manifest["raw_first_open_ts"] + HOUR
+    )
+
+
+def test_corrected_timestamp_must_remain_inside_declared_is_window():
+    trade = ResearchTrade.from_mapping(
+        {
+            "open_ts": 5 * HOUR,
+            "close_ts": 9 * HOUR,
+            "profit_rate": 1.0,
+            "risk_rate": 0.05,
+            "bs_type": "1",
+            "is_buy": True,
+        }
+    )
+    with pytest.raises(ValueError, match="outside declared window"):
+        normalize_source_timestamps(
+            [trade],
+            offset_seconds=HOUR,
+            begin_ts=0,
+            end_ts=10 * HOUR,
+            input_name="test_trades",
+        )
 
 
 @pytest.mark.skipif(

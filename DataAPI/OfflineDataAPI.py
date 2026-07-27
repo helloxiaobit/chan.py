@@ -43,7 +43,8 @@ class CStockFileReader(CCommonStockApi):
         dt = datetime.fromtimestamp(ts / 1000, tz=timezone.utc)
         return CKLine_Unit({
             DATA_FIELD.FIELD_TIME: CTime(dt.year, dt.month, dt.day, dt.hour, dt.minute,
-                                         auto=not kltype_lt_day(self.k_type)),
+                                         auto=not kltype_lt_day(self.k_type),
+                                         tzinfo=timezone.utc),
             DATA_FIELD.FIELD_OPEN: o,
             DATA_FIELD.FIELD_HIGH: h,
             DATA_FIELD.FIELD_LOW: l,

@@ -62,14 +62,62 @@ def _require_trade_window(
             )
 
 
+def normalize_source_timestamps(
+    trades: Iterable[ResearchTrade],
+    *,
+    offset_seconds: int,
+    begin_ts: float,
+    end_ts: float,
+    input_name: str,
+) -> tuple[ResearchTrade, ...]:
+    """Translate declared legacy epochs before any market or boundary decision."""
+    if type(offset_seconds) is not int:
+        raise ValueError("timestamp offset must be a whole-second integer")
+    corrected = tuple(
+        replace(
+            trade,
+            open_ts=trade.open_ts + offset_seconds,
+            close_ts=trade.close_ts + offset_seconds,
+        )
+        for trade in trades
+    )
+    for index, trade in enumerate(corrected):
+        if not (
+            begin_ts <= trade.open_ts < end_ts
+            and begin_ts <= trade.close_ts < end_ts
+        ):
+            raise ValueError(
+                f"{input_name} trade {index} is outside declared window"
+            )
+    return corrected
+
+
 def _trade_manifest(
-    path: Path, relative: Path, trades: Iterable[ResearchTrade]
+    path: Path,
+    relative: Path,
+    raw_trades: Iterable[ResearchTrade],
+    corrected_trades: Iterable[ResearchTrade],
+    offset_seconds: int,
 ) -> dict[str, Any]:
-    values = tuple(trades)
+    raw_values = tuple(raw_trades)
+    values = tuple(corrected_trades)
     return {
         "path": relative.as_posix(),
         **file_manifest(path),
         "trade_count": len(values),
+        "timestamp_offset_seconds": offset_seconds,
+        "raw_first_open_ts": min(
+            (trade.open_ts for trade in raw_values), default=None
+        ),
+        "raw_last_close_ts": max(
+            (trade.close_ts for trade in raw_values), default=None
+        ),
+        "corrected_first_open_ts": min(
+            (trade.open_ts for trade in values), default=None
+        ),
+        "corrected_last_close_ts": max(
+            (trade.close_ts for trade in values), default=None
+        ),
         "first_open_ts": min(
             (trade.open_ts for trade in values), default=None
         ),
@@ -161,8 +209,23 @@ def assemble_conservative(
             market, spec.inputs["funding_rates"]
         ),
     }
-    s1 = load_trades(paths["s1_trades"], is_only=True)
-    s2 = load_trades(paths["s2_trades"], is_only=True)
+    raw_s1 = load_trades(paths["s1_trades"], is_only=False)
+    raw_s2 = load_trades(paths["s2_trades"], is_only=False)
+    offset = spec.execution["source_timestamp_offset_seconds"]
+    s1 = normalize_source_timestamps(
+        raw_s1,
+        offset_seconds=offset,
+        begin_ts=spec.begin_ts,
+        end_ts=spec.end_ts,
+        input_name="s1_trades",
+    )
+    s2 = normalize_source_timestamps(
+        raw_s2,
+        offset_seconds=offset,
+        begin_ts=spec.begin_ts,
+        end_ts=spec.end_ts,
+        input_name="s2_trades",
+    )
     _require_trade_window(s1, spec, "s1_trades")
     _require_trade_window(s2, spec, "s2_trades")
 
@@ -230,10 +293,18 @@ def assemble_conservative(
     )
     input_manifest = {
         "s1_trades": _trade_manifest(
-            paths["s1_trades"], spec.inputs["s1_trades"], s1
+            paths["s1_trades"],
+            spec.inputs["s1_trades"],
+            raw_s1,
+            s1,
+            offset,
         ),
         "s2_trades": _trade_manifest(
-            paths["s2_trades"], spec.inputs["s2_trades"], s2
+            paths["s2_trades"],
+            spec.inputs["s2_trades"],
+            raw_s2,
+            s2,
+            offset,
         ),
         "bars_db": {"path": spec.inputs["bars_db"].as_posix()},
         "entry_bars": {

@@ -131,15 +131,15 @@ Git commit/工作区状态、Python 环境、策略规范哈希、交易缓存�
 当前参考结果为 `risk_pct=0.0075`、2021–2025 CAGR `46.917%`、最大回撤
 `24.313%`。这是历史 `legacy-v1` 复现基线，不代表后续 `conservative-v2` 认证结果。
 
-阶段 2 已冻结同一 freeze-v4 信号在 `conservative-v2` 下的独立参考。它使用完整真实 K 线窗口、真实首触成交时间、同 K 线不利止损、逐小时盯市、即时手续费、按当时标记价结算的资金费以及费后杠杆约束。资金费文件相对 `--market-data-root` 解析：
+阶段 2 已冻结同一 freeze-v4 信号在 `conservative-v2` 下的独立参考。它使用完整真实 K 线窗口、真实首触成交时间、同 K 线不利止损、逐小时盯市、即时手续费、按当时标记价结算的资金费以及费后杠杆约束。历史交易缓存由 Asia/Shanghai 主机生成，规范显式声明 `source_timestamp_offset_seconds=28800`，在任何行情、资金费或分段判断前校正到 UTC；未来由 UTC crypto reader 生成的缓存不得沿用该偏移。资金费文件相对 `--market-data-root` 解析：
 
 ```powershell
 python -m ModelStrategy.research.cli compare --spec ModelStrategy/research/configs/freeze_v4_conservative_v2.json --research-root C:\chanpy\research --market-data-root C:\chanpy\data --legacy-reference ModelStrategy/research/baselines/freeze_v4_legacy_v1.json --conservative-reference ModelStrategy/research/baselines/freeze_v4_conservative_v2.json --output backtest_output/research/freeze_v4_conservative_v2.json
 ```
 
-保守口径只允许 `risk_pct=0.005` 通过 25% 回撤门槛：2021–2025 CAGR `24.999%`、最大回撤 `20.644%`、Calmar `1.211`。相对 legacy 口径，CAGR 下降 `21.918` 个百分点，最大回撤下降 `3.668` 个百分点。427 个信号意图中有 424 个成交（maker 393、taker 31），33 个按同 K 线不利顺序立即止损，3 个未成交；组合层最终接受 423 笔、因约束跳过 1 笔。
+保守口径只允许 `risk_pct=0.005` 通过 25% 回撤门槛：2021–2025 CAGR `30.076%`、最大回撤 `20.733%`、Calmar `1.451`。相对 legacy 口径，CAGR 下降 `16.842` 个百分点，最大回撤下降 `3.580` 个百分点。427 个信号意图中有 425 个成交（maker 394、taker 31），7 个按同 K 线不利顺序立即止损，2 个未成交；组合层最终接受 424 笔、因约束跳过 1 笔。
 
-行情清单明确披露 8 段、共 29 根小时线缺口。缺口只按最后可用价格生成 `synthetic=true` 的盯市点，绝不参与成交或止损判断；任何成交耐心窗口中的真实 K 线缺口都会直接失败。以初始权益为 1，五年累计手续费为 `0.248497`，资金费净贡献为 `+0.100127`。这些数值说明旧口径明显高估了可认证收益；阶段 3 的 v5 认证必须沿用 `conservative-v2`，不能再用 legacy 指标替代。
+行情清单明确披露 8 段、共 29 根小时线缺口。缺口只按最后可用价格生成 `synthetic=true` 的盯市点，绝不参与成交或止损判断；任何成交耐心窗口中的真实 K 线缺口都会直接失败。以初始权益为 1，五年累计手续费为 `0.288132`，资金费净贡献为 `+0.113841`。这些数值说明旧口径明显高估了可认证收益；阶段 3 的 v5 认证必须沿用 UTC 校正后的 `conservative-v2`，不能再用 legacy 或失效的时间错位指标替代。
 
 ### 5. 7×24 交易例行(dry-run 起步)
 
