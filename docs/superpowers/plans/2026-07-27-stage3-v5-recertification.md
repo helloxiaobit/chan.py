@@ -108,6 +108,43 @@ Write generated JSON beneath the external research root and record its logical h
 
 - [x] **Step 5: Verify and commit**
 
+### Task 2A: Remediate the discovered historical UTC offset before certification
+
+**Trigger:** The first S1bz fill audit proved that the already-migrated JSON retained
+the historical pickle's eight-hour-early epochs. Those generated files are invalid
+certification inputs and must be replaced before Task 3 resumes.
+
+**Files:**
+- Modify: `ModelStrategy/research/candidate.py`
+- Modify: `ModelStrategy/research/migrate_candidate.py`
+- Modify: `ModelStrategy/research/cli.py`
+- Modify: `ModelStrategy/research/certification_spec.py`
+- Modify: `ModelStrategy/research/configs/freeze_v5_candidate_v1.json`
+- Test: `tests/research/test_candidate.py`
+- Test: `tests/research/test_migrate_candidate.py`
+- Test: `tests/research/test_cli.py`
+- Test: `tests/research/test_certification_spec.py`
+
+- [x] Write failing tests proving the declared whole-second source offset is applied
+  before IS/OOS checks and that the envelope binds raw/corrected bounds to it.
+- [x] Require the migration CLI to declare the source offset explicitly; freeze
+  `source_timestamp_offset_seconds=0` in formal execution because normalized JSON
+  is already UTC and must not be corrected twice.
+- [x] Regenerate both BTC IS JSON files with `+28800`, audit their logical hashes and
+  corrected bounds, and prove a real S1bz maker fill aligns with its UTC bar.
+- [x] Commit the remediation and only then resume Task 3.
+
+**Remediation receipt:** S1bz contains 330 rows, generated SHA-256
+`a33497ded20dc7fa363486b56493d8519b2034df5aea6e4cb7e8640efb13d618`,
+and corrected bounds `1610622000..1765299600`. S2py10 contains 95 rows,
+generated SHA-256
+`87fa5014b18cdb5da9f3ba9c87a1adbaa3a16151cfb75a5a9b304829c59426fd`,
+and corrected bounds `1613635200..1762776000`. Both envelopes declare source
+offset `28800` under candidate envelope schema v2; formal execution declares zero
+because it consumes those corrected
+timestamps. The environment-backed first S1bz maker-fill audit passed on its UTC
+`K_60M` bar without opening any 2026 input.
+
 ### Task 3: Audit filled entries and replay z-exit conservatively
 
 **Files:**

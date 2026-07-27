@@ -1,14 +1,22 @@
+import os
+from pathlib import Path
+
 import pytest
 
-from ModelStrategy.research.boundary import ResearchBoundaryError
-from ModelStrategy.research.candidate import CandidateTrade
+from ModelStrategy.research.boundary import ResearchBoundaryError, parse_utc
+from ModelStrategy.research.candidate import CandidateTrade, load_candidate_dataset
 from ModelStrategy.research.candidate_execution import (
     audit_strategy_fill,
     replay_signal_intent,
     replay_zexit,
 )
 from ModelStrategy.research.execution import ExecutionTrade
-from ModelStrategy.research.market import MarketBar, MarketDataError, MarketSeries
+from ModelStrategy.research.market import (
+    MarketBar,
+    MarketDataError,
+    MarketSeries,
+    load_market_series,
+)
 
 
 HOUR = 3600
@@ -209,3 +217,37 @@ def test_risk_exit_remains_at_original_taker_close():
         )
         == original
     )
+
+
+def test_real_corrected_s1bz_first_maker_fill_aligns_with_utc_bar():
+    research_root_text = os.environ.get("CHANPY_RESEARCH_ROOT")
+    if research_root_text is None:
+        pytest.skip("set CHANPY_RESEARCH_ROOT to audit real candidate inputs")
+    research_root = Path(research_root_text)
+    dataset = load_candidate_dataset(
+        research_root
+        / "normalized"
+        / "v5"
+        / "BTC_USDT__S1bz__2021-2025.json",
+        expected_symbol="BTC/USDT",
+        expected_stack="S1bz[4H,1H,15M]",
+        expected_entry_kind="strategy_fill",
+    )
+    bars = load_market_series(
+        research_root / "btc_mlv.db",
+        "BTC/USDT",
+        "K_60M",
+        3600000,
+        parse_utc("2021-01-01"),
+        parse_utc("2026-01-01"),
+    )
+    first = dataset.trades[0]
+    assert first.bs_type.startswith("z") and not first.is_pyramid
+    audited = audit_strategy_fill(
+        first,
+        bars,
+        stack=dataset.stack,
+        stop_slippage=0.0005,
+    )
+    assert audited.fill_ts == first.entry_ts
+    assert audited.entry_role == "maker"

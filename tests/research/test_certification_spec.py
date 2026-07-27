@@ -66,6 +66,7 @@ def test_tracked_v5_candidate_and_gates_are_preregistered():
         "trend_flip",
         "time_stop",
     )
+    assert spec.execution["source_timestamp_offset_seconds"] == 0
 
 
 def write_changed_spec(tmp_path, change):
@@ -101,6 +102,12 @@ def write_changed_spec(tmp_path, change):
                 {"same_bar_policy": "optimistic"}
             ),
             "same_bar_policy",
+        ),
+        (
+            lambda value: value["execution"].update(
+                {"source_timestamp_offset_seconds": 28800}
+            ),
+            "source_timestamp_offset_seconds",
         ),
         (
             lambda value: value["oos_window"].update(

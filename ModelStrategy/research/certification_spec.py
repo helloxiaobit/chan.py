@@ -79,6 +79,7 @@ CONVICTION = {
     "mult_cap": 2.0,
 }
 EXECUTION = {
+    "source_timestamp_offset_seconds": 0,
     "mark_level": "K_60M",
     "mark_ms": 3600000,
     "entry_patience": 8,

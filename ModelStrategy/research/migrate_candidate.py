@@ -1,5 +1,6 @@
 """Explicit trusted-pickle migration into the portable candidate schema."""
 
+import math
 import os
 import pickle
 import tempfile
@@ -54,6 +55,20 @@ def _write_atomic(path: Path, payload: bytes) -> None:
             temporary.unlink(missing_ok=True)
 
 
+def _source_timestamp(value: Any, name: str, index: int) -> float:
+    if isinstance(value, bool):
+        raise ValueError(f"migration record {index} {name} must be finite")
+    try:
+        timestamp = float(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(
+            f"migration record {index} {name} must be finite"
+        ) from exc
+    if not math.isfinite(timestamp):
+        raise ValueError(f"migration record {index} {name} must be finite")
+    return timestamp
+
+
 def migrate_candidate_pickle(
     source_path: str | Path,
     output_path: str | Path,
@@ -63,6 +78,7 @@ def migrate_candidate_pickle(
     entry_kind: str,
     begin_ts: float,
     end_ts: float,
+    timestamp_offset_seconds: int,
 ) -> dict[str, Any]:
     """Migrate one explicitly trusted IS pickle; never use this in certification."""
     source = Path(source_path)
@@ -75,6 +91,14 @@ def migrate_candidate_pickle(
         raise ValueError("migration window must be increasing")
     if end_ts > IS_END_EXCLUSIVE:
         raise ValueError("OOS migration window is not allowed")
+    if (
+        type(timestamp_offset_seconds) is not int
+        or not -86400 <= timestamp_offset_seconds <= 86400
+    ):
+        raise ValueError(
+            "timestamp_offset_seconds must be a whole-second integer between "
+            "-86400 and 86400"
+        )
 
     with source.open("rb") as stream:
         raw_records = pickle.load(stream)
@@ -82,6 +106,8 @@ def migrate_candidate_pickle(
         raise ValueError("trusted pickle must contain a list")
 
     trades = []
+    raw_entry_timestamps = []
+    raw_close_timestamps = []
     for index, record in enumerate(raw_records):
         values = {
             name: _attribute(record, name, index)
@@ -89,10 +115,14 @@ def migrate_candidate_pickle(
         }
         if values.pop("code") != symbol:
             raise ValueError(f"migration record {index} symbol mismatch")
+        raw_entry_ts = _source_timestamp(values["open_ts"], "open_ts", index)
+        raw_close_ts = _source_timestamp(values["close_ts"], "close_ts", index)
+        raw_entry_timestamps.append(raw_entry_ts)
+        raw_close_timestamps.append(raw_close_ts)
         trade = CandidateTrade.from_mapping(
             {
-                "entry_ts": values["open_ts"],
-                "close_ts": values["close_ts"],
+                "entry_ts": raw_entry_ts + timestamp_offset_seconds,
+                "close_ts": raw_close_ts + timestamp_offset_seconds,
                 "open_price": values["open_price"],
                 "close_price": values["close_price"],
                 "risk_rate": values["risk_rate"],
@@ -110,6 +140,8 @@ def migrate_candidate_pickle(
             raise ValueError(f"migration record {index} is outside declared window")
         trades.append(trade)
 
+    if not trades:
+        raise ValueError("trusted pickle must contain at least one record")
     if len(set(trades)) != len(trades):
         raise ValueError("duplicate migration record")
     trades.sort(
@@ -124,11 +156,23 @@ def migrate_candidate_pickle(
         )
     )
     envelope = {
-        "schema_version": 1,
+        "schema_version": 2,
         "entry_kind": entry_kind,
         "symbol": symbol,
         "stack": stack,
-        "source": {"path": source.name, **file_manifest(source)},
+        "source": {
+            "path": source.name,
+            **file_manifest(source),
+            "timestamp_offset_seconds": timestamp_offset_seconds,
+            "raw_entry_ts_min": min(raw_entry_timestamps),
+            "raw_close_ts_max": max(raw_close_timestamps),
+            "corrected_entry_ts_min": min(
+                trade.entry_ts for trade in trades
+            ),
+            "corrected_close_ts_max": max(
+                trade.close_ts for trade in trades
+            ),
+        },
         "trades": [trade.to_mapping() for trade in trades],
     }
     _write_atomic(output, canonical_json_bytes(envelope))

@@ -214,6 +214,8 @@ def test_migrate_candidate_cli_writes_guarded_json(tmp_path):
             "2021-01-01",
             "--end-exclusive",
             "2026-01-01",
+            "--timestamp-offset-seconds",
+            "0",
         ],
         cwd=REPO_ROOT,
         capture_output=True,

@@ -17,7 +17,16 @@ _ENVELOPE_KEYS = {
     "source",
     "trades",
 }
-_SOURCE_KEYS = {"path", "size", "sha256"}
+_SOURCE_KEYS = {
+    "path",
+    "size",
+    "sha256",
+    "timestamp_offset_seconds",
+    "raw_entry_ts_min",
+    "raw_close_ts_max",
+    "corrected_entry_ts_min",
+    "corrected_close_ts_max",
+}
 _TRADE_KEYS = {
     "entry_ts",
     "close_ts",
@@ -59,6 +68,11 @@ class CandidateSource:
     path: str
     size: int
     sha256: str
+    timestamp_offset_seconds: int
+    raw_entry_ts_min: float
+    raw_close_ts_max: float
+    corrected_entry_ts_min: float
+    corrected_close_ts_max: float
 
     @classmethod
     def from_mapping(cls, value: Mapping[str, Any]) -> "CandidateSource":
@@ -77,7 +91,50 @@ class CandidateSource:
             or any(char not in "0123456789abcdef" for char in digest)
         ):
             raise ValueError("source.sha256 must be lowercase hexadecimal")
-        return cls(path_text, size, digest)
+        offset = value.get("timestamp_offset_seconds")
+        if type(offset) is not int or not -86400 <= offset <= 86400:
+            raise ValueError(
+                "source.timestamp_offset_seconds must be a whole-second integer "
+                "between -86400 and 86400"
+            )
+        raw_entry_ts_min = _finite(
+            value.get("raw_entry_ts_min"), "source.raw_entry_ts_min"
+        )
+        raw_close_ts_max = _finite(
+            value.get("raw_close_ts_max"), "source.raw_close_ts_max"
+        )
+        corrected_entry_ts_min = require_is_timestamp(
+            _finite(
+                value.get("corrected_entry_ts_min"),
+                "source.corrected_entry_ts_min",
+            )
+        )
+        corrected_close_ts_max = require_is_timestamp(
+            _finite(
+                value.get("corrected_close_ts_max"),
+                "source.corrected_close_ts_max",
+            )
+        )
+        if corrected_entry_ts_min != raw_entry_ts_min + offset:
+            raise ValueError(
+                "source corrected entry bound must equal raw bound plus "
+                "timestamp_offset_seconds"
+            )
+        if corrected_close_ts_max != raw_close_ts_max + offset:
+            raise ValueError(
+                "source corrected close bound must equal raw bound plus "
+                "timestamp_offset_seconds"
+            )
+        return cls(
+            path=path_text,
+            size=size,
+            sha256=digest,
+            timestamp_offset_seconds=offset,
+            raw_entry_ts_min=raw_entry_ts_min,
+            raw_close_ts_max=raw_close_ts_max,
+            corrected_entry_ts_min=corrected_entry_ts_min,
+            corrected_close_ts_max=corrected_close_ts_max,
+        )
 
 
 @dataclass(frozen=True)
@@ -161,8 +218,8 @@ def load_candidate_dataset(
     if not isinstance(payload, Mapping):
         raise ValueError("candidate dataset must contain an object")
     _exact_keys(payload, _ENVELOPE_KEYS, "candidate dataset")
-    if payload.get("schema_version") != 1:
-        raise ValueError("schema_version must be 1")
+    if payload.get("schema_version") != 2:
+        raise ValueError("schema_version must be 2")
     entry_kind = payload.get("entry_kind")
     if entry_kind not in {"strategy_fill", "signal_intent"}:
         raise ValueError("entry_kind must be strategy_fill or signal_intent")
@@ -185,10 +242,21 @@ def load_candidate_dataset(
         if not isinstance(item, Mapping):
             raise ValueError(f"trade {index} must be an object")
         trades.append(CandidateTrade.from_mapping(item))
+    if not trades:
+        raise ValueError("candidate dataset must contain at least one trade")
+    source = CandidateSource.from_mapping(source_value)
+    if source.corrected_entry_ts_min != min(
+        trade.entry_ts for trade in trades
+    ):
+        raise ValueError("source corrected entry bound does not match trades")
+    if source.corrected_close_ts_max != max(
+        trade.close_ts for trade in trades
+    ):
+        raise ValueError("source corrected close bound does not match trades")
     return CandidateDataset(
         entry_kind=entry_kind,
         symbol=symbol,
         stack=stack,
-        source=CandidateSource.from_mapping(source_value),
+        source=source,
         trades=tuple(trades),
     )

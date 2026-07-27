@@ -47,6 +47,9 @@ def _parser() -> argparse.ArgumentParser:
     )
     migrate.add_argument("--begin", required=True)
     migrate.add_argument("--end-exclusive", required=True)
+    migrate.add_argument(
+        "--timestamp-offset-seconds", type=int, required=True
+    )
     return parser
 
 
@@ -145,11 +148,13 @@ def _run_migrate_candidate(args: argparse.Namespace) -> int:
         entry_kind=args.entry_kind,
         begin_ts=begin_ts,
         end_ts=end_ts,
+        timestamp_offset_seconds=args.timestamp_offset_seconds,
     )
     print(
         "候选迁移通过: "
         f"{args.symbol} {args.stack} "
-        f"rows={len(envelope['trades'])} 报告={args.output}"
+        f"rows={len(envelope['trades'])} "
+        f"offset={args.timestamp_offset_seconds}s 报告={args.output}"
     )
     return 0
 

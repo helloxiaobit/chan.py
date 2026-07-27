@@ -21,7 +21,7 @@ def candidate_payload(**overrides):
         "is_closed": True,
     }
     payload = {
-        "schema_version": 1,
+        "schema_version": 2,
         "entry_kind": "strategy_fill",
         "symbol": "BTC/USDT",
         "stack": "S1bz[4H,1H,15M]",
@@ -29,6 +29,11 @@ def candidate_payload(**overrides):
             "path": "BTC_S1bz_2125.pkl",
             "size": 123,
             "sha256": "a" * 64,
+            "timestamp_offset_seconds": 0,
+            "raw_entry_ts_min": parse_utc("2021-02-01"),
+            "raw_close_ts_max": parse_utc("2021-02-02"),
+            "corrected_entry_ts_min": parse_utc("2021-02-01"),
+            "corrected_close_ts_max": parse_utc("2021-02-02"),
         },
         "trades": [trade],
     }
@@ -50,6 +55,7 @@ def test_candidate_dataset_loads_portable_price_bearing_records(tmp_path):
     assert dataset.symbol == "BTC/USDT"
     assert dataset.stack == "S1bz[4H,1H,15M]"
     assert dataset.source.sha256 == "a" * 64
+    assert dataset.source.timestamp_offset_seconds == 0
     assert dataset.trades[0].open_price == 100.0
     assert dataset.trades[0].reason == "trend_flip"
 
@@ -69,6 +75,21 @@ def test_candidate_dataset_loads_portable_price_bearing_records(tmp_path):
         (
             lambda value: value["trades"][0].pop("is_pyramid"),
             "keys",
+        ),
+        (
+            lambda value: value["source"].update(
+                {"timestamp_offset_seconds": 0.5}
+            ),
+            "timestamp_offset_seconds",
+        ),
+        (
+            lambda value: value["source"].update(
+                {
+                    "corrected_entry_ts_min": parse_utc("2021-02-01")
+                    + 1
+                }
+            ),
+            "corrected",
         ),
     ],
 )
