@@ -1,0 +1,145 @@
+{
+  "schema_version": 1,
+  "strategy_id": "freeze_v5_candidate_v1",
+  "execution_model": "conservative-v2",
+  "window": {
+    "begin": "2021-01-01",
+    "end_exclusive": "2026-01-01"
+  },
+  "oos_window": {
+    "begin": "2026-01-01",
+    "end_exclusive": "2026-07-27"
+  },
+  "components": [
+    "S1bz[4H,1H,15M]",
+    "S2py10[1D,4H]",
+    "conviction#14",
+    "z-limit(S2 non-pyramid)",
+    "z-exit"
+  ],
+  "symbols": [
+    "BTC/USDT",
+    "ETH/USDT",
+    "SOL/USDT",
+    "BNB/USDT"
+  ],
+  "inputs": {
+    "bars_db": "btc_mlv.db",
+    "symbols": {
+      "BTC/USDT": {
+        "s1_trades": "normalized/v5/BTC_USDT__S1bz__2021-2025.json",
+        "s2_trades": "normalized/v5/BTC_USDT__S2py10__2021-2025.json",
+        "funding_rates": "btc/btc_funding_rate.csv"
+      },
+      "ETH/USDT": {
+        "s1_trades": "normalized/v5/ETH_USDT__S1bz__2021-2025.json",
+        "s2_trades": "normalized/v5/ETH_USDT__S2py10__2021-2025.json",
+        "funding_rates": "eth/eth_funding_rate.csv"
+      },
+      "SOL/USDT": {
+        "s1_trades": "normalized/v5/SOL_USDT__S1bz__2021-2025.json",
+        "s2_trades": "normalized/v5/SOL_USDT__S2py10__2021-2025.json",
+        "funding_rates": "sol/sol_funding_rate.csv"
+      },
+      "BNB/USDT": {
+        "s1_trades": "normalized/v5/BNB_USDT__S1bz__2021-2025.json",
+        "s2_trades": "normalized/v5/BNB_USDT__S2py10__2021-2025.json",
+        "funding_rates": "bnb/bnb_funding_rate.csv"
+      }
+    }
+  },
+  "stacks": {
+    "s1": {
+      "name": "S1bz[4H,1H,15M]",
+      "entry_kind": "strategy_fill",
+      "level": "K_60M",
+      "interval_ms": 3600000
+    },
+    "s2": {
+      "name": "S2py10[1D,4H]",
+      "entry_kind": "signal_intent",
+      "level": "K_4H",
+      "interval_ms": 14400000
+    }
+  },
+  "exit": {
+    "eligible_reasons": [
+      "reverse_bsp",
+      "trend_flip",
+      "time_stop"
+    ],
+    "patience": 8
+  },
+  "risk_grid": [
+    0.005,
+    0.0075,
+    0.01,
+    0.0125,
+    0.015
+  ],
+  "portfolio": {
+    "taker_fee": 0.0005,
+    "maker_fee": 0.0002,
+    "max_concurrent": 4,
+    "max_leverage": 3.0,
+    "max_pos_leverage": 1.5,
+    "target_max_drawdown": 0.25
+  },
+  "conviction": {
+    "co_dir_mult": 1.5,
+    "opp_dir_mult": 1.0,
+    "bs_mults": {
+      "1": 0.8,
+      "1p": 1.2
+    },
+    "mult_cap": 2.0
+  },
+  "execution": {
+    "mark_level": "K_60M",
+    "mark_ms": 3600000,
+    "entry_patience": 8,
+    "stop_slippage": 0.0005,
+    "same_bar_policy": "adverse_first",
+    "funding_order": "before_close",
+    "funding_interval_ms": 28800000,
+    "market_gap_policy": "carry_forward",
+    "max_mark_gap_intervals": 16
+  },
+  "splits": {
+    "A(21-23)": [
+      "2021-01-01",
+      "2024-01-01"
+    ],
+    "B(2024)": [
+      "2024-01-01",
+      "2025-01-01"
+    ],
+    "C(2025)": [
+      "2025-01-01",
+      "2026-01-01"
+    ]
+  },
+  "gates": {
+    "btc": {
+      "full_calmar_min": 2.0,
+      "split_cagr_min_exclusive": 0.0,
+      "max_drawdown": 0.25
+    },
+    "robustness": {
+      "full_cagr_min_exclusive": 0.0,
+      "split_cagr_min": -0.01,
+      "max_drawdown": 0.35
+    },
+    "multi": {
+      "cagr_min_exclusive": 0.0,
+      "max_drawdown": 0.25,
+      "calmar_min": 1.0,
+      "max_concurrent": 16
+    },
+    "oos": {
+      "cagr_min_exclusive": 0.5,
+      "max_drawdown_exclusive": 0.25,
+      "calmar_min": 2.0
+    }
+  }
+}

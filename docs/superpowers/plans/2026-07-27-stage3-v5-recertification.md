@@ -46,18 +46,18 @@ switch.
 - Test: `tests/research/test_candidate.py`
 - Test: `tests/research/test_certification_spec.py`
 
-- [ ] **Step 1: Write failing schema/spec tests**
+- [x] **Step 1: Write failing schema/spec tests**
 
 Prove exact-key validation, finite prices/risk, explicit `strategy_fill` versus
 `signal_intent`, symbol/stack identity, portable JSON manifests, strict gate keys,
 fixed component order, fixed split/window boundaries, and rejection of path escape,
 unknown execution semantics, or any IS input timestamp at/after 2026-01-01.
 
-- [ ] **Step 2: Verify RED**
+- [x] **Step 2: Verify RED**
 
 Run: `pytest tests/research/test_candidate.py tests/research/test_certification_spec.py -q`
 
-- [ ] **Step 3: Implement the minimal strict loaders**
+- [x] **Step 3: Implement the minimal strict loaders**
 
 The candidate spec owns BTC plus conditional ETH/SOL/BNB relative inputs, bars DB,
 per-symbol funding files, stack execution policies, z-exit reasons/patience, the
@@ -65,7 +65,7 @@ Stage-2 portfolio/execution policy, conviction values, risk grid, and gates. It 
 contains the preregistered OOS window and acceptance thresholds, but the IS command
 must not open any OOS input.
 
-- [ ] **Step 4: Verify GREEN and commit**
+- [x] **Step 4: Verify GREEN and commit**
 
 Record that gate values and the OOS window were frozen before candidate metrics were
 computed.
