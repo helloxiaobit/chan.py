@@ -35,7 +35,7 @@
 - Test: `tests/research/test_spec.py`
 - Test: `tests/research/test_baseline.py`
 
-- [ ] **Step 1: Write failing compatibility and conservative-spec tests**
+- [x] **Step 1: Write failing compatibility and conservative-spec tests**
 
 Keep `ResearchTrade` as the legacy signal-intent type and put replayed prices/timestamps in the new `ExecutionTrade` from Task 3. Add tests proving the legacy spec still loads with an empty execution policy and the conservative policy is strict:
 
@@ -60,13 +60,13 @@ def test_conservative_spec_rejects_unknown_execution_key(tmp_path):
         load_spec(write_spec(tmp_path, value))
 ```
 
-- [ ] **Step 2: Verify RED**
+- [x] **Step 2: Verify RED**
 
 Run: `pytest tests/research/test_spec.py tests/research/test_baseline.py -q`
 
 Expected: failures for the missing `ResearchSpec.execution` field and rejected `conservative-v2`.
 
-- [ ] **Step 3: Implement the compatible spec extension**
+- [x] **Step 3: Implement the compatible spec extension**
 
 Do not modify `ResearchTrade` or the legacy cache schema. Extend `ResearchSpec` with an `execution` dictionary. `load_spec()` must accept only `legacy-v1` and `conservative-v2`. Legacy specs must keep exactly the three stage-1 inputs and no execution block. Conservative specs additionally require relative `inputs.funding_rates` and exactly these execution keys:
 
@@ -86,7 +86,7 @@ Do not modify `ResearchTrade` or the legacy cache schema. Extend `ResearchSpec` 
 
 Create `freeze_v4_conservative_v2.json` by copying the legacy strategy/risk/conviction/splits and changing only `execution_model`, adding `inputs.funding_rates`, and the execution block above.
 
-- [ ] **Step 4: Verify GREEN and legacy stability**
+- [x] **Step 4: Verify GREEN and legacy stability**
 
 Run:
 
@@ -97,7 +97,7 @@ python -m ModelStrategy.research.cli baseline --spec ModelStrategy/research/conf
 
 Expected: tests pass and the legacy command still reports risk `0.0075`, CAGR `0.46917167124699044`.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 Commit spec/config with a Lore directive that `ResearchTrade`, `legacy-v1` inputs, and reference metrics cannot change.
 
@@ -107,7 +107,7 @@ Commit spec/config with a Lore directive that `ResearchTrade`, `legacy-v1` input
 - Create: `ModelStrategy/research/market.py`
 - Test: `tests/research/test_market.py`
 
-- [ ] **Step 1: Write failing market-data tests**
+- [x] **Step 1: Write failing market-data tests**
 
 ```python
 def test_market_loader_uses_bar_end_timestamps(tmp_path):
@@ -139,23 +139,23 @@ def test_funding_loader_excludes_2026_rows_from_manifest(tmp_path):
     assert manifest["row_count"] == 1
 ```
 
-- [ ] **Step 2: Verify RED**
+- [x] **Step 2: Verify RED**
 
 Run: `pytest tests/research/test_market.py -q`
 
 Expected: import failure for `ModelStrategy.research.market`.
 
-- [ ] **Step 3: Implement market values, loaders, and logical manifests**
+- [x] **Step 3: Implement market values, loaders, and logical manifests**
 
 Create immutable `MarketBar(ts, open, high, low, close, synthetic=False)`, `FundingEvent(ts, symbol, rate)`, and `MarketSeries(symbol, interval_seconds, bars)`. Validate finite OHLC, `low <= min(open, close) <= max(open, close) <= high`, strict timestamps, and exact interval continuity over required position windows. Raw coverage checks fail on gaps. `carry_forward_gaps(max_missing_intervals)` may synthesize flat, explicitly flagged mark bars only up to the configured cap; it records every gap and synthetic count in the derived manifest. SQLite loader must select raw rows whose computed end timestamp is in the half-open IS window. Funding loader must parse aware UTC timestamps, normalize `BTCUSDT` to `BTC/USDT`, select only the requested half-open window, and hash canonical selected rows rather than the whole CSV. `require_funding_coverage()` must enforce every configured 8-hour settlement in the half-open IS window.
 
-- [ ] **Step 4: Verify GREEN**
+- [x] **Step 4: Verify GREEN**
 
 Run: `pytest tests/research/test_market.py tests/research/test_provenance.py -q`
 
 Expected: all tests pass.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 Record that all manifests are logical IS subsets and later funding rows cannot change them.
 
@@ -165,7 +165,7 @@ Record that all manifests are logical IS subsets and later funding rows cannot c
 - Create: `ModelStrategy/research/execution.py`
 - Test: `tests/research/test_execution.py`
 
-- [ ] **Step 1: Write failing execution tests**
+- [x] **Step 1: Write failing execution tests**
 
 ```python
 def test_maker_fill_occurs_on_first_touch_not_signal_bar():
@@ -212,23 +212,23 @@ def test_better_than_limit_fill_is_never_assumed():
     assert replayed.open_price == 100
 ```
 
-- [ ] **Step 2: Verify RED**
+- [x] **Step 2: Verify RED**
 
 Run: `pytest tests/research/test_execution.py -q`
 
 Expected: import failure for `execution.py`.
 
-- [ ] **Step 3: Implement deterministic execution replay**
+- [x] **Step 3: Implement deterministic execution replay**
 
-Create immutable `ExecutionTrade` with symbol, signal/fill/close timestamps, direction, fill/close prices, initial stop, risk rate/multiplier, signal type, stack, maker/taker roles, pyramid flag, and reason. Create immutable `ReplayOutcome(status, trade)` where status is `filled` or `unfilled` and `trade` is `None` only when unfilled. `build_intent()` reconstructs signal price from the stack bar close, close price from legacy profit and direction, and initial stop from risk distance. The orchestration layer must label S1/S2 source stacks explicitly before merging because the cache itself has no stack field. `replay_trade()` scans real bars strictly after the signal for non-pyramid z-limit intents; synthetic carry-forward bars are never eligible for fills or stops. First touch fills exactly at the limit, otherwise the `patience`-th real bar closes as a taker chase. Pyramid legs fill at their signal close. If the candidate fill timestamp is after the original close, return `ReplayOutcome("unfilled", None)`; a fill exactly at the original close is valid only for an immediate same-timestamp adverse stop. On an intrabar maker fill whose bar also reaches the initial stop, force same-timestamp stop exit with adverse slippage.
+Create immutable `ExecutionTrade` with symbol, signal/fill/close timestamps, direction, fill/close prices, initial stop, actual fill-to-stop risk rate/multiplier, signal type, stack, maker/taker roles, pyramid flag, and reason. Create immutable `ReplayOutcome(status, trade)` where status is `filled` or `unfilled` and `trade` is `None` only when unfilled. `build_intent()` reconstructs signal price from the stack bar close, close price from legacy profit and direction, and initial stop from risk distance. The orchestration layer must label S1/S2 source stacks explicitly before merging because the cache itself has no stack field. `replay_trade()` scans real bars strictly after the signal for non-pyramid z-limit intents; synthetic carry-forward bars are never eligible for fills or stops. First touch fills exactly at the limit, otherwise the `patience`-th real bar closes as a taker chase. Pyramid legs fill at their signal close. If the candidate fill timestamp is after the original close, return `ReplayOutcome("unfilled", None)`; a fill exactly at the original close is valid only for an immediate same-timestamp adverse stop. On an intrabar maker fill whose bar also reaches the initial stop, force same-timestamp stop exit with adverse slippage.
 
-- [ ] **Step 4: Verify GREEN and symmetry**
+- [x] **Step 4: Verify GREEN and symmetry**
 
 Run: `pytest tests/research/test_execution.py -q`
 
 Expected: long and mirrored short parameterizations all pass.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 Record the adverse-first and no-price-improvement assumptions in trailers.
 
