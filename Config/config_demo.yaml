@@ -49,6 +49,8 @@ ccxt:
   proxy: ""                        # 可选,如 http://127.0.0.1:7890
   rate_limit: true                 # enableRateLimit
   default_type: spot               # spot / swap / future
+  leverage: 1                      # 合约模式显式设置;现货忽略
+  position_side: BOTH              # 合约 BOTH / LONG / SHORT
 
 futu:                              # 可选(需 pip install futu-api)
   host: 127.0.0.1

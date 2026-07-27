@@ -48,16 +48,16 @@ restart reconciles pending client/order IDs instead of submitting a duplicate.
 - Modify: `Trade/FutuTradeEngine.py`
 - Test: `tests/test_trade_safety.py`
 
-- [ ] Write failing tests for requested versus filled quantity, partial/open status,
+- [x] Write failing tests for requested versus filled quantity, partial/open status,
   client IDs, post-only/reduce-only parameters, spot oversell rejection, and swap
   reduce-only no-flip behavior.
-- [ ] Extend `COrderResult` with requested quantity and client identity; normalize
+- [x] Extend `COrderResult` with requested quantity and client identity; normalize
   only `open/closed/canceled/rejected` exchange states.
-- [ ] Add deterministic dry-run fill plans and monotonic order advancement so partial
+- [x] Add deterministic dry-run fill plans and monotonic order advancement so partial
   fill/recovery tests do not use a network exchange.
-- [ ] For contracts, query positions separately from spot balances and pass explicit
+- [x] For contracts, query positions separately from spot balances and pass explicit
   leverage/position-side parameters; market post-only is illegal.
-- [ ] Verify and commit.
+- [x] Verify and commit.
 
 ### Task 3: Persist the order state machine and migrate SQLite safely
 

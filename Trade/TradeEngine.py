@@ -8,6 +8,7 @@
 具体撮合接口(下单/撤单/查单/余额/持仓)由子类实现(CCXTTradeEngine/FutuTradeEngine)。
 """
 import abc
+import math
 import time
 from typing import Dict, List, Optional
 
@@ -20,11 +21,35 @@ from .OpenQuotaGen import CBenchPriceQuotaGen, COpenQuotaGen
 
 
 class COrderResult:
-    def __init__(self, order_id: str, filled: float, avg_price: Optional[float], status: str):
+    VALID_STATUSES = {"open", "closed", "canceled", "rejected"}
+
+    def __init__(
+        self,
+        order_id: str,
+        filled: float,
+        avg_price: Optional[float],
+        status: str,
+        requested: Optional[float] = None,
+        client_order_id: Optional[str] = None,
+    ):
+        filled = float(filled)
+        requested = filled if requested is None else float(requested)
+        if (
+            not math.isfinite(filled)
+            or not math.isfinite(requested)
+            or filled < 0
+            or requested < 0
+            or filled > requested
+        ):
+            raise CChanException("订单数量无效", ErrCode.PARA_ERROR)
+        if status not in self.VALID_STATUSES:
+            raise CChanException(f"未知订单状态: {status}", ErrCode.PARA_ERROR)
         self.order_id = order_id
-        self.filled = filled          # 已成交数量
+        self.client_order_id = client_order_id
+        self.requested = requested    # 提交给交易所的数量
+        self.filled = filled          # 累计已成交数量
         self.avg_price = avg_price    # 成交均价
-        self.status = status          # open / closed / canceled
+        self.status = status          # open / closed / canceled / rejected
 
 
 class CTradeEngine(metaclass=abc.ABCMeta):
@@ -45,8 +70,18 @@ class CTradeEngine(metaclass=abc.ABCMeta):
 
     # ===== 撮合接口(子类实现)=====
     @abc.abstractmethod
-    def place_order(self, code: str, is_buy: bool, amount: float,
-                    price: Optional[float] = None) -> COrderResult:
+    def place_order(
+        self,
+        code: str,
+        is_buy: bool,
+        amount: float,
+        price: Optional[float] = None,
+        *,
+        client_order_id: Optional[str] = None,
+        reduce_only: bool = False,
+        post_only: bool = False,
+        position_side: Optional[str] = None,
+    ) -> COrderResult:
         # price=None 为市价单
         ...
 
@@ -111,7 +146,13 @@ class CTradeEngine(metaclass=abc.ABCMeta):
         code = record["stock_code"]
         quota = record["quota"]
         self.rate_limit()
-        order = self.place_order(code, not bool(record["is_buy"]), quota, price)
+        order = self.place_order(
+            code,
+            not bool(record["is_buy"]),
+            quota,
+            price,
+            reduce_only=True,
+        )
         self.chan_db.mark_cover_order(record_id, order.order_id, quota, reason)
         if order.status == "closed" and order.avg_price is not None:
             self.chan_db.mark_cover_done(record_id, order.avg_price)
@@ -139,7 +180,13 @@ class CTradeEngine(metaclass=abc.ABCMeta):
                 elif adjust_price and order.status == "open":
                     # 未成交:撤单后市价重下
                     self.cancel_order(rec["stock_code"], rec["cover_order_id"])
-                    new_order = self.place_order(rec["stock_code"], not bool(rec["is_buy"]), rec["quota"], None)
+                    new_order = self.place_order(
+                        rec["stock_code"],
+                        not bool(rec["is_buy"]),
+                        rec["quota"],
+                        None,
+                        reduce_only=True,
+                    )
                     self.chan_db.mark_cover_order(rec["id"], new_order.order_id, rec["quota"], rec["cover_reason"] or "retrade")
                     if new_order.status == "closed":
                         self.chan_db.mark_cover_done(rec["id"], new_order.avg_price)
