@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "strategy_id": "freeze_v4",
+  "execution_model": "legacy-v1",
+  "risk_pct": 0.0075,
+  "is_2125": {
+    "cagr": 0.46917167124699044,
+    "full_dd": 0.24312663043838884,
+    "worst_dd": 0.24312663043838884,
+    "splits": {
+      "A(21-23)": {
+        "cagr": 0.489,
+        "dd": 0.243,
+        "calmar": 2.01
+      },
+      "B(2024)": {
+        "cagr": 0.601,
+        "dd": 0.112,
+        "calmar": 5.37
+      },
+      "C(2025)": {
+        "cagr": 0.289,
+        "dd": 0.11,
+        "calmar": 2.62
+      }
+    }
+  }
+}
