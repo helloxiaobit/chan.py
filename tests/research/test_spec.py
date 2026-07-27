@@ -68,6 +68,9 @@ def conservative_spec(**overrides):
         "stop_slippage": 0.0005,
         "same_bar_policy": "adverse_first",
         "funding_order": "before_close",
+        "funding_interval_ms": 28800000,
+        "market_gap_policy": "carry_forward",
+        "max_mark_gap_intervals": 16,
     }
     value.update(overrides)
     return value
@@ -97,6 +100,9 @@ def test_conservative_spec_requires_funding_input_and_policy(tmp_path):
     assert spec.execution_model == "conservative-v2"
     assert spec.inputs["funding_rates"].as_posix() == "btc/btc_funding_rate.csv"
     assert spec.execution["mark_level"] == "K_60M"
+    assert spec.execution["funding_interval_ms"] == 28800000
+    assert spec.execution["market_gap_policy"] == "carry_forward"
+    assert spec.execution["max_mark_gap_intervals"] == 16
 
 
 def test_tracked_conservative_spec_changes_only_execution_assumptions():
@@ -134,6 +140,13 @@ def test_conservative_spec_requires_matching_entry_patience(tmp_path):
     value = conservative_spec()
     value["execution"]["entry_patience"] = 7
     with pytest.raises(ValueError, match="entry_patience.*zlimit"):
+        load_spec(write_spec(tmp_path, value))
+
+
+def test_conservative_spec_rejects_unbounded_mark_gap_policy(tmp_path):
+    value = conservative_spec()
+    value["execution"]["max_mark_gap_intervals"] = None
+    with pytest.raises(ValueError, match="max_mark_gap_intervals"):
         load_spec(write_spec(tmp_path, value))
 
 

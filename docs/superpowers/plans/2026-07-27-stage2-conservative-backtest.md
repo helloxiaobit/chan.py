@@ -77,7 +77,10 @@ Do not modify `ResearchTrade` or the legacy cache schema. Extend `ResearchSpec` 
   "entry_patience": 8,
   "stop_slippage": 0.0005,
   "same_bar_policy": "adverse_first",
-  "funding_order": "before_close"
+  "funding_order": "before_close",
+  "funding_interval_ms": 28800000,
+  "market_gap_policy": "carry_forward",
+  "max_mark_gap_intervals": 16
 }
 ```
 
@@ -120,6 +123,13 @@ def test_market_loader_rejects_gap_inside_required_window(tmp_path):
         series.require_coverage(0, 3 * 3600)
 
 
+def test_mark_series_carries_forward_only_bounded_gaps():
+    raw = MarketSeries("BTC/USDT", 3600, bars_at_hours(0, 1, 3))
+    marked = raw.carry_forward_gaps(max_missing_intervals=2)
+    assert marked.at(2 * 3600).synthetic is True
+    assert marked.manifest["synthetic_bar_count"] == 1
+
+
 def test_funding_loader_excludes_2026_rows_from_manifest(tmp_path):
     path = write_funding(tmp_path, [("2025-12-31T16:00:00Z", 0.001),
                                     ("2026-01-01T00:00:00Z", 0.9)])
@@ -137,7 +147,7 @@ Expected: import failure for `ModelStrategy.research.market`.
 
 - [ ] **Step 3: Implement market values, loaders, and logical manifests**
 
-Create immutable `MarketBar(ts, open, high, low, close)`, `FundingEvent(ts, symbol, rate)`, and `MarketSeries(symbol, interval_seconds, bars)`. Validate finite OHLC, `low <= min(open, close) <= max(open, close) <= high`, strict timestamps, and exact interval continuity over required position windows. SQLite loader must select raw rows whose computed end timestamp is in the half-open IS window. Funding loader must parse aware UTC timestamps, normalize `BTCUSDT` to `BTC/USDT`, select only the requested half-open window, and hash canonical selected rows rather than the whole CSV.
+Create immutable `MarketBar(ts, open, high, low, close, synthetic=False)`, `FundingEvent(ts, symbol, rate)`, and `MarketSeries(symbol, interval_seconds, bars)`. Validate finite OHLC, `low <= min(open, close) <= max(open, close) <= high`, strict timestamps, and exact interval continuity over required position windows. Raw coverage checks fail on gaps. `carry_forward_gaps(max_missing_intervals)` may synthesize flat, explicitly flagged mark bars only up to the configured cap; it records every gap and synthetic count in the derived manifest. SQLite loader must select raw rows whose computed end timestamp is in the half-open IS window. Funding loader must parse aware UTC timestamps, normalize `BTCUSDT` to `BTC/USDT`, select only the requested half-open window, and hash canonical selected rows rather than the whole CSV. `require_funding_coverage()` must enforce every configured 8-hour settlement in the half-open IS window.
 
 - [ ] **Step 4: Verify GREEN**
 
@@ -210,7 +220,7 @@ Expected: import failure for `execution.py`.
 
 - [ ] **Step 3: Implement deterministic execution replay**
 
-Create immutable `ExecutionTrade` with symbol, signal/fill/close timestamps, direction, fill/close prices, initial stop, risk rate/multiplier, signal type, stack, maker/taker roles, pyramid flag, and reason. Create immutable `ReplayOutcome(status, trade)` where status is `filled` or `unfilled` and `trade` is `None` only when unfilled. `build_intent()` reconstructs signal price from the stack bar close, close price from legacy profit and direction, and initial stop from risk distance. The orchestration layer must label S1/S2 source stacks explicitly before merging because the cache itself has no stack field. `replay_trade()` scans bars strictly after the signal for non-pyramid z-limit intents; first touch fills exactly at the limit, otherwise the `patience`-th bar closes as a taker chase. Pyramid legs fill at their signal close. If the candidate fill timestamp is after the original close, return `ReplayOutcome("unfilled", None)`; a fill exactly at the original close is valid only for an immediate same-timestamp adverse stop. On an intrabar maker fill whose bar also reaches the initial stop, force same-timestamp stop exit with adverse slippage.
+Create immutable `ExecutionTrade` with symbol, signal/fill/close timestamps, direction, fill/close prices, initial stop, risk rate/multiplier, signal type, stack, maker/taker roles, pyramid flag, and reason. Create immutable `ReplayOutcome(status, trade)` where status is `filled` or `unfilled` and `trade` is `None` only when unfilled. `build_intent()` reconstructs signal price from the stack bar close, close price from legacy profit and direction, and initial stop from risk distance. The orchestration layer must label S1/S2 source stacks explicitly before merging because the cache itself has no stack field. `replay_trade()` scans real bars strictly after the signal for non-pyramid z-limit intents; synthetic carry-forward bars are never eligible for fills or stops. First touch fills exactly at the limit, otherwise the `patience`-th real bar closes as a taker chase. Pyramid legs fill at their signal close. If the candidate fill timestamp is after the original close, return `ReplayOutcome("unfilled", None)`; a fill exactly at the original close is valid only for an immediate same-timestamp adverse stop. On an intrabar maker fill whose bar also reaches the initial stop, force same-timestamp stop exit with adverse slippage.
 
 - [ ] **Step 4: Verify GREEN and symmetry**
 
@@ -267,7 +277,7 @@ Expected: import failure for `conservative.py`.
 
 - [ ] **Step 3: Implement the event-driven conservative evaluator**
 
-Create immutable `EquityPoint(ts, kind, equity)` and `ConservativeResult(total_return, cagr, max_drawdown, calmar, fees, funding_pnl, curve, accepted_trades, skipped_trades)`. Maintain realized cash, open position notional, latest marks, fees, and funding PnL. Event order at equal timestamps is funding, close, open, mark. Size entries from current marked equity; apply concurrency, total leverage, and per-position leverage caps. Deduct entry fees at fill, realize price PnL and exit fee at close, apply `-direction * notional * funding_rate` at settlement, and append equity points for every event and mark. Maximum drawdown uses the complete marked curve, not only closes. Reject missing coverage, non-finite equity, unknown fee roles, duplicate trades, and non-positive equity. A trade rejected by concurrency or leverage is counted in `skipped_trades` and never receives later close/funding events.
+Create immutable `EquityPoint(ts, kind, equity)` and `ConservativeResult(total_return, cagr, max_drawdown, calmar, fees, funding_pnl, curve, accepted_trades, skipped_trades)`. Maintain realized cash, open position notional, latest marks, fees, and funding PnL. Event order at equal timestamps is funding, close, open, mark. Size entries from current marked equity; apply concurrency, total leverage, and per-position leverage caps. Deduct entry fees at fill, realize price PnL and exit fee at close, apply `-direction * notional * funding_rate` at settlement, and append equity points for every event and mark. Maximum drawdown uses the complete marked curve, including explicitly synthesized carry-forward marks, not only closes. Reject any remaining coverage gap, non-finite equity, unknown fee roles, duplicate trades, and non-positive equity. A trade rejected by concurrency or leverage is counted in `skipped_trades` and never receives later close/funding events.
 
 - [ ] **Step 4: Verify GREEN and legacy isolation**
 
@@ -326,7 +336,7 @@ The real values replace the zeros. Do not compare conservative metrics to the le
 
 - [ ] **Step 4: Run real IS comparison and create the tracked reference**
 
-Run with `C:\chanpy\research` and `C:\chanpy\data`. Inspect the report for boundary end `2026-01-01`, finite metrics, hourly coverage, and exact selected-input manifests. Copy only the compact result/assumption section into `freeze_v4_conservative_v2.json`, then rerun the command with `--conservative-reference` so drift becomes a hard failure.
+Run with `C:\chanpy\research` and `C:\chanpy\data`. Inspect the report for boundary end `2026-01-01`, finite metrics, hourly coverage, the exact gap/synthetic-bar manifest, and exact selected-input manifests. Copy only the compact result/assumption section into `freeze_v4_conservative_v2.json`, then rerun the command with `--conservative-reference` so drift becomes a hard failure.
 
 - [ ] **Step 5: Document and run the stage-2 gate**
 
@@ -346,5 +356,5 @@ Expected: all tests pass; legacy CLI still exactly matches; conservative CLI mat
 1. `freeze_v4_legacy_v1.json` and its CLI result remain unchanged.
 2. Every conservative execution rule has a synthetic counterexample test that failed before implementation.
 3. The real report includes marked drawdown, immediate fees, funding PnL, actual maker fill timestamps, same-bar stop count, and unfilled count.
-4. Input manifests select only 2021–2025 logical rows from both SQLite and funding CSV.
+4. Input manifests select only 2021–2025 logical rows from both SQLite and funding CSV; all carry-forward mark bars are flagged and counted, and none participate in execution replay.
 5. The tracked conservative reference is reproduced by a clean command and the offline full suite passes.

@@ -49,7 +49,10 @@
     "entry_patience": 8,
     "stop_slippage": 0.0005,
     "same_bar_policy": "adverse_first",
-    "funding_order": "before_close"
+    "funding_order": "before_close",
+    "funding_interval_ms": 28800000,
+    "market_gap_policy": "carry_forward",
+    "max_mark_gap_intervals": 16
   },
   "splits": {
     "A(21-23)": [

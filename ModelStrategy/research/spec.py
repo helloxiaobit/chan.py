@@ -165,6 +165,9 @@ def load_spec(path: str | Path) -> ResearchSpec:
             "stop_slippage",
             "same_bar_policy",
             "funding_order",
+            "funding_interval_ms",
+            "market_gap_policy",
+            "max_mark_gap_intervals",
         }
         if set(execution_raw) != execution_keys:
             raise ValueError(
@@ -198,6 +201,29 @@ def load_spec(path: str | Path) -> ResearchSpec:
             )
         if execution_raw.get("funding_order") != "before_close":
             raise ValueError("execution.funding_order must be before_close")
+        funding_interval_ms = execution_raw.get("funding_interval_ms")
+        if (
+            type(funding_interval_ms) is not int
+            or funding_interval_ms <= 0
+            or funding_interval_ms % 1000
+        ):
+            raise ValueError(
+                "execution.funding_interval_ms must be a positive whole-second integer"
+            )
+        if execution_raw.get("market_gap_policy") != "carry_forward":
+            raise ValueError(
+                "execution.market_gap_policy must be carry_forward"
+            )
+        max_mark_gap_intervals = execution_raw.get(
+            "max_mark_gap_intervals"
+        )
+        if (
+            type(max_mark_gap_intervals) is not int
+            or max_mark_gap_intervals <= 0
+        ):
+            raise ValueError(
+                "execution.max_mark_gap_intervals must be a positive integer"
+            )
         execution = {
             "mark_level": mark_level,
             "mark_ms": mark_ms,
@@ -205,6 +231,9 @@ def load_spec(path: str | Path) -> ResearchSpec:
             "stop_slippage": stop_slippage,
             "same_bar_policy": "adverse_first",
             "funding_order": "before_close",
+            "funding_interval_ms": funding_interval_ms,
+            "market_gap_policy": "carry_forward",
+            "max_mark_gap_intervals": max_mark_gap_intervals,
         }
 
     split_values = _mapping(top.get("splits"), "splits")
