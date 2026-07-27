@@ -8,6 +8,7 @@
 具体撮合接口(下单/撤单/查单/余额/持仓)由子类实现(CCXTTradeEngine/FutuTradeEngine)。
 """
 import abc
+import hashlib
 import math
 import time
 from typing import Dict, List, Optional
@@ -90,7 +91,13 @@ class CTradeEngine(metaclass=abc.ABCMeta):
         ...
 
     @abc.abstractmethod
-    def query_order(self, code: str, order_id: str) -> COrderResult:
+    def query_order(
+        self,
+        code: str,
+        order_id: Optional[str] = None,
+        *,
+        client_order_id: Optional[str] = None,
+    ) -> COrderResult:
         ...
 
     @abc.abstractmethod
@@ -117,88 +124,232 @@ class CTradeEngine(metaclass=abc.ABCMeta):
             time.sleep(check_interval)
             waited += check_interval
 
+    def make_client_order_id(self, record: dict, phase: str) -> str:
+        if phase not in {"open", "close"}:
+            raise CChanException("客户端订单阶段无效", ErrCode.PARA_ERROR)
+        attempt_field = "open_attempt" if phase == "open" else "cover_attempt"
+        attempt = int(record.get(attempt_field) or 0) + 1
+        seed = "|".join(
+            (
+                phase,
+                str(record["id"]),
+                str(attempt),
+                str(record.get("stock_code") or ""),
+                str(record.get("add_date") or ""),
+            )
+        )
+        digest = hashlib.sha256(seed.encode("utf-8")).hexdigest()[:12]
+        return f"chanpy-{phase[0]}-{record['id']}-{attempt}-{digest}"
+
+    def _strategy_version(self, record: dict) -> str:
+        if record.get("strategy_version"):
+            return str(record["strategy_version"])
+        policy = getattr(self, "safety_policy", None)
+        receipt = getattr(policy, "strategy_receipt", None) or {}
+        return str(receipt.get("strategy_id") or "dry-run-unverified")
+
+    def _position_side(self, record: dict) -> str:
+        return str(
+            record.get("position_side")
+            or getattr(self, "position_side", "BOTH")
+        ).upper()
+
+    def _query_persisted_order(self, record: dict, phase: str) -> COrderResult:
+        if phase == "open":
+            order_id = record.get("open_order_id")
+            client_id = record.get("open_client_order_id")
+        else:
+            order_id = record.get("cover_order_id")
+            client_id = record.get("cover_client_order_id")
+        return self.query_order(
+            record["stock_code"],
+            order_id,
+            client_order_id=client_id,
+        )
+
     def add_trade(self, trade_info: dict, price: float) -> COrderResult:
-        """开仓:trade_info 为信号记录(db_util 查询行),price 为开仓参考价"""
+        """先持久化开仓意图，再提交并应用交易所累计成交量。"""
         record_id = trade_info["id"]
-        code = trade_info["stock_code"]
+        record = self.chan_db.get_record(record_id)
+        code = record["stock_code"]
         quota = self.quota_gen.get_quota(code, price)
         if quota <= 0:
             raise CChanException(f"仓位计算为0: {code} price={price}", ErrCode.QUOTA_NOT_ENOUGH)
-        self.rate_limit()
-        order = self.place_order(code, bool(trade_info["is_buy"]), quota, price)
-        self.chan_db.mark_open(
+        client_id = self.make_client_order_id(record, "open")
+        position_side = self._position_side(record)
+        acquired = self.chan_db.acquire_open_intent(
             record_id,
-            open_price=order.avg_price or price,
-            quota=order.filled or quota,
-            order_id=order.order_id,
-            score_before=trade_info.get("model_score_before"),
+            requested_qty=quota,
+            client_order_id=client_id,
+            position_side=position_side,
+            strategy_version=self._strategy_version(record),
+            risk_multiplier=float(record.get("risk_multiplier") or 1.0),
+            score_before=record.get("model_score_before"),
             snapshot={"price": price},
         )
+        if not acquired:
+            raise CChanException(
+                f"开仓意图已被其他进程获取 id={record_id}",
+                ErrCode.SIGNAL_TRADED,
+            )
+        self.rate_limit()
+        order = self.place_order(
+            code,
+            bool(record["is_buy"]),
+            quota,
+            price,
+            client_order_id=client_id,
+            position_side=position_side,
+        )
+        self.chan_db.record_open_submission(
+            record_id, order.order_id, order.status
+        )
+        self.chan_db.apply_open_fill(
+            record_id, order.filled, order.avg_price, order.status
+        )
         if self.push_msg:
-            bs = "买开" if trade_info["is_buy"] else "卖开"
-            send_msg("开仓", f"{code} {bs} {order.filled or quota}@{order.avg_price or price}"
-                             f" bstype={trade_info['bstype']} id={record_id}")
+            bs = "买开" if record["is_buy"] else "卖开"
+            send_msg(
+                "开仓订单",
+                f"{code} {bs} filled={order.filled}/{order.requested} "
+                f"avg={order.avg_price or 'NA'} status={order.status} "
+                f"bstype={record['bstype']} id={record_id}",
+            )
         return order
 
     def cover_trade(self, record: dict, price: Optional[float], reason: str) -> COrderResult:
-        """平仓:对已开仓记录反向下单"""
+        """先持久化平仓意图，再以 reduce-only 提交当前剩余数量。"""
         record_id = record["id"]
+        record = self.chan_db.get_record(record_id)
         code = record["stock_code"]
-        quota = record["quota"]
+        quota = float(record.get("current_qty") or 0)
+        if quota <= 0:
+            raise CChanException(
+                f"当前仓位为 0: id={record_id}", ErrCode.RECORD_NOT_OPENED
+            )
+        client_id = self.make_client_order_id(record, "close")
+        acquired = self.chan_db.acquire_close_intent(
+            record_id,
+            requested_qty=quota,
+            client_order_id=client_id,
+            reason=reason,
+        )
+        if not acquired:
+            raise CChanException(
+                f"平仓意图已被其他进程获取 id={record_id}",
+                ErrCode.SIGNAL_TRADED,
+            )
         self.rate_limit()
         order = self.place_order(
             code,
             not bool(record["is_buy"]),
             quota,
             price,
+            client_order_id=client_id,
             reduce_only=True,
+            position_side=self._position_side(record),
         )
-        self.chan_db.mark_cover_order(record_id, order.order_id, quota, reason)
-        if order.status == "closed" and order.avg_price is not None:
-            self.chan_db.mark_cover_done(record_id, order.avg_price)
+        self.chan_db.record_close_submission(
+            record_id, order.order_id, order.status
+        )
+        self.chan_db.apply_close_fill(
+            record_id, order.filled, order.avg_price, order.status
+        )
         if self.push_msg:
             bs = "卖平" if record["is_buy"] else "买平"
             profit = None
             if order.avg_price and record["open_price"]:
                 rate = (order.avg_price - record["open_price"]) / record["open_price"]
                 profit = rate * 100 if record["is_buy"] else -rate * 100
-            send_msg("平仓", f"{code} {bs} {quota}@{order.avg_price or price} reason={reason}"
-                             f" profit={f'{profit:.2f}%' if profit is not None else 'NA'} id={record_id}")
+            send_msg(
+                "平仓订单",
+                f"{code} {bs} filled={order.filled}/{order.requested} "
+                f"avg={order.avg_price or 'NA'} status={order.status} "
+                f"reason={reason} "
+                f"profit={f'{profit:.2f}%' if profit is not None else 'NA'} "
+                f"id={record_id}",
+            )
         return order
 
     def poll_orders(self, times: int = 3, interval: float = 5.0, adjust_price: bool = True):
-        """轮询未成交平仓单:times 次后仍未成交则撤单重下(订单微调)"""
-        for _ in range(times):
-            pending = self.chan_db.get_uncovered_orders()
+        """轮询平仓；最后一轮仅在撤单终态确认后重下剩余数量。"""
+        for index in range(times):
+            pending = [
+                rec for rec in self.chan_db.get_recoverable_records()
+                if rec["status"] == "closing"
+            ]
             if not pending:
                 return
             for rec in pending:
                 self.rate_limit()
-                order = self.query_order(rec["stock_code"], rec["cover_order_id"])
-                if order.status == "closed":
-                    self.chan_db.mark_cover_done(rec["id"], order.avg_price or rec["open_price"])
-                elif adjust_price and order.status == "open":
-                    # 未成交:撤单后市价重下
-                    self.cancel_order(rec["stock_code"], rec["cover_order_id"])
-                    new_order = self.place_order(
-                        rec["stock_code"],
-                        not bool(rec["is_buy"]),
-                        rec["quota"],
-                        None,
-                        reduce_only=True,
+                try:
+                    order = self._query_persisted_order(rec, "close")
+                except CChanException as exc:
+                    if exc.errcode == ErrCode.LIST_ORDER_FAIL:
+                        continue
+                    raise
+                self.chan_db.record_close_submission(
+                    rec["id"], order.order_id, order.status
+                )
+                self.chan_db.apply_close_fill(
+                    rec["id"], order.filled, order.avg_price, order.status
+                )
+                current = self.chan_db.get_record(rec["id"])
+                if current["status"] == "closed":
+                    continue
+                if not adjust_price or index != times - 1:
+                    continue
+
+                confirmed = order
+                if order.status == "open":
+                    if not self.cancel_order(rec["stock_code"], order.order_id):
+                        continue
+                    confirmed = self._query_persisted_order(current, "close")
+                    if confirmed.status == "open":
+                        continue
+                    self.chan_db.record_close_submission(
+                        rec["id"], confirmed.order_id, confirmed.status
                     )
-                    self.chan_db.mark_cover_order(rec["id"], new_order.order_id, rec["quota"], rec["cover_reason"] or "retrade")
-                    if new_order.status == "closed":
-                        self.chan_db.mark_cover_done(rec["id"], new_order.avg_price)
-            time.sleep(interval)
+                    self.chan_db.apply_close_fill(
+                        rec["id"],
+                        confirmed.filled,
+                        confirmed.avg_price,
+                        confirmed.status,
+                    )
+                current = self.chan_db.get_record(rec["id"])
+                if confirmed.status != "open" and current["status"] == "open":
+                    self.cover_trade(
+                        current,
+                        None,
+                        current.get("cover_reason") or "retrade",
+                    )
+            if index != times - 1 and interval > 0:
+                time.sleep(interval)
 
     def restore(self) -> List[dict]:
-        """现场恢复:重启后核对开仓在途/平仓在途订单状态,防止重复开仓"""
+        """按订单号或客户端订单号核对在途订单，不进行猜测性重下。"""
         restored = []
-        for rec in self.chan_db.get_open_records():
-            if rec["cover_order_id"]:  # 平仓单在途
-                order = self.query_order(rec["stock_code"], rec["cover_order_id"])
-                if order.status == "closed":
-                    self.chan_db.mark_cover_done(rec["id"], order.avg_price or rec["open_price"])
-                restored.append(rec)
+        for rec in self.chan_db.get_recoverable_records():
+            phase = "close" if rec["status"] == "closing" else "open"
+            try:
+                order = self._query_persisted_order(rec, phase)
+            except CChanException as exc:
+                if exc.errcode == ErrCode.LIST_ORDER_FAIL:
+                    continue
+                raise
+            if phase == "open":
+                self.chan_db.record_open_submission(
+                    rec["id"], order.order_id, order.status
+                )
+                self.chan_db.apply_open_fill(
+                    rec["id"], order.filled, order.avg_price, order.status
+                )
+            else:
+                self.chan_db.record_close_submission(
+                    rec["id"], order.order_id, order.status
+                )
+                self.chan_db.apply_close_fill(
+                    rec["id"], order.filled, order.avg_price, order.status
+                )
+            restored.append(self.chan_db.get_record(rec["id"]))
         return restored

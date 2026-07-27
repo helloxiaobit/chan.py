@@ -30,7 +30,8 @@ def close_pre_error_open(
             if price is not None and hasattr(engine, "set_sim_price"):
                 engine.set_sim_price(code, price)
             engine.cover_trade(rec, price, reason=f"open_err: {rec['open_err_reason']}")
-            closed.append(rec["id"])
+            if db.get_record(rec["id"])["status"] in {"closed", "cover"}:
+                closed.append(rec["id"])
         except CChanException as e:
             db.set_close_err(rec["id"], str(e))
             send_msg("错误开仓修复失败", f"{code} id={rec['id']}: {e}", level="ERROR")

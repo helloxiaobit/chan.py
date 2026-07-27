@@ -3,8 +3,12 @@ import sqlite3
 import pytest
 
 from Common.ChanException import CChanException, ErrCode
+from Trade.CCXTTradeEngine import CCCXTTradeEngine
 from Trade.db_util import CChanDB
 from Trade.MysqlDB import CREATE_TABLE_SQL as MYSQL_CREATE_TABLE_SQL
+from Trade.OpenQuotaGen import CBenchPriceQuotaGen
+from Trade.Script.MakeOpenTrade import make_open_trade
+from Trade.Script.OpenConfig import COpenConfig
 
 from .test_m6_trade import make_signal
 
@@ -239,3 +243,147 @@ def test_mysql_fresh_schema_has_state_machine_parity():
         "risk_multiplier",
     ):
         assert column in MYSQL_CREATE_TABLE_SQL
+
+
+def dry_engine(db, sim_state=None):
+    return CCCXTTradeEngine(
+        db,
+        quota_gen=CBenchPriceQuotaGen(1000.0),
+        ccxt_conf={"mode": "dry_run", "default_type": "spot"},
+        trade_conf={},
+        environ={},
+        sim_state=sim_state,
+        push_msg=False,
+    )
+
+
+def test_add_trade_persists_intent_first_and_zero_fill_is_not_open(
+    trade_db, monkeypatch
+):
+    record_id = trade_db.add_signal(make_signal(open_thred=100.0))
+    record = trade_db.get_record(record_id)
+    engine = dry_engine(trade_db)
+    client_id = engine.make_client_order_id(record, "open")
+    engine.set_sim_fill_plan(client_id, [0.0])
+    original_place_order = engine.place_order
+
+    def inspect_then_place(*args, **kwargs):
+        persisted = trade_db.get_record(record_id)
+        assert persisted["status"] == "submitted"
+        assert persisted["open_client_order_id"] == client_id
+        assert persisted["open_order_id"] is None
+        return original_place_order(*args, **kwargs)
+
+    monkeypatch.setattr(engine, "place_order", inspect_then_place)
+    result = engine.add_trade(record, 100.0)
+
+    persisted = trade_db.get_record(record_id)
+    assert result.filled == 0.0
+    assert persisted["status"] == "submitted"
+    assert not persisted["is_open"]
+    assert persisted["quota"] == 0.0
+    assert persisted["open_order_id"] == result.order_id
+
+
+def test_make_open_trade_does_not_report_zero_fill_as_open(trade_db):
+    record_id = trade_db.add_signal(make_signal(open_thred=100.0))
+    record = trade_db.get_record(record_id)
+    engine = dry_engine(trade_db)
+    engine.set_sim_fill_plan(
+        engine.make_client_order_id(record, "open"), [0.0]
+    )
+
+    opened = make_open_trade(
+        trade_db,
+        engine,
+        COpenConfig(),
+        price_map={"TEST/USDT": 100.5},
+    )
+
+    assert opened == []
+    assert trade_db.get_record(record_id)["status"] == "submitted"
+
+
+def test_restart_recovers_open_by_client_id_without_resubmission(trade_db):
+    record_id = trade_db.add_signal(make_signal())
+    record = trade_db.get_record(record_id)
+    engine1 = dry_engine(trade_db)
+    client_id = engine1.make_client_order_id(record, "open")
+    assert trade_db.acquire_open_intent(record_id, 10.0, client_id)
+    engine1.set_sim_fill_plan(client_id, [0.0, 4.0, 10.0])
+    placed = engine1.place_order(
+        "TEST/USDT", True, 10.0, 100.0, client_order_id=client_id
+    )
+    assert placed.filled == 0.0
+    assert trade_db.get_record(record_id)["open_order_id"] is None
+
+    engine2 = dry_engine(trade_db, sim_state=engine1.sim_state)
+    engine2.restore()
+    partial = trade_db.get_record(record_id)
+    assert partial["status"] == "partially_filled"
+    assert partial["open_order_id"] == placed.order_id
+    assert partial["current_qty"] == 4.0
+    assert len(engine2.sim_state.orders) == 1
+
+    engine2.restore()
+    opened = trade_db.get_record(record_id)
+    assert opened["status"] == "open"
+    assert opened["current_qty"] == 10.0
+    assert engine2.get_position("TEST/USDT") == 10.0
+    assert len(engine2.sim_state.orders) == 1
+
+
+def test_partial_close_recovery_cancel_and_retry_use_only_remaining_qty(
+    trade_db
+):
+    record_id = trade_db.add_signal(make_signal())
+    engine1 = dry_engine(trade_db)
+    engine1.add_trade(trade_db.get_record(record_id), 100.0)
+    opened = trade_db.get_record(record_id)
+    close_client_1 = engine1.make_client_order_id(opened, "close")
+    engine1.set_sim_fill_plan(close_client_1, [0.0, 4.0])
+    engine1.cover_trade(opened, 95.0, "stop_loss")
+    assert trade_db.get_record(record_id)["status"] == "closing"
+
+    engine2 = dry_engine(trade_db, sim_state=engine1.sim_state)
+    engine2.restore()
+    partial = trade_db.get_record(record_id)
+    assert partial["current_qty"] == 6.0
+    assert partial["cover_filled_qty"] == 4.0
+    assert partial["cover_attempt"] == 1
+
+    engine2.restore()
+    repeated = trade_db.get_record(record_id)
+    assert repeated["current_qty"] == 6.0
+    assert repeated["cover_filled_qty"] == 4.0
+
+    engine2.poll_orders(times=1, interval=0, adjust_price=True)
+    closed = trade_db.get_record(record_id)
+    assert closed["status"] == "closed"
+    assert closed["current_qty"] == 0.0
+    assert closed["cover_filled_qty"] == 10.0
+    assert closed["cover_attempt"] == 2
+    assert closed["cover_client_order_id"] != close_client_1
+    assert engine2.get_position("TEST/USDT") == 0.0
+    assert len(engine2.sim_state.orders) == 3
+
+
+def test_close_is_not_retried_until_cancel_is_confirmed(
+    trade_db, monkeypatch
+):
+    record_id = trade_db.add_signal(make_signal())
+    engine = dry_engine(trade_db)
+    engine.add_trade(trade_db.get_record(record_id), 100.0)
+    opened = trade_db.get_record(record_id)
+    client_id = engine.make_client_order_id(opened, "close")
+    engine.set_sim_fill_plan(client_id, [0.0])
+    engine.cover_trade(opened, 95.0, "stop_loss")
+
+    monkeypatch.setattr(engine, "cancel_order", lambda code, order_id: True)
+    engine.poll_orders(times=1, interval=0, adjust_price=True)
+
+    pending = trade_db.get_record(record_id)
+    assert pending["status"] == "closing"
+    assert pending["cover_attempt"] == 1
+    assert pending["current_qty"] == 10.0
+    assert len(engine.sim_state.orders) == 2

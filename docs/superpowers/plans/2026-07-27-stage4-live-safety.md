@@ -88,14 +88,14 @@ restart reconciles pending client/order IDs instead of submitting a duplicate.
 - Test: `tests/test_trade_state_machine.py`
 - Test: `tests/test_m6_trade.py`
 
-- [ ] Persist open/close intent before exchange submission and derive deterministic
+- [x] Persist open/close intent before exchange submission and derive deterministic
   client IDs from the database record/attempt.
-- [ ] Apply only exchange-reported cumulative fills; do not use `filled or planned`.
-- [ ] Recover opening and closing orders by order ID or client ID; repeated recovery
+- [x] Apply only exchange-reported cumulative fills; do not use `filled or planned`.
+- [x] Recover opening and closing orders by order ID or client ID; repeated recovery
   must not resubmit or double-apply fills.
-- [ ] Cancel/retry a close only after cancellation is confirmed, then submit only the
+- [x] Cancel/retry a close only after cancellation is confirmed, then submit only the
   remaining quantity as reduce-only with a new client ID.
-- [ ] Verify and commit.
+- [x] Verify and commit.
 
 ### Task 5: Offline dry-run acceptance and operator documentation
 

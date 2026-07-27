@@ -79,7 +79,17 @@ class CFutuTradeEngine(CTradeEngine):
             raise CChanException(f"futu 撤单失败: {data}", ErrCode.CANDEL_ORDER_FAIL)
         return True
 
-    def query_order(self, code: str, order_id: str) -> COrderResult:
+    def query_order(
+        self,
+        code: str,
+        order_id: Optional[str] = None,
+        *,
+        client_order_id: Optional[str] = None,
+    ) -> COrderResult:
+        if order_id is None:
+            raise CChanException(
+                "futu 查单需要交易所订单号", ErrCode.LIST_ORDER_FAIL
+            )
         ft = self.ft
         ret, data = self.trd_ctx.order_list_query(order_id=order_id, trd_env=self.trd_env)
         if ret != ft.RET_OK or len(data) == 0:

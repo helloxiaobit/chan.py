@@ -5,7 +5,7 @@ dry_run 模式绝不创建交易所会话。默认立即成交，也可按客户
 """
 import itertools
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Dict, List, Optional
 
 from Common.ChanException import CChanException, ErrCode
@@ -39,6 +39,22 @@ class _SimOrder:
     next_fill: int = 0
 
 
+@dataclass
+class CSimExchangeState:
+    """可在引擎重建后复用的离线交易所状态。"""
+
+    order_id_gen: object = field(default_factory=lambda: itertools.count(1))
+    orders: Dict[str, COrderResult] = field(default_factory=dict)
+    order_state: Dict[str, _SimOrder] = field(default_factory=dict)
+    client_order_ids: Dict[str, str] = field(default_factory=dict)
+    fill_plans: Dict[str, List[float]] = field(default_factory=dict)
+    positions: Dict[str, float] = field(default_factory=dict)
+    balance: Dict[str, float] = field(
+        default_factory=lambda: {"USDT": 100000.0}
+    )
+    last_price: Dict[str, float] = field(default_factory=dict)
+
+
 def _normalize_order_status(value) -> str:
     status = str(value or "").lower()
     if status not in _CCXT_STATUS_MAP:
@@ -55,6 +71,7 @@ class CCCXTTradeEngine(CTradeEngine):
         ccxt_conf: Optional[dict] = None,
         trade_conf: Optional[dict] = None,
         environ=None,
+        sim_state: Optional[CSimExchangeState] = None,
         push_msg: bool = True,
     ):
         super(CCCXTTradeEngine, self).__init__(
@@ -102,13 +119,19 @@ class CCCXTTradeEngine(CTradeEngine):
         self.position_side = default_side
         self.exchange = None
         # dry_run 状态
-        self._order_id_gen = itertools.count(1)
-        self._sim_orders: Dict[str, COrderResult] = {}
-        self._sim_order_state: Dict[str, _SimOrder] = {}
-        self._sim_fill_plans: Dict[str, List[float]] = {}
-        self._sim_positions: Dict[str, float] = {}
-        self._sim_balance: Dict[str, float] = {"USDT": 100000.0}
-        self._sim_last_price: Dict[str, float] = {}
+        if sim_state is not None and not self.dry_run:
+            raise CChanException(
+                "sim_state 只能用于 dry_run", ErrCode.PARA_ERROR
+            )
+        self.sim_state = sim_state or CSimExchangeState()
+        self._order_id_gen = self.sim_state.order_id_gen
+        self._sim_orders = self.sim_state.orders
+        self._sim_order_state = self.sim_state.order_state
+        self._sim_client_order_ids = self.sim_state.client_order_ids
+        self._sim_fill_plans = self.sim_state.fill_plans
+        self._sim_positions = self.sim_state.positions
+        self._sim_balance = self.sim_state.balance
+        self._sim_last_price = self.sim_state.last_price
 
     def get_exchange(self):
         if self.dry_run:
@@ -221,19 +244,50 @@ class CCCXTTradeEngine(CTradeEngine):
         except ccxt.BaseError as e:
             raise CChanException(f"撤单失败 {code} {order_id}: {e}", ErrCode.CANDEL_ORDER_FAIL) from e
 
-    def query_order(self, code: str, order_id: str) -> COrderResult:
+    def query_order(
+        self,
+        code: str,
+        order_id: Optional[str] = None,
+        *,
+        client_order_id: Optional[str] = None,
+    ) -> COrderResult:
         if self.dry_run:
+            if order_id is None and client_order_id:
+                order_id = self._sim_client_order_ids.get(client_order_id)
             if order_id not in self._sim_orders:
-                raise CChanException(f"订单不存在 {order_id}", ErrCode.LIST_ORDER_FAIL)
+                identity = order_id or client_order_id
+                raise CChanException(f"订单不存在 {identity}", ErrCode.LIST_ORDER_FAIL)
             state = self._sim_order_state[order_id]
             if state.result.status == "open":
                 self._advance_sim_order(state)
             return state.result
         import ccxt
         try:
-            order = self.get_exchange().fetch_order(order_id, code)
+            exchange = self.get_exchange()
+            if order_id is not None:
+                order = exchange.fetch_order(order_id, code)
+            elif client_order_id:
+                matches = [
+                    item for item in exchange.fetch_orders(code)
+                    if (
+                        item.get("clientOrderId")
+                        or item.get("client_order_id")
+                    ) == client_order_id
+                ]
+                if len(matches) != 1:
+                    raise CChanException(
+                        f"客户端订单号匹配数量不是 1: {client_order_id}",
+                        ErrCode.LIST_ORDER_FAIL,
+                    )
+                order = matches[0]
+            else:
+                raise CChanException(
+                    "查单需要交易所订单号或客户端订单号",
+                    ErrCode.LIST_ORDER_FAIL,
+                )
         except ccxt.BaseError as e:
-            raise CChanException(f"查单失败 {code} {order_id}: {e}", ErrCode.LIST_ORDER_FAIL) from e
+            identity = order_id or client_order_id
+            raise CChanException(f"查单失败 {code} {identity}: {e}", ErrCode.LIST_ORDER_FAIL) from e
         return self._result_from_ccxt(order)
 
     def get_balance(self) -> Dict[str, float]:
@@ -371,6 +425,19 @@ class CCCXTTradeEngine(CTradeEngine):
                 raise CChanException(f"dry_run 市价单需要先 set_sim_price({code})", ErrCode.PLACE_ORDER_FAIL)
         price = float(price)
         self._validate_sim_bounds(code, is_buy, amount, price, reduce_only)
+        if client_order_id in self._sim_client_order_ids:
+            existing_id = self._sim_client_order_ids[client_order_id]
+            existing = self._sim_order_state[existing_id]
+            if (
+                existing.code != code
+                or existing.is_buy != is_buy
+                or existing.result.requested != amount
+                or existing.reduce_only != reduce_only
+            ):
+                raise CChanException(
+                    "客户端订单号已被不同意图使用", ErrCode.PLACE_ORDER_FAIL
+                )
+            return existing.result
         sequence = next(self._order_id_gen)
         client_id = client_order_id or f"sim_client_{sequence}"
         fill_plan = self._sim_fill_plans.pop(client_id, [amount])
@@ -396,6 +463,7 @@ class CCCXTTradeEngine(CTradeEngine):
         )
         self._sim_orders[order.order_id] = order
         self._sim_order_state[order.order_id] = state
+        self._sim_client_order_ids[client_id] = order.order_id
         self._sim_last_price[code] = price
         self._advance_sim_order(state)
         return order

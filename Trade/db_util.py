@@ -111,6 +111,8 @@ class CChanDB:
         position_side: str = "BOTH",
         strategy_version: str = "",
         risk_multiplier: float = 1.0,
+        score_before: Optional[float] = None,
+        snapshot: Optional[dict] = None,
     ) -> bool:
         requested = _positive_qty(requested_qty, "开仓请求量")
         if not client_order_id:
@@ -128,7 +130,9 @@ class CChanDB:
             "open_order_status='created', "
             "open_attempt=COALESCE(open_attempt, 0)+1, "
             "order_last_update=?, position_side=?, strategy_version=?, "
-            "risk_multiplier=? "
+            "risk_multiplier=?, "
+            "model_score_before=COALESCE(?, model_score_before), "
+            "snapshot_before=? "
             "WHERE id=? AND status='signal' AND watching=1 AND is_open=0 "
             "AND COALESCE(open_client_order_id, '')=''",
             (
@@ -138,10 +142,19 @@ class CChanDB:
                 side,
                 strategy_version,
                 risk,
+                score_before,
+                json.dumps(snapshot or {}, ensure_ascii=False, default=str),
                 record_id,
             ),
         )
         return changed == 1
+
+    def get_recoverable_records(self) -> List[dict]:
+        return self.db.query(
+            f"SELECT * FROM {self.table} WHERE "
+            "status IN ('submitted', 'partially_filled', 'closing') "
+            "ORDER BY id"
+        )
 
     def record_open_submission(
         self, record_id: int, order_id: str, order_status: str
