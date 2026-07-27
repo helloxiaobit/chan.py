@@ -178,7 +178,7 @@ def _stop_touched(intent: ExecutionIntent, bar: MarketBar) -> bool:
     return bar.high >= intent.initial_sl_price
 
 
-def _filled_trade(
+def record_fill(
     intent: ExecutionIntent,
     *,
     fill_ts: float,
@@ -188,6 +188,7 @@ def _filled_trade(
     fill_bar: MarketBar | None,
     stop_slippage: float,
 ) -> ExecutionTrade:
+    """Materialize one proven fill and apply the adverse same-bar stop rule."""
     close_ts = intent.close_ts
     close_price = intent.close_price
     exit_role = intent.exit_role
@@ -241,7 +242,7 @@ def replay_trade(
         raise ValueError("stop_slippage must be at least zero and below one")
 
     if intent.is_pyramid:
-        replayed = _filled_trade(
+        replayed = record_fill(
             intent,
             fill_ts=intent.signal_ts,
             open_price=intent.limit_price,
@@ -292,7 +293,7 @@ def replay_trade(
                 return ReplayOutcome(
                     "unfilled", None, "touch_at_original_close"
                 )
-            replayed = _filled_trade(
+            replayed = record_fill(
                 intent,
                 fill_ts=current.ts,
                 open_price=intent.limit_price,
@@ -307,7 +308,7 @@ def replay_trade(
                 return ReplayOutcome(
                     "unfilled", None, "patience_reached_at_close"
                 )
-            replayed = _filled_trade(
+            replayed = record_fill(
                 intent,
                 fill_ts=current.ts,
                 open_price=current.close,
