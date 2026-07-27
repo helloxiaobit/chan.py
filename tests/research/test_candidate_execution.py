@@ -1,4 +1,5 @@
 import os
+from collections import Counter
 from pathlib import Path
 
 import pytest
@@ -219,12 +220,12 @@ def test_risk_exit_remains_at_original_taker_close():
     )
 
 
-def test_real_corrected_s1bz_first_maker_fill_aligns_with_utc_bar():
+def test_real_corrected_btc_candidate_execution_audit():
     research_root_text = os.environ.get("CHANPY_RESEARCH_ROOT")
     if research_root_text is None:
         pytest.skip("set CHANPY_RESEARCH_ROOT to audit real candidate inputs")
     research_root = Path(research_root_text)
-    dataset = load_candidate_dataset(
+    s1_dataset = load_candidate_dataset(
         research_root
         / "normalized"
         / "v5"
@@ -233,7 +234,7 @@ def test_real_corrected_s1bz_first_maker_fill_aligns_with_utc_bar():
         expected_stack="S1bz[4H,1H,15M]",
         expected_entry_kind="strategy_fill",
     )
-    bars = load_market_series(
+    hourly = load_market_series(
         research_root / "btc_mlv.db",
         "BTC/USDT",
         "K_60M",
@@ -241,13 +242,87 @@ def test_real_corrected_s1bz_first_maker_fill_aligns_with_utc_bar():
         parse_utc("2021-01-01"),
         parse_utc("2026-01-01"),
     )
-    first = dataset.trades[0]
+    first = s1_dataset.trades[0]
+    assert s1_dataset.source.timestamp_offset_seconds == 28800
     assert first.bs_type.startswith("z") and not first.is_pyramid
     audited = audit_strategy_fill(
         first,
-        bars,
-        stack=dataset.stack,
+        hourly,
+        stack=s1_dataset.stack,
         stop_slippage=0.0005,
     )
     assert audited.fill_ts == first.entry_ts
     assert audited.entry_role == "maker"
+
+    end_ts = parse_utc("2026-01-01")
+    eligible_reasons = ("reverse_bsp", "trend_flip", "time_stop")
+    counts = Counter()
+    for source in s1_dataset.trades:
+        trade = audit_strategy_fill(
+            source,
+            hourly,
+            stack=s1_dataset.stack,
+            stop_slippage=0.0005,
+        )
+        counts[f"s1_{trade.entry_role}"] += 1
+        trade = replay_zexit(
+            trade,
+            hourly,
+            eligible_reasons=eligible_reasons,
+            patience=8,
+            end_exclusive_ts=end_ts,
+        )
+        counts[f"s1_exit_{trade.exit_role}"] += 1
+
+    s2_dataset = load_candidate_dataset(
+        research_root
+        / "normalized"
+        / "v5"
+        / "BTC_USDT__S2py10__2021-2025.json",
+        expected_symbol="BTC/USDT",
+        expected_stack="S2py10[1D,4H]",
+        expected_entry_kind="signal_intent",
+    )
+    assert s2_dataset.source.timestamp_offset_seconds == 28800
+    four_hour = load_market_series(
+        research_root / "btc_mlv.db",
+        "BTC/USDT",
+        "K_4H",
+        14400000,
+        parse_utc("2021-01-01"),
+        end_ts,
+    )
+    for source in s2_dataset.trades:
+        outcome = replay_signal_intent(
+            source,
+            four_hour,
+            stack=s2_dataset.stack,
+            patience=8,
+            stop_slippage=0.0005,
+        )
+        counts[f"s2_{outcome.status}"] += 1
+        if outcome.trade is None:
+            continue
+        counts[f"s2_{outcome.trade.entry_role}"] += 1
+        trade = replay_zexit(
+            outcome.trade,
+            four_hour,
+            eligible_reasons=eligible_reasons,
+            patience=8,
+            end_exclusive_ts=end_ts,
+        )
+        counts[f"s2_exit_{trade.exit_role}"] += 1
+
+    assert counts == Counter(
+        {
+            "s1_maker": 271,
+            "s1_taker": 59,
+            "s1_exit_maker": 180,
+            "s1_exit_taker": 150,
+            "s2_filled": 95,
+            "s2_maker": 64,
+            "s2_taker": 31,
+            "s2_exit_maker": 70,
+            "s2_exit_taker": 25,
+        }
+    )

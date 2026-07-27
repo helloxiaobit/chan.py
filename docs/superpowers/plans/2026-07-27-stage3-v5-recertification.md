@@ -152,18 +152,18 @@ timestamps. The environment-backed first S1bz maker-fill audit passed on its UTC
 - Create: `ModelStrategy/research/candidate_execution.py`
 - Test: `tests/research/test_candidate_execution.py`
 
-- [ ] **Step 1: Write failing execution counterexamples**
+- [x] **Step 1: Write failing execution counterexamples**
 
 Cover maker fills outside OHLC, synthetic fill bars, missing real bars, taker chase,
 same-bar adverse stops, long/short symmetry, first-touch z-exit, z-exit patience
 chase, stop-loss taker exits, exit-window gaps, and exits that would cross the IS
 boundary.
 
-- [ ] **Step 2: Verify RED**
+- [x] **Step 2: Verify RED**
 
 Run: `pytest tests/research/test_candidate_execution.py -q`
 
-- [ ] **Step 3: Implement entry audit and exit replay**
+- [x] **Step 3: Implement entry audit and exit replay**
 
 For S1bz, preserve the strategy's actual fill timestamp/price but require a raw real
 bar and verify maker price touch. For S2py10, reuse `build_intent()` and
@@ -172,7 +172,13 @@ risk distance. Replay only `reverse_bsp`, `trend_flip`, and `time_stop` through
 z-exit; all risk exits remain taker. A maker exit changes the actual close timestamp
 to its first real touch, while an unfilled order chases at the patience bar close.
 
-- [ ] **Step 4: Verify GREEN and commit**
+- [x] **Step 4: Verify GREEN and commit**
+
+**Execution receipt after UTC remediation:** all 330 S1bz strategy fills audited
+against real `K_60M` bars (271 maker, 59 taker), with 180 maker and 150 taker
+final exits after z-exit replay. All 95 S2py10 intents filled on `K_4H` (64 maker,
+31 taker), with 70 maker and 25 taker final exits. The full environment-backed
+audit reported zero errors and no replay crossed the 2026 boundary.
 
 ### Task 4: Build the auditable BTC IS gate and stop on failure
 
