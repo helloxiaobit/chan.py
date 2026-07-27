@@ -114,6 +114,7 @@ class CCXT(CCommonStockApi):
             DATA_FIELD.FIELD_TIME: CTime(
                 time_obj.year, time_obj.month, time_obj.day, time_obj.hour, time_obj.minute,
                 auto=not kltype_lt_day(self.k_type),
+                tzinfo=timezone.utc,
             ),
             DATA_FIELD.FIELD_OPEN: float(ohlcv[1]),
             DATA_FIELD.FIELD_HIGH: float(ohlcv[2]),

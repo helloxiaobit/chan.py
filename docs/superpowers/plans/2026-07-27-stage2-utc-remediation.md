@@ -28,13 +28,13 @@ Asia/Shanghai-generated caches.
 - Modify: `DataAPI/ccxt.py`
 - Create: `tests/test_ctime_timezone.py`
 
-- [ ] Write failing tests proving an explicit UTC `CTime` equals the same epoch
+- [x] Write failing tests proving an explicit UTC `CTime` equals the same epoch
   regardless of process timezone, while the default constructor preserves legacy
   local semantics for non-crypto adapters.
-- [ ] Prove offline SQLite/CSV and CCXT readers attach UTC semantics to crypto bars.
-- [ ] Implement an optional timezone on `CTime` and pass `timezone.utc` only from
+- [x] Prove offline SQLite/CSV and CCXT readers attach UTC semantics to crypto bars.
+- [x] Implement an optional timezone on `CTime` and pass `timezone.utc` only from
   crypto readers.
-- [ ] Run focused data/multilevel tests and commit.
+- [x] Run focused data/multilevel tests and commit.
 
 ### Task 2: Version and validate the historical timestamp correction
 
