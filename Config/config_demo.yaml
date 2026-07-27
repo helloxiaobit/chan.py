@@ -41,6 +41,7 @@ notify:
 
 ccxt:
   exchange: binance                # ccxt 交易所 id,如 binance / okx
+  mode: dry_run                    # dry_run / testnet / live;密钥不会自动改变模式
   api_key: ""
   secret: ""
   password: ""                     # okx 等交易所需要
@@ -64,3 +65,6 @@ trade:                             # 线上交易例行(Trade/Script)配置
   strategy: multi_lv               # multi_lv(三级联立) / custom(单级别demo策略)
   lv_list: [K_4H, K_60M, K_15M]    # 多级别从大到小:趋势/交易/入场;单级别用 lv: K_60M
   bench_price: 1000                # 单笔开仓名义金额(USDT)
+  strategy_receipt: ""             # testnet/live 必须指向 status=candidate 的认证收据
+  strategy_id: ""                  # 可选:与收据严格比对
+  strategy_spec_hash: ""           # 可选:与收据严格比对

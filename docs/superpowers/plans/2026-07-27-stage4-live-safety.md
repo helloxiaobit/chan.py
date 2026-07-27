@@ -31,14 +31,14 @@ restart reconciles pending client/order IDs instead of submitting a duplicate.
 - Modify: `Config/config_demo.yaml`
 - Test: `tests/test_trade_safety.py`
 
-- [ ] Write failing tests proving API keys alone remain dry-run, unknown modes fail,
+- [x] Write failing tests proving API keys alone remain dry-run, unknown modes fail,
   testnet/live require a passing strategy receipt, and the tracked v5 rejection is
   refused.
-- [ ] Require `CHANPY_ENABLE_TESTNET=YES` for testnet and the exact
+- [x] Require `CHANPY_ENABLE_TESTNET=YES` for testnet and the exact
   `CHANPY_LIVE_TRADING_UNLOCK=I_ACCEPT_REAL_ORDERS` token for live; recheck a
   `CHANPY_KILL_SWITCH` before every non-dry-run order.
-- [ ] Never instantiate CCXT in dry-run and never include secrets in errors/logs.
-- [ ] Verify and commit.
+- [x] Never instantiate CCXT in dry-run and never include secrets in errors/logs.
+- [x] Verify and commit.
 
 ### Task 2: Explicit order intent and bounded dry-run semantics
 

@@ -11,6 +11,7 @@ from Common.ChanException import CChanException, ErrCode
 
 from .db_util import CChanDB
 from .OpenQuotaGen import COpenQuotaGen
+from .SafetyPolicy import build_trading_safety_policy
 from .TradeEngine import COrderResult, CTradeEngine
 
 
@@ -21,6 +22,8 @@ class CCCXTTradeEngine(CTradeEngine):
         quota_gen: Optional[COpenQuotaGen] = None,
         dry_run: Optional[bool] = None,
         ccxt_conf: Optional[dict] = None,
+        trade_conf: Optional[dict] = None,
+        environ=None,
         push_msg: bool = True,
     ):
         super(CCCXTTradeEngine, self).__init__(
@@ -31,9 +34,25 @@ class CCCXTTradeEngine(CTradeEngine):
                 ccxt_conf = CEnv.get_instance().ccxt_conf
             except Exception:
                 ccxt_conf = {}
+        if trade_conf is None:
+            try:
+                from Config.EnvConfig import CEnv
+                trade_conf = CEnv.get_instance().get_section("trade")
+            except Exception:
+                trade_conf = {}
+        if dry_run is True:
+            ccxt_conf = {**ccxt_conf, "mode": "dry_run"}
+        elif dry_run is False and ccxt_conf.get("mode", "dry_run") == "dry_run":
+            raise CChanException(
+                "dry_run=False 不能绕过显式 ccxt.mode",
+                ErrCode.TRADE_UNLOCK_FAIL,
+            )
         self.ccxt_conf = ccxt_conf
-        # 未配置 api_key 时自动进入 dry_run(模拟撮合)
-        self.dry_run = dry_run if dry_run is not None else not ccxt_conf.get("api_key")
+        self.safety_policy = build_trading_safety_policy(
+            ccxt_conf, trade_conf, environ
+        )
+        self.mode = self.safety_policy.mode
+        self.dry_run = self.safety_policy.dry_run
         self.exchange = None
         # dry_run 状态
         self._order_id_gen = itertools.count(1)
@@ -43,6 +62,10 @@ class CCCXTTradeEngine(CTradeEngine):
         self._sim_last_price: Dict[str, float] = {}
 
     def get_exchange(self):
+        if self.dry_run:
+            raise CChanException(
+                "dry_run 禁止创建交易所会话", ErrCode.TRADE_UNLOCK_FAIL
+            )
         if self.exchange is None:
             from DataAPI.ccxt import create_exchange
             self.exchange = create_exchange(self.ccxt_conf)  # 交易接口尊重 testnet 配置
@@ -56,6 +79,7 @@ class CCCXTTradeEngine(CTradeEngine):
     def place_order(self, code: str, is_buy: bool, amount: float, price: Optional[float] = None) -> COrderResult:
         if self.dry_run:
             return self._sim_place_order(code, is_buy, amount, price)
+        self.safety_policy.assert_order_allowed()
         import ccxt  # 懒加载
         exchange = self.get_exchange()
         try:
