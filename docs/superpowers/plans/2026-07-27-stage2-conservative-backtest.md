@@ -238,7 +238,7 @@ Record the adverse-first and no-price-improvement assumptions in trailers.
 - Create: `ModelStrategy/research/conservative.py`
 - Test: `tests/research/test_conservative.py`
 
-- [ ] **Step 1: Write failing portfolio tests**
+- [x] **Step 1: Write failing portfolio tests**
 
 ```python
 def test_unrealized_loss_counts_toward_drawdown_before_close():
@@ -269,23 +269,23 @@ def test_missing_mark_inside_holding_window_fails():
         conservative_portfolio_eval([execution_trade()], {"BTC/USDT": gapped_marks()}, [], no_fee_conf())
 ```
 
-- [ ] **Step 2: Verify RED**
+- [x] **Step 2: Verify RED**
 
 Run: `pytest tests/research/test_conservative.py -q`
 
 Expected: import failure for `conservative.py`.
 
-- [ ] **Step 3: Implement the event-driven conservative evaluator**
+- [x] **Step 3: Implement the event-driven conservative evaluator**
 
-Create immutable `EquityPoint(ts, kind, equity)` and `ConservativeResult(total_return, cagr, max_drawdown, calmar, fees, funding_pnl, curve, accepted_trades, skipped_trades)`. Maintain realized cash, open position notional, latest marks, fees, and funding PnL. Event order at equal timestamps is funding, close, open, mark. Size entries from current marked equity; apply concurrency, total leverage, and per-position leverage caps. Deduct entry fees at fill, realize price PnL and exit fee at close, apply `-direction * notional * funding_rate` at settlement, and append equity points for every event and mark. Maximum drawdown uses the complete marked curve, including explicitly synthesized carry-forward marks, not only closes. Reject any remaining coverage gap, non-finite equity, unknown fee roles, duplicate trades, and non-positive equity. A trade rejected by concurrency or leverage is counted in `skipped_trades` and never receives later close/funding events.
+Create immutable `EquityPoint(ts, kind, equity)` and `ConservativeResult(total_return, cagr, max_drawdown, calmar, fees, funding_pnl, curve, accepted_trades, skipped_trades)`. Maintain realized cash, position quantity/notional, latest marks, fees, and funding PnL. Event order at equal timestamps is funding, close, atomic same-bar round trip, open, mark. Size entries from current marked equity; apply concurrency, total leverage, and per-position leverage caps after accounting for immediate entry fees. Deduct entry fees at fill, realize quantity-based price PnL and exit-value fee at close, and apply `-direction * marked_position_value * funding_rate` at settlement. Append equity points for every effective event and every mark. Maximum drawdown uses the complete marked curve, including explicitly synthesized carry-forward marks, not only closes. Reject any remaining coverage gap, non-finite equity, unknown fee roles, duplicate trades, and non-positive equity. A trade rejected by concurrency or leverage is counted in `skipped_trades` and never receives later close/funding events.
 
-- [ ] **Step 4: Verify GREEN and legacy isolation**
+- [x] **Step 4: Verify GREEN and legacy isolation**
 
 Run: `pytest tests/research/test_conservative.py tests/test_portfolio.py tests/research/test_baseline.py -q`
 
 Expected: new tests pass and all legacy portfolio/baseline tests remain green.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 Record event ordering and funding semantics in the Lore directive.
 
