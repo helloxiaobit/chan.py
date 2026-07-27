@@ -1,0 +1,59 @@
+{
+  "schema_version": 1,
+  "strategy_id": "freeze_v4",
+  "execution_model": "legacy-v1",
+  "window": {
+    "begin": "2021-01-01",
+    "end_exclusive": "2026-01-01"
+  },
+  "inputs": {
+    "s1_trades": "from_session_b/cache_2125_S1.json",
+    "s2_trades": "cache_2125_S2py10_ispyr.json",
+    "bars_db": "btc_mlv.db"
+  },
+  "risk_grid": [
+    0.005,
+    0.0075,
+    0.01,
+    0.0125,
+    0.015
+  ],
+  "portfolio": {
+    "taker_fee": 0.0005,
+    "maker_fee": 0.0002,
+    "max_concurrent": 4,
+    "max_leverage": 3.0,
+    "max_pos_leverage": 1.5,
+    "target_max_drawdown": 0.25
+  },
+  "conviction": {
+    "co_dir_mult": 1.5,
+    "opp_dir_mult": 1.0,
+    "bs_mults": {
+      "1": 0.8,
+      "1p": 1.2
+    },
+    "mult_cap": 2.0
+  },
+  "zlimit": {
+    "patience": 8,
+    "s1_level": "K_60M",
+    "s1_ms": 3600000,
+    "s2_level": "K_4H",
+    "s2_ms": 14400000
+  },
+  "splits": {
+    "A(21-23)": [
+      "2021-01-01",
+      "2024-01-01"
+    ],
+    "B(2024)": [
+      "2024-01-01",
+      "2025-01-01"
+    ],
+    "C(2025)": [
+      "2025-01-01",
+      "2026-01-01"
+    ]
+  }
+}
