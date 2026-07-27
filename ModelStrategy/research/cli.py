@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Sequence
 
 from .baseline import compare_reference, run_baseline
+from .boundary import require_is_window
 from .conservative_baseline import (
     compare_conservative_reference,
     run_conservative_comparison,
@@ -32,6 +33,20 @@ def _parser() -> argparse.ArgumentParser:
     compare.add_argument("--legacy-reference", type=Path, required=True)
     compare.add_argument("--conservative-reference", type=Path)
     compare.add_argument("--output", type=Path, required=True)
+    migrate = commands.add_parser(
+        "migrate-candidate", help="把受信 IS pickle 迁移为候选 JSON"
+    )
+    migrate.add_argument("--input-pickle", type=Path, required=True)
+    migrate.add_argument("--output", type=Path, required=True)
+    migrate.add_argument("--symbol", required=True)
+    migrate.add_argument("--stack", required=True)
+    migrate.add_argument(
+        "--entry-kind",
+        choices=("strategy_fill", "signal_intent"),
+        required=True,
+    )
+    migrate.add_argument("--begin", required=True)
+    migrate.add_argument("--end-exclusive", required=True)
     return parser
 
 
@@ -118,6 +133,27 @@ def _run_compare(args: argparse.Namespace) -> int:
     return 0
 
 
+def _run_migrate_candidate(args: argparse.Namespace) -> int:
+    from .migrate_candidate import migrate_candidate_pickle
+
+    begin_ts, end_ts = require_is_window(args.begin, args.end_exclusive)
+    envelope = migrate_candidate_pickle(
+        args.input_pickle,
+        args.output,
+        symbol=args.symbol,
+        stack=args.stack,
+        entry_kind=args.entry_kind,
+        begin_ts=begin_ts,
+        end_ts=end_ts,
+    )
+    print(
+        "候选迁移通过: "
+        f"{args.symbol} {args.stack} "
+        f"rows={len(envelope['trades'])} 报告={args.output}"
+    )
+    return 0
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     try:
@@ -125,6 +161,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             return _run_baseline(args)
         if args.command == "compare":
             return _run_compare(args)
+        if args.command == "migrate-candidate":
+            return _run_migrate_candidate(args)
         raise ValueError(f"unsupported command: {args.command}")
     except Exception as exc:
         print(f"研究基线失败: {exc}", file=sys.stderr)

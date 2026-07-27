@@ -78,7 +78,7 @@ computed.
 - Test: `tests/research/test_migrate_candidate.py`
 - Test: `tests/research/test_cli.py`
 
-- [ ] **Step 1: Write failing migration tests**
+- [x] **Step 1: Write failing migration tests**
 
 Use a controlled test pickle and prove atomic output, source SHA-256, row counts,
 schema version, symbol/stack matching, exact half-open time filtering, and hard
@@ -86,17 +86,17 @@ failure for missing required fields. `signal_intent` inputs require an explicit
 boolean `is_pyramid`; a stale cache may not silently default it. Tests also prove a
 2026 row causes failure before output creation.
 
-- [ ] **Step 2: Verify RED**
+- [x] **Step 2: Verify RED**
 
 Run: `pytest tests/research/test_migrate_candidate.py tests/research/test_cli.py -q`
 
-- [ ] **Step 3: Implement the isolated migration command**
+- [x] **Step 3: Implement the isolated migration command**
 
 Pickle loading exists only in this explicitly named migration surface. The formal
 certifier imports no pickle module. Export all price-bearing fields needed for
 execution auditing and include the source file manifest in the JSON envelope.
 
-- [ ] **Step 4: Migrate BTC 2021–2025 only**
+- [x] **Step 4: Migrate BTC 2021–2025 only**
 
 Convert exactly these trusted sources without opening any `cache_26`, `2026`, or
 open-ended cache:
@@ -106,7 +106,7 @@ open-ended cache:
 
 Write generated JSON beneath the external research root and record its logical hash.
 
-- [ ] **Step 5: Verify and commit**
+- [x] **Step 5: Verify and commit**
 
 ### Task 3: Audit filled entries and replay z-exit conservatively
 

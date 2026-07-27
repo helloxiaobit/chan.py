@@ -1,13 +1,16 @@
 import json
+import pickle
 import subprocess
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 from ModelStrategy.research.baseline import run_baseline
 from ModelStrategy.research.conservative_baseline import (
     conservative_reference_payload,
     run_conservative_comparison,
 )
+from ModelStrategy.research.boundary import parse_utc
 from tests.research.test_baseline import make_spec, write_fixture_inputs
 from tests.research.test_conservative_baseline import make_conservative_fixture
 
@@ -167,3 +170,55 @@ def test_compare_cli_reference_mismatch_leaves_no_output(tmp_path):
     assert "risk_pct" in completed.stderr
     assert not output_path.exists()
     assert not list(output_path.parent.glob("*.tmp"))
+
+
+def test_migrate_candidate_cli_writes_guarded_json(tmp_path):
+    source = tmp_path / "trusted-is-cache.pkl"
+    with source.open("wb") as stream:
+        pickle.dump(
+            [
+                SimpleNamespace(
+                    code="BTC/USDT",
+                    open_ts=parse_utc("2021-02-01"),
+                    close_ts=parse_utc("2021-02-02"),
+                    open_price=100.0,
+                    close_price=105.0,
+                    risk_rate=0.05,
+                    bs_type="z1",
+                    is_buy=True,
+                    is_pyramid=False,
+                    reason="trend_flip",
+                    is_closed=True,
+                )
+            ],
+            stream,
+        )
+    output = tmp_path / "normalized" / "candidate.json"
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "ModelStrategy.research.cli",
+            "migrate-candidate",
+            "--input-pickle",
+            str(source),
+            "--output",
+            str(output),
+            "--symbol",
+            "BTC/USDT",
+            "--stack",
+            "S1bz[4H,1H,15M]",
+            "--entry-kind",
+            "strategy_fill",
+            "--begin",
+            "2021-01-01",
+            "--end-exclusive",
+            "2026-01-01",
+        ],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+    )
+    assert completed.returncode == 0, completed.stderr
+    assert json.loads(output.read_text(encoding="utf-8"))["trades"]
+    assert "候选迁移通过" in completed.stdout
