@@ -80,6 +80,8 @@
 
 | 37 | WF-2B:三级[4H,1H,15M]×bos_zone 限价族(ib 基线,6 变体一趟 ensemble,7.5h) | **整族被三段门槛毙,但拆出干净信号**:全变体 B(2024) 段负(-0.61~-0.75)——负来自基线的 sl_intrabar(S1 冻结时弃 ib 正因于此),非 bos_zone;bos_zone 相对自身基线是真增益(+9.7%→+13.0%、Cal 0.44→0.64、A 1.08→1.43、C 1.29→2.54,maker 占比 82%,zone来源 fx/fvg/nochase 等价、ob 略差)。**追加决定性复测 WF-2B'(bos_zone × 冻结无 ib 剖面)在途**,过关才有 v5 资格。research/wf2b_report.json |
 
+| 38 | WF-2B':bos_zone × 冻结 S1 剖面(无 ib;#37 拆因后的决定性复测) | **第一关大幅通过,全天最大 S1 改善**:基线精确复现 Cal 1.13(A 1.48/B 0.74/C 1.13);bz_fx = **+25.6%/DD16.7%/Cal 1.53,三段 1.73/1.25/1.82 全升**——把 S1 最弱的 B 段 0.74 修到 1.25;maker 82%,仅丢 3/332 笔;fvg 源等价,fx(both)为准。**S1bz 多币种门槛(ETH/SOL/BNB 三级重跑)+组合层在途**;v5 冻结候选:S1bz + S2py10 + conviction#14 + z-limit(S2) + z-exit。research/wf2b2_report.json |
+
 **会话乙已收工交接(用户指示,避免双会话撞车;后续研发统一由会话甲负责)**:
 - 全部资产已复制到 `research/from_session_b/`:freeze_v3/v4 脚本与结果、逐笔交易缓存(cache_2125/26_{S1,S2,S2py10}.json,字段 open_ts/close_ts/profit_rate/risk_rate/bs_type/is_buy)、z-limit 参考实现(fee_zlimit_test.py / freeze_v4.py 的 apply_zlimit)、全部报告 JSON、K线聚合脚本(aggregate_klines.py,2H/周线;周线=周一界+周末日时间戳,多级别对齐必需)
 - 交接清单里的 wf8_pyramid.py 已被 #31(WF-2E)覆盖,无需再跑
