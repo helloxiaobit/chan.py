@@ -5,6 +5,9 @@ from pathlib import Path
 import pytest
 
 from ModelStrategy.research.boundary import parse_utc
+from ModelStrategy.research.conservative_baseline import (
+    normalize_source_timestamps,
+)
 from ModelStrategy.research.execution import build_intent, replay_trade
 from ModelStrategy.research.market import (
     MarketBar,
@@ -235,7 +238,14 @@ def test_real_freeze_v4_execution_replay_is_deterministic():
             begin,
             end,
         )
-        for source_trade in load_trades(path):
+        source_trades = normalize_source_timestamps(
+            load_trades(path, is_only=False),
+            offset_seconds=28800,
+            begin_ts=begin,
+            end_ts=end,
+            input_name=f"{stack}_trades",
+        )
+        for source_trade in source_trades:
             outcome = replay_trade(
                 build_intent(
                     source_trade,
@@ -254,11 +264,11 @@ def test_real_freeze_v4_execution_replay_is_deterministic():
                 assert outcome.trade.close_ts < end
     assert counts == Counter(
         {
-            "filled": 424,
-            "maker": 393,
-            "strategy_exit": 391,
-            "same_bar_stop": 33,
+            "filled": 425,
+            "maker": 394,
+            "strategy_exit": 418,
+            "same_bar_stop": 7,
             "taker": 31,
-            "unfilled": 3,
+            "unfilled": 2,
         }
     )

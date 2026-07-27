@@ -57,15 +57,15 @@ Asia/Shanghai-generated caches.
 - Modify: `tests/research/test_conservative_baseline.py`
 - Modify: `tests/research/test_execution.py`
 
-- [ ] Write a failing assembly test where a raw cache timestamp is eight hours early
+- [x] Write a failing assembly test where a raw cache timestamp is eight hours early
   and only the corrected bar can supply the signal price/fill.
-- [ ] Add failing boundary tests proving correction happens before IS checks and a
+- [x] Add failing boundary tests proving correction happens before IS checks and a
   corrected timestamp at/after 2026 is rejected.
-- [ ] Copy source trades with corrected open/close timestamps before window checks,
+- [x] Copy source trades with corrected open/close timestamps before window checks,
   execution replay, conviction, split membership, and funding/mark evaluation.
-- [ ] Report both raw and corrected timestamp bounds plus the declared offset in each
+- [x] Report both raw and corrected timestamp bounds plus the declared offset in each
   trade manifest.
-- [ ] Re-run real execution replay and prove its logical market/funding inputs remain
+- [x] Re-run real execution replay and prove its logical market/funding inputs remain
   half-open 2021–2025.
 
 ### Task 4: Recompute and re-freeze Stage 2
