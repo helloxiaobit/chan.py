@@ -1,0 +1,140 @@
+{
+  "btc": {
+    "cagr": 0.3195696056666606,
+    "calmar": 1.6134482734131004,
+    "fees": 0.2600410450463533,
+    "full_dd": 0.19806622309040048,
+    "funding_pnl": 0.12466572931784271,
+    "price_pnl": 3.139224606738868,
+    "skipped": 1,
+    "splits": {
+      "A(21-23)": {
+        "cagr": 0.32532251207263907,
+        "calmar": 1.6424936417561558,
+        "dd": 0.19806622309040048,
+        "skipped": 1,
+        "total_return": 1.329998852914236,
+        "trade_cnt": 236,
+        "win_rate": 0.4533898305084746
+      },
+      "B(2024)": {
+        "cagr": 0.34928053358253197,
+        "calmar": 3.192366776553047,
+        "dd": 0.10941115417811328,
+        "skipped": 0,
+        "total_return": 0.35034222254886105,
+        "trade_cnt": 105,
+        "win_rate": 0.4
+      },
+      "C(2025)": {
+        "cagr": 0.2725947232647763,
+        "calmar": 2.8501314806348974,
+        "dd": 0.0956428589757736,
+        "skipped": 0,
+        "total_return": 0.2725597044522652,
+        "trade_cnt": 83,
+        "win_rate": 0.46987951807228917
+      }
+    },
+    "total_return": 3.0038492910103534,
+    "trade_cnt": 424,
+    "win_rate": 0.44339622641509435,
+    "worst_dd": 0.19806622309040048
+  },
+  "execution": {
+    "filled": 425,
+    "intents": 425,
+    "maker_entries": 335,
+    "maker_exits": 250,
+    "same_bar_stops": 9,
+    "taker_entries": 90,
+    "taker_exits": 175,
+    "unfilled": 0
+  },
+  "execution_model": "conservative-v2",
+  "gates": [
+    {
+      "name": "freeze_v4_reference",
+      "observed": {
+        "risk_pct": 0.005,
+        "spec_hash": "5812c4c1060bbf5845cde93d715c529c82f5b864f2a07135ce82674ebe1c86ee"
+      },
+      "passed": true,
+      "rule": {
+        "execution_model": "conservative-v2",
+        "strategy_id": "freeze_v4"
+      }
+    },
+    {
+      "name": "btc_inputs",
+      "observed": {
+        "execution": {
+          "filled": 425,
+          "intents": 425,
+          "maker_entries": 335,
+          "maker_exits": 250,
+          "same_bar_stops": 9,
+          "taker_entries": 90,
+          "taker_exits": 175,
+          "unfilled": 0
+        },
+        "input_hashes": {
+          "funding": "5f78bfff3339cdf188cecfd365108ae07072066c2242506e287f2ba5bbe94e45",
+          "marks": "4912452f8a607fbb8e8922b6149069d57e0c1b9387ed95e562afec3be899bc85",
+          "s1_bars": "4912452f8a607fbb8e8922b6149069d57e0c1b9387ed95e562afec3be899bc85",
+          "s1_trades": "a33497ded20dc7fa363486b56493d8519b2034df5aea6e4cb7e8640efb13d618",
+          "s2_bars": "61b06fb18401887cae975ae24c82e95e8f0ab5dd6bcb5071a9144c16a858bd2d",
+          "s2_trades": "87fa5014b18cdb5da9f3ba9c87a1adbaa3a16151cfb75a5a9b304829c59426fd"
+        }
+      },
+      "passed": true,
+      "rule": {
+        "normalized_execution_offset_seconds": 0,
+        "window": "half-open 2021-01-01..2026-01-01"
+      }
+    },
+    {
+      "name": "risk_selection",
+      "observed": {
+        "eligible_risk_pct": [
+          0.005
+        ],
+        "selected_risk_pct": 0.005
+      },
+      "passed": true,
+      "rule": {
+        "max_drawdown": 0.25,
+        "policy": "highest_grid_risk_with_worst_dd_lte"
+      }
+    },
+    {
+      "name": "btc_full_calmar",
+      "observed": 1.6134482734131004,
+      "passed": false,
+      "rule": {
+        "minimum_inclusive": 2.0
+      }
+    }
+  ],
+  "input_hashes": {
+    "funding": "5f78bfff3339cdf188cecfd365108ae07072066c2242506e287f2ba5bbe94e45",
+    "marks": "4912452f8a607fbb8e8922b6149069d57e0c1b9387ed95e562afec3be899bc85",
+    "s1_bars": "4912452f8a607fbb8e8922b6149069d57e0c1b9387ed95e562afec3be899bc85",
+    "s1_trades": "a33497ded20dc7fa363486b56493d8519b2034df5aea6e4cb7e8640efb13d618",
+    "s2_bars": "61b06fb18401887cae975ae24c82e95e8f0ab5dd6bcb5071a9144c16a858bd2d",
+    "s2_trades": "87fa5014b18cdb5da9f3ba9c87a1adbaa3a16151cfb75a5a9b304829c59426fd"
+  },
+  "schema_version": 1,
+  "selected_risk_pct": 0.005,
+  "spec_hash": "ddf429b93fa67110bb8c80b544d746cb7c1c07215807c62a4311bd03a9dd2dfb",
+  "status": "rejected",
+  "stop_reason": "btc_full_calmar",
+  "strategy_id": "freeze_v5_candidate_v1",
+  "unopened_tiers": [
+    "ETH/USDT",
+    "SOL/USDT",
+    "BNB/USDT",
+    "shared_multi",
+    "OOS"
+  ]
+}

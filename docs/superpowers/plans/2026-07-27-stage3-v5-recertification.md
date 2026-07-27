@@ -141,8 +141,8 @@ generated SHA-256
 `87fa5014b18cdb5da9f3ba9c87a1adbaa3a16151cfb75a5a9b304829c59426fd`,
 and corrected bounds `1613635200..1762776000`. Both envelopes declare source
 offset `28800` under candidate envelope schema v2; formal execution declares zero
-because it consumes those corrected
-timestamps. The environment-backed first S1bz maker-fill audit passed on its UTC
+because it consumes those corrected timestamps. The environment-backed first S1bz
+maker-fill audit passed on its UTC
 `K_60M` bar without opening any 2026 input.
 
 ### Task 3: Audit filled entries and replay z-exit conservatively
@@ -206,44 +206,44 @@ on actual fills, evaluate the frozen grid through the Stage-2 marked portfolio, 
 emit metrics, execution counts, synthetic-gap disclosure, deltas to freeze-v4
 conservative, every gate rule/observed value, and provenance.
 
-- [ ] **Step 4: Run the real BTC IS gate**
+- [x] **Step 4: Run the real BTC IS gate**
 
 If BTC fails, freeze a `rejected` reference/report, explicitly confirm no ETH/SOL/BNB
 or OOS input was opened, document the result, and mark Stage 3 complete. Do not run
 Tasks 5–7. If it passes, freeze the BTC receipt and proceed to Task 5.
 
-- [ ] **Step 5: Verify and commit**
+- [x] **Step 5: Verify and commit**
+
+**BTC rejection receipt:** the first formal run used clean commit
+`9fce518483b3ab10191161803a8aae54d12b6bf3`, spec hash
+`ddf429b93fa67110bb8c80b544d746cb7c1c07215807c62a4311bd03a9dd2dfb`,
+and selected only `risk_pct=0.005` under the 25% drawdown rule. BTC produced CAGR
+`0.3195696056666606`, full/worst drawdown `0.19806622309040048`, and Calmar
+`1.6134482734131004`; therefore `btc_full_calmar >= 2.0` failed and status is
+`rejected`. A/B/C CAGRs remained positive. The receipt records 425/425 filled
+intents, 335 maker/90 taker entries, 250 maker/175 taker exits, 9 same-bar stops,
+and one portfolio skip. Funding stopped at the first raw 2026 BTC row without
+parsing it. ETH/SOL/BNB, shared multi-symbol, and OOS remained unopened.
 
 ### Task 5: Run ETH/SOL/BNB robustness only if BTC passed
 
 **Conditional:** Skip permanently when Task 4 rejects BTC.
 
-- [ ] Regenerate any stale S2py10 cache whose records lack explicit pyramid identity;
-  never default the field.
-- [ ] Migrate each symbol's 2021–2025 inputs and run gates strictly ETH, then SOL,
-  then BNB, stopping and freezing `rejected` at the first failure.
-- [ ] Add synthetic tests for symbol isolation, funding mapping, and stop-on-failure.
-- [ ] Commit the gate receipts and compact reference.
+- [x] Correctly skipped without resolving any ETH/SOL/BNB input because the BTC
+  receipt is `rejected` at `btc_full_calmar`.
 
 ### Task 6: Run the shared multi-symbol portfolio only if Task 5 passed
 
 **Conditional:** Skip permanently when any symbol gate fails.
 
-- [ ] Add a shared marked-portfolio assembly with per-symbol marks/funding and a
-  shared 3x gross leverage limit.
-- [ ] Prove timestamp ordering, per-symbol funding, and symbol-specific gaps in tests.
-- [ ] Freeze the multi-symbol gate receipt or formal rejection.
+- [x] Correctly skipped because the prerequisite symbol gates were never unlocked.
 
 ### Task 7: Unlock one OOS shot only if every IS receipt passed
 
 **Conditional:** Skip permanently unless Tasks 4–6 all passed.
 
-- [ ] Add a separate one-shot command that requires the exact passing IS receipt hash,
-  clean candidate spec hash, frozen risk, and preregistered OOS window.
-- [ ] Prove wrong/missing receipts, retries, wider windows, and dirty inputs fail before
-  OOS data is opened.
-- [ ] Run exactly once, freeze `candidate`, `rejected`, or `insufficient-data`, and never
-  tune from its output.
+- [x] Correctly skipped; no OOS command was added or run because there is no passing
+  BTC IS receipt.
 
 ## Stage-3 completion evidence
 

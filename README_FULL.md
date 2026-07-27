@@ -141,6 +141,14 @@ python -m ModelStrategy.research.cli compare --spec ModelStrategy/research/confi
 
 行情清单明确披露 8 段、共 29 根小时线缺口。缺口只按最后可用价格生成 `synthetic=true` 的盯市点，绝不参与成交或止损判断；任何成交耐心窗口中的真实 K 线缺口都会直接失败。以初始权益为 1，五年累计手续费为 `0.288132`，资金费净贡献为 `+0.113841`。这些数值说明旧口径明显高估了可认证收益；阶段 3 的 v5 认证必须沿用 UTC 校正后的 `conservative-v2`，不能再用 legacy 或失效的时间错位指标替代。
 
+阶段 3 已按预登记顺序完成 BTC 样本内门禁。候选固定为 `S1bz + S2py10 + conviction#14 + z-limit(S2 非加仓) + z-exit`，迁移后的 UTC 候选输入使用 schema v2，并由来源哈希、原始/校正时间边界共同约束。复现命令为：
+
+```powershell
+python -m ModelStrategy.research.cli certify-v5-btc-is --spec ModelStrategy/research/configs/freeze_v5_candidate_v1.json --research-root C:\chanpy\research --market-data-root C:\chanpy\data --freeze-v4-reference ModelStrategy/research/baselines/freeze_v4_conservative_v2.json --candidate-reference ModelStrategy/research/baselines/freeze_v5_candidate_v1_is.json --output backtest_output/research/freeze_v5_candidate_v1_btc_is.json
+```
+
+正式结果为 `rejected`：25% 回撤门槛下只有 `risk_pct=0.005` 可选，BTC 2021–2025 CAGR `31.957%`、最大回撤 `19.807%`、Calmar `1.613`，未达到预登记的 `Calmar >= 2.0`。A/B/C CAGR 分别为 `32.532%`、`34.928%`、`27.259%`；425 个意图全部成交，组合接受 424 笔并跳过 1 笔。该失败按门禁终止阶段 3：没有解析 ETH/SOL/BNB 候选输入，没有运行共享组合，也没有新增或执行任何 2026 OOS 命令。紧凑拒绝参考见 `ModelStrategy/research/baselines/freeze_v5_candidate_v1_is.json`。
+
 ### 5. 7×24 交易例行(dry-run 起步)
 
 `config.yaml` 不配置 `ccxt.api_key` 时,交易引擎自动进入 **dry-run 模拟撮合**(内存持仓,订单即时成交),可先完整演练;配置密钥 + `testnet: true` 走交易所测试网;确认无误后再上实盘。

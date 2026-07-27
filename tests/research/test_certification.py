@@ -1,8 +1,11 @@
 import csv
 import json
+import os
 import sqlite3
 from pathlib import Path
 from types import SimpleNamespace
+
+import pytest
 
 from ModelStrategy.research.certification import (
     assemble_btc_candidate,
@@ -370,3 +373,45 @@ def test_btc_assembly_and_report_use_only_current_is_tier(tmp_path):
     assert report["selected_risk_pct"] == 0.005
     assert report["unopened_tiers"][-1] == "OOS"
     assert report["inputs"]["s1_trades"]["last_close_ts"] < spec.end_ts
+
+
+@pytest.mark.skipif(
+    "CHANPY_RESEARCH_ROOT" not in os.environ
+    or "CHANPY_MARKET_DATA_ROOT" not in os.environ,
+    reason="set research and market roots to verify the frozen BTC receipt",
+)
+def test_real_btc_candidate_matches_frozen_rejection_reference():
+    repo_root = Path(__file__).resolve().parents[2]
+    reference = json.loads(
+        (
+            repo_root
+            / "ModelStrategy"
+            / "research"
+            / "baselines"
+            / "freeze_v5_candidate_v1_is.json"
+        ).read_text(encoding="utf-8")
+    )
+    freeze_v4 = json.loads(
+        (
+            repo_root
+            / "ModelStrategy"
+            / "research"
+            / "baselines"
+            / "freeze_v4_conservative_v2.json"
+        ).read_text(encoding="utf-8")
+    )
+    report = run_btc_is_certification(
+        repo_root
+        / "ModelStrategy"
+        / "research"
+        / "configs"
+        / "freeze_v5_candidate_v1.json",
+        os.environ["CHANPY_RESEARCH_ROOT"],
+        os.environ["CHANPY_MARKET_DATA_ROOT"],
+        freeze_v4,
+        provenance={"commit": "test", "dirty": False},
+    )
+    assert compare_certification_reference(report, reference) == []
+    assert report["status"] == "rejected"
+    assert report["stop_reason"] == "btc_full_calmar"
+    assert report["unopened_tiers"][-1] == "OOS"
