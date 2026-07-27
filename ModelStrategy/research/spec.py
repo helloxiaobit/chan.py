@@ -48,6 +48,7 @@ class ResearchSpec:
     portfolio: dict[str, Any]
     conviction: dict[str, Any]
     zlimit: dict[str, Any]
+    execution: dict[str, Any]
     splits: dict[str, tuple[float, float]]
 
     @property
@@ -67,8 +68,10 @@ def load_spec(path: str | Path) -> ResearchSpec:
     if not isinstance(strategy_id, str) or not strategy_id:
         raise ValueError("strategy_id must be a non-empty string")
     execution_model = top.get("execution_model")
-    if execution_model != "legacy-v1":
-        raise ValueError("execution_model must be legacy-v1")
+    if execution_model not in {"legacy-v1", "conservative-v2"}:
+        raise ValueError(
+            "execution_model must be legacy-v1 or conservative-v2"
+        )
 
     window = _mapping(top.get("window"), "window")
     begin_ts, end_ts = require_is_window(
@@ -77,6 +80,12 @@ def load_spec(path: str | Path) -> ResearchSpec:
 
     input_values = _mapping(top.get("inputs"), "inputs")
     required_inputs = ("s1_trades", "s2_trades", "bars_db")
+    if execution_model == "conservative-v2":
+        required_inputs += ("funding_rates",)
+    if set(input_values) != set(required_inputs):
+        raise ValueError(
+            f"inputs keys must be exactly {sorted(required_inputs)}"
+        )
     inputs = {
         name: _relative_path(input_values.get(name), f"inputs.{name}")
         for name in required_inputs
@@ -142,6 +151,62 @@ def load_spec(path: str | Path) -> ResearchSpec:
     if zlimit["patience"] <= 0 or zlimit["s1_ms"] <= 0 or zlimit["s2_ms"] <= 0:
         raise ValueError("zlimit patience and interval lengths must be positive")
 
+    execution: dict[str, Any] = {}
+    execution_value = top.get("execution")
+    if execution_model == "legacy-v1":
+        if execution_value is not None:
+            raise ValueError("legacy-v1 must not define execution")
+    else:
+        execution_raw = _mapping(execution_value, "execution")
+        execution_keys = {
+            "mark_level",
+            "mark_ms",
+            "entry_patience",
+            "stop_slippage",
+            "same_bar_policy",
+            "funding_order",
+        }
+        if set(execution_raw) != execution_keys:
+            raise ValueError(
+                f"execution keys must be exactly {sorted(execution_keys)}"
+            )
+        mark_level = execution_raw.get("mark_level")
+        if not isinstance(mark_level, str) or not mark_level:
+            raise ValueError("execution.mark_level must be a non-empty string")
+        mark_ms = execution_raw.get("mark_ms")
+        entry_patience = execution_raw.get("entry_patience")
+        if type(mark_ms) is not int or mark_ms <= 0:
+            raise ValueError("execution.mark_ms must be a positive integer")
+        if type(entry_patience) is not int or entry_patience <= 0:
+            raise ValueError(
+                "execution.entry_patience must be a positive integer"
+            )
+        if entry_patience != zlimit["patience"]:
+            raise ValueError(
+                "execution.entry_patience must match zlimit.patience"
+            )
+        stop_slippage = _finite_number(
+            execution_raw.get("stop_slippage"), "execution.stop_slippage"
+        )
+        if stop_slippage < 0 or stop_slippage >= 1:
+            raise ValueError(
+                "execution.stop_slippage must be at least zero and below one"
+            )
+        if execution_raw.get("same_bar_policy") != "adverse_first":
+            raise ValueError(
+                "execution.same_bar_policy must be adverse_first"
+            )
+        if execution_raw.get("funding_order") != "before_close":
+            raise ValueError("execution.funding_order must be before_close")
+        execution = {
+            "mark_level": mark_level,
+            "mark_ms": mark_ms,
+            "entry_patience": entry_patience,
+            "stop_slippage": stop_slippage,
+            "same_bar_policy": "adverse_first",
+            "funding_order": "before_close",
+        }
+
     split_values = _mapping(top.get("splits"), "splits")
     splits = {}
     for name, value in split_values.items():
@@ -166,5 +231,6 @@ def load_spec(path: str | Path) -> ResearchSpec:
         portfolio=portfolio,
         conviction=conviction,
         zlimit=zlimit,
+        execution=execution,
         splits=splits,
     )

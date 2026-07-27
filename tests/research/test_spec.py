@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 
 import pytest
 
@@ -56,6 +57,22 @@ def minimal_spec(**overrides):
     return value
 
 
+def conservative_spec(**overrides):
+    value = minimal_spec()
+    value["execution_model"] = "conservative-v2"
+    value["inputs"]["funding_rates"] = "btc/btc_funding_rate.csv"
+    value["execution"] = {
+        "mark_level": "K_60M",
+        "mark_ms": 3600000,
+        "entry_patience": 8,
+        "stop_slippage": 0.0005,
+        "same_bar_policy": "adverse_first",
+        "funding_order": "before_close",
+    }
+    value.update(overrides)
+    return value
+
+
 def write_spec(tmp_path, value):
     path = tmp_path / "spec.json"
     path.write_text(json.dumps(value), encoding="utf-8")
@@ -68,6 +85,63 @@ def test_load_spec_exposes_validated_values(tmp_path):
     assert spec.execution_model == "legacy-v1"
     assert spec.risk_grid == (0.005, 0.0075, 0.01)
     assert spec.inputs["bars_db"].as_posix() == "btc_mlv.db"
+
+
+def test_legacy_spec_has_no_execution_policy(tmp_path):
+    spec = load_spec(write_spec(tmp_path, minimal_spec()))
+    assert spec.execution == {}
+
+
+def test_conservative_spec_requires_funding_input_and_policy(tmp_path):
+    spec = load_spec(write_spec(tmp_path, conservative_spec()))
+    assert spec.execution_model == "conservative-v2"
+    assert spec.inputs["funding_rates"].as_posix() == "btc/btc_funding_rate.csv"
+    assert spec.execution["mark_level"] == "K_60M"
+
+
+def test_tracked_conservative_spec_changes_only_execution_assumptions():
+    root = Path(__file__).resolve().parents[2]
+    config_root = root / "ModelStrategy" / "research" / "configs"
+    legacy = json.loads(
+        (config_root / "freeze_v4_legacy_v1.json").read_text(encoding="utf-8")
+    )
+    conservative = json.loads(
+        (config_root / "freeze_v4_conservative_v2.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    conservative.pop("execution")
+    conservative["execution_model"] = "legacy-v1"
+    conservative["inputs"].pop("funding_rates")
+    assert conservative == legacy
+
+
+def test_conservative_spec_rejects_unknown_execution_key(tmp_path):
+    value = conservative_spec()
+    value["execution"]["optimistic_fill"] = True
+    with pytest.raises(ValueError, match="execution keys"):
+        load_spec(write_spec(tmp_path, value))
+
+
+def test_conservative_spec_requires_execution_policy(tmp_path):
+    value = conservative_spec()
+    del value["execution"]
+    with pytest.raises(ValueError, match="execution"):
+        load_spec(write_spec(tmp_path, value))
+
+
+def test_conservative_spec_requires_matching_entry_patience(tmp_path):
+    value = conservative_spec()
+    value["execution"]["entry_patience"] = 7
+    with pytest.raises(ValueError, match="entry_patience.*zlimit"):
+        load_spec(write_spec(tmp_path, value))
+
+
+def test_legacy_spec_rejects_conservative_only_input(tmp_path):
+    value = minimal_spec()
+    value["inputs"]["funding_rates"] = "btc/btc_funding_rate.csv"
+    with pytest.raises(ValueError, match="inputs keys"):
+        load_spec(write_spec(tmp_path, value))
 
 
 def test_spec_rejects_absolute_input_path(tmp_path):
