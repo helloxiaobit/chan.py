@@ -18,3 +18,4 @@ Debug/*.png
 exam_question.png
 exam_answer.png
 backtest_output/
+.worktrees/
