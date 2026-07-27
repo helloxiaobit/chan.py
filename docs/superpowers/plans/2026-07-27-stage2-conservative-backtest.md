@@ -1,5 +1,11 @@
 # Stage 2 Conservative Backtest Implementation Plan
 
+> **UTC remediation:** The first Stage-3 actual-fill audit later proved that the
+> historical trade-cache epochs were eight hours earlier than UTC market bars.
+> The original Stage-2 reference is superseded by
+> `2026-07-27-stage2-utc-remediation.md`; the tracked reference now includes the
+> explicit +28800-second source correction.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Add a separately versioned `conservative-v2` execution model that replays fills, marks open positions to market, charges funding and fees, and produces an auditable freeze-v4 difference report without altering `legacy-v1`.

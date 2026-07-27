@@ -76,12 +76,12 @@ Asia/Shanghai-generated caches.
 - Modify: `STRATEGY_LOG.md`
 - Modify: `docs/superpowers/plans/2026-07-27-stage2-conservative-backtest.md`
 
-- [ ] Run the real comparison without a reference and inspect execution counts,
+- [x] Run the real comparison without a reference and inspect execution counts,
   first/last timestamps, gaps, fees, funding, risk selection, and split metrics.
-- [ ] Update the compact reference only from the corrected report, then rerun with
+- [x] Update the compact reference only from the corrected report, then rerun with
   `--conservative-reference`.
-- [ ] Prove the legacy CLI remains byte/metric compatible.
-- [ ] Run research tests with real roots, full offline tests, compileall, diff-check,
+- [x] Prove the legacy CLI remains byte/metric compatible.
+- [x] Run research tests with real roots, full offline tests, compileall, diff-check,
   and a read-only review.
 - [ ] Merge only after all gates pass; then resume Stage 3 from its preregistered plan.
 
