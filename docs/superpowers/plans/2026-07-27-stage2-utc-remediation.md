@@ -83,7 +83,7 @@ Asia/Shanghai-generated caches.
 - [x] Prove the legacy CLI remains byte/metric compatible.
 - [x] Run research tests with real roots, full offline tests, compileall, diff-check,
   and a read-only review.
-- [ ] Merge only after all gates pass; then resume Stage 3 from its preregistered plan.
+- [x] Merge only after all gates pass; then resume Stage 3 from its preregistered plan.
 
 ## Completion evidence
 
