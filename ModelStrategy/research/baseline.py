@@ -109,6 +109,19 @@ def _input_path(research_root: Path, relative: Path) -> Path:
     return candidate
 
 
+def _require_trade_window(
+    trades: Iterable[ResearchTrade], spec: ResearchSpec, input_name: str
+) -> None:
+    for index, trade in enumerate(trades):
+        if not (
+            spec.begin_ts <= trade.open_ts < spec.end_ts
+            and spec.begin_ts <= trade.close_ts < spec.end_ts
+        ):
+            raise ValueError(
+                f"{input_name} trade {index} is outside declared window"
+            )
+
+
 def _load_components(
     spec: ResearchSpec, research_root: Path
 ) -> tuple[
@@ -123,6 +136,8 @@ def _load_components(
     }
     s1 = load_trades(paths["s1_trades"], is_only=True)
     s2 = load_trades(paths["s2_trades"], is_only=True)
+    _require_trade_window(s1, spec, "s1_trades")
+    _require_trade_window(s2, spec, "s2_trades")
     bars = {
         spec.zlimit["s1_level"]: load_bars(
             paths["bars_db"],
@@ -192,7 +207,11 @@ def calibrate_risk(
             split_metrics[name] = {
                 "cagr": round(result.cagr, 3),
                 "dd": round(result.max_drawdown, 3),
-                "calmar": round(result.calmar, 2),
+                "calmar": (
+                    round(result.calmar, 2)
+                    if math.isfinite(result.calmar)
+                    else None
+                ),
             }
         worst_dd = max(
             full.max_drawdown,

@@ -111,7 +111,27 @@ from ModelStrategy.parameterEvaluate.para_automl import CParaAutoML
 from ModelStrategy.parameterEvaluate.parse_automl_result import parse_automl_result
 ```
 
-### 4. 7×24 交易例行(dry-run 起步)
+### 4. 可复现策略基线（仅样本内）
+
+正式策略研究入口由仓库内 `ModelStrategy/research/` 维护。大型行情、SQLite
+数据库和交易缓存继续放在仓库外，通过 `--research-root` 显式指定；规范文件中的
+输入路径必须相对该根目录，不能写死某台机器的绝对路径。
+
+当前已固化 corrected freeze-v4 的 `legacy-v1` 口径。Windows 示例：
+
+```powershell
+python -m ModelStrategy.research.cli baseline --spec ModelStrategy/research/configs/freeze_v4_legacy_v1.json --research-root C:\chanpy\research --reference ModelStrategy/research/baselines/freeze_v4_legacy_v1.json --output backtest_output/research/freeze_v4_legacy_v1.json
+```
+
+该命令只加载 2021-01-01 至 2026-01-01 的半开区间，无法通过参数开启 OOS。
+即使 `btc_mlv.db` 含有 2026 数据，清单与计算也只查询边界前的逻辑 K 线。输出报告包含
+Git commit/工作区状态、Python 环境、策略规范哈希、交易缓存哈希、分级 K 线逻辑哈希、
+风险网格和 A/B/C 分段指标；任何参考指标漂移都会返回非零状态，且不会留下半成品报告。
+
+当前参考结果为 `risk_pct=0.0075`、2021–2025 CAGR `46.917%`、最大回撤
+`24.313%`。这是历史 `legacy-v1` 复现基线，不代表后续 `conservative-v2` 认证结果。
+
+### 5. 7×24 交易例行(dry-run 起步)
 
 `config.yaml` 不配置 `ccxt.api_key` 时,交易引擎自动进入 **dry-run 模拟撮合**(内存持仓,订单即时成交),可先完整演练;配置密钥 + `testnet: true` 走交易所测试网;确认无误后再上实盘。
 
@@ -174,7 +194,7 @@ trades = list(chan[1].cbsp_strategy)   # 交易发生在中间的交易级别(lv
 | `CustomBuySellPoint/` | CStrategy 抽象 + CCustomStrategy/CSegBspStrategy/CExamStrategy + CCustomBSP/CSignal;区间套(use_qjt) |
 | `ChanModel/` | FeatureDesc 注册表、FeatureEngine 11特征族(540+,含SMC族)、CCommModel/CXGBModel |
 | `Math/SmartMoney.py` | SMC检测器:FVG/订单块(笔结构定位)/流动性池+sweep/Premium-Discount位置 |
-| `ModelStrategy/` | backtest 样本落地(五种标签)、CModelGenerator(XGB/LGBM/MLP)、eval_strategy、para_automl、FeatureReconciliation |
+| `ModelStrategy/` | backtest 样本落地(五种标签)、CModelGenerator(XGB/LGBM/MLP)、eval_strategy、para_automl、FeatureReconciliation；`research/` 提供版本化规范、OOS 边界、输入清单和冻结基线复现 |
 | `DataAPI/` | ccxt 重构(分页/volume/代理)、OfflineDataAPI、SnapshotAPI(sina/pytdx/ak/futu/ccxt)、ETFStockAPI、MarketValueFilter |
 | `OfflineData/` | sqlite 落地层、ccxt_update/bao_download/bao_update/ak_update 等增量脚本 |
 | `Trade/` | CChanDB(sqlite/mysql)、CTradeEngine/CCXTTradeEngine(dry-run)/FutuTradeEngine、OpenQuotaGen、Script 全套例行 |

@@ -81,6 +81,7 @@
 | 37 | WF-2B:三级[4H,1H,15M]×bos_zone 限价族(ib 基线,6 变体一趟 ensemble,7.5h) | **整族被三段门槛毙,但拆出干净信号**:全变体 B(2024) 段负(-0.61~-0.75)——负来自基线的 sl_intrabar(S1 冻结时弃 ib 正因于此),非 bos_zone;bos_zone 相对自身基线是真增益(+9.7%→+13.0%、Cal 0.44→0.64、A 1.08→1.43、C 1.29→2.54,maker 占比 82%,zone来源 fx/fvg/nochase 等价、ob 略差)。**追加决定性复测 WF-2B'(bos_zone × 冻结无 ib 剖面)在途**,过关才有 v5 资格。research/wf2b_report.json |
 
 | 38 | WF-2B':bos_zone × 冻结 S1 剖面(无 ib;#37 拆因后的决定性复测) | **第一关大幅通过,全天最大 S1 改善**:基线精确复现 Cal 1.13(A 1.48/B 0.74/C 1.13);bz_fx = **+25.6%/DD16.7%/Cal 1.53,三段 1.73/1.25/1.82 全升**——把 S1 最弱的 B 段 0.74 修到 1.25;maker 82%,仅丢 3/332 笔;fvg 源等价,fx(both)为准。**S1bz 多币种门槛(ETH/SOL/BNB 三级重跑)+组合层在途**;v5 冻结候选:S1bz + S2py10 + conviction#14 + z-limit(S2) + z-exit。research/wf2b2_report.json |
+| 39 | 研究工程化 Stage 1（不新增策略试验） | **corrected freeze-v4 的 IS 基线已迁入仓库内可复现链**：版本化规范 + UTC/OOS 硬边界 + 交易 schema + 逻辑 K 线哈希 + 原子 CLI；从外置缓存和 `btc_mlv.db` 精确复现 risk 0.75%、2021-25 CAGR 46.917%/DD24.313% 及 A/B/C 指标。流程没有加载 2026 交易流，策略结论不变。`ModelStrategy/research/`、`tests/research/` |
 
 **会话乙已收工交接(用户指示,避免双会话撞车;后续研发统一由会话甲负责)**:
 - 全部资产已复制到 `research/from_session_b/`:freeze_v3/v4 脚本与结果、逐笔交易缓存(cache_2125/26_{S1,S2,S2py10}.json,字段 open_ts/close_ts/profit_rate/risk_rate/bs_type/is_buy)、z-limit 参考实现(fee_zlimit_test.py / freeze_v4.py 的 apply_zlimit)、全部报告 JSON、K线聚合脚本(aggregate_klines.py,2H/周线;周线=周一界+周末日时间戳,多级别对齐必需)
@@ -88,7 +89,7 @@
 - 2026 单发状态:v4 这发已烧(#32);下一发留给 v5(WF-2B bos_zone 或后续过三关者)
 - 会话乙的 scratchpad db(mlv.db)含 K_WEEK 聚合,research/btc_mlv.db 若缺周线可用 aggregate_klines.py 补
 
-**当前最优冻结配置(freeze_v4,#32)**:S1 + S2py10(ib_t1_rc1 + pyramid_add_r=1.0)+ conviction(co=1.5/opp=1.0/bs1=0.8/bs1p=1.25)+ z-limit 入场(非加仓腿)、risk 0.75%(IS 21-25 全期 +47.0%/DD24.3%/三段最小Cal 2.02;2026 +15.0%/DD12.0%/Cal1.25)。
+**当前最优冻结配置(freeze_v4,#32,费用修正口径)**:S1 + S2py10(ib_t1_rc1 + pyramid_add_r=1.0)+ conviction(co=1.5/opp=1.0/bs1=0.8/bs1p=1.2)+ z-limit 入场(非加仓腿)、risk 0.75%(IS 21-25 全期 +46.9%/DD24.3%/三段最小Cal 2.01;2026 +14.9%/DD12.0%/Cal1.24)。
 多币种(冻结参数原样):S2 跨币种稳,S1 跨币种弱(ETH 2026H1 -30%)——高时间框架栈迁移性更好。
 
 ## 已确认的教训

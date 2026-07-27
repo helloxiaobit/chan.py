@@ -198,6 +198,26 @@ def test_run_baseline_builds_provenance_rich_is_report(tmp_path):
     assert report["provenance"]["commit"] == "test"
 
 
+def test_run_baseline_rejects_trade_before_declared_window(tmp_path):
+    spec = make_spec(tmp_path)
+    write_fixture_inputs(tmp_path)
+    s1_path = tmp_path / "s1.json"
+    trades = json.loads(s1_path.read_text(encoding="utf-8"))
+    trades.append(
+        {
+            "open_ts": parse_utc("2020-12-30"),
+            "close_ts": parse_utc("2020-12-31"),
+            "profit_rate": 10.0,
+            "risk_rate": 0.02,
+            "bs_type": "1",
+            "is_buy": True,
+        }
+    )
+    s1_path.write_text(json.dumps(trades), encoding="utf-8")
+    with pytest.raises(ValueError, match="outside declared window"):
+        run_baseline(spec, research_root=tmp_path)
+
+
 @pytest.mark.skipif(
     "CHANPY_RESEARCH_ROOT" not in os.environ,
     reason="set CHANPY_RESEARCH_ROOT to verify the external research data",
