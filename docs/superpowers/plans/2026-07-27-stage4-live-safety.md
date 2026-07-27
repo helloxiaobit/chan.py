@@ -68,16 +68,16 @@ restart reconciles pending client/order IDs instead of submitting a duplicate.
 - Test: `tests/test_trade_state_machine.py`
 - Modify: `tests/test_m6_trade.py`
 
-- [ ] Write failing tests that zero fill stays `submitted`, partial fill stores only
+- [x] Write failing tests that zero fill stays `submitted`, partial fill stores only
   actual quantity/average, fills are monotonic/idempotent, illegal transitions fail,
   and old SQLite files gain the new columns without losing rows.
-- [ ] Add open/cover client IDs, requested/current/cumulative fills, raw order status,
+- [x] Add open/cover client IDs, requested/current/cumulative fills, raw order status,
   attempt counters, last update, position side, strategy version, and risk multiplier.
-- [ ] Use conditional updates for intent acquisition so the same signal cannot be
+- [x] Use conditional updates for intent acquisition so the same signal cannot be
   submitted twice.
-- [ ] Preserve legacy `cover` rows as terminal-readable while new records use
+- [x] Preserve legacy `cover` rows as terminal-readable while new records use
   `closed`.
-- [ ] Verify and commit.
+- [x] Verify and commit.
 
 ### Task 4: Idempotent submit, partial fill, cancel/retry, and restart recovery
 

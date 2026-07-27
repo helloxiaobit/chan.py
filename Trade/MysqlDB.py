@@ -31,6 +31,11 @@ CREATE TABLE IF NOT EXISTS {table_name}(
     quota FLOAT DEFAULT 0,
     open_date DATETIME(6),
     open_order_id VARCHAR(32),
+    open_client_order_id VARCHAR(128),
+    open_requested_qty FLOAT DEFAULT 0,
+    open_filled_qty FLOAT DEFAULT 0,
+    open_order_status VARCHAR(20),
+    open_attempt INT DEFAULT 0,
     open_image_url VARCHAR(64),
     cover_image_url VARCHAR(64),
     peak_price_after_open FLOAT,
@@ -40,6 +45,19 @@ CREATE TABLE IF NOT EXISTS {table_name}(
     cover_date DATETIME(6),
     cover_reason VARCHAR(256),
     cover_order_id VARCHAR(256),
+    cover_client_order_id VARCHAR(128),
+    cover_requested_qty FLOAT DEFAULT 0,
+    cover_order_filled_qty FLOAT DEFAULT 0,
+    cover_order_avg_price FLOAT,
+    cover_filled_qty FLOAT DEFAULT 0,
+    cover_order_status VARCHAR(20),
+    cover_attempt INT DEFAULT 0,
+
+    current_qty FLOAT DEFAULT 0,
+    order_last_update DATETIME(6),
+    position_side VARCHAR(10) DEFAULT 'BOTH',
+    strategy_version VARCHAR(256),
+    risk_multiplier FLOAT DEFAULT 1,
 
     open_err BOOLEAN DEFAULT FALSE,
     close_err BOOLEAN DEFAULT FALSE,
@@ -48,6 +66,8 @@ CREATE TABLE IF NOT EXISTS {table_name}(
 
     relate_cover_id INT,
     is_cover_record BOOL DEFAULT FALSE,
+    UNIQUE KEY uniq_open_client_order_id (open_client_order_id),
+    UNIQUE KEY uniq_cover_client_order_id (cover_client_order_id),
     PRIMARY KEY (id)
 )
 """
