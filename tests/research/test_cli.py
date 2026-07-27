@@ -5,6 +5,8 @@ import sys
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
 from ModelStrategy.research.baseline import run_baseline
 from ModelStrategy.research.conservative_baseline import (
     conservative_reference_payload,
@@ -224,3 +226,111 @@ def test_migrate_candidate_cli_writes_guarded_json(tmp_path):
     assert completed.returncode == 0, completed.stderr
     assert json.loads(output.read_text(encoding="utf-8"))["trades"]
     assert "候选迁移通过" in completed.stdout
+
+
+def fake_candidate_report():
+    return {
+        "schema_version": 1,
+        "strategy_id": "freeze_v5_candidate_v1",
+        "execution_model": "conservative-v2",
+        "status": "rejected",
+        "stop_reason": "btc_full_calmar",
+        "spec_hash": "a" * 64,
+        "selected_risk_pct": 0.005,
+        "btc": {"cagr": 0.3, "full_dd": 0.2, "calmar": 1.5},
+        "gates": [{"name": "btc_full_calmar", "passed": False}],
+        "execution": {"filled": 1},
+        "input_hashes": {"s1_trades": "b" * 64},
+        "unopened_tiers": ["ETH/USDT", "SOL/USDT", "BNB/USDT", "OOS"],
+    }
+
+
+def candidate_cli_args(tmp_path, output):
+    spec = tmp_path / "spec.json"
+    spec.write_text("{}", encoding="utf-8")
+    freeze_v4 = tmp_path / "freeze-v4.json"
+    freeze_v4.write_text("{}", encoding="utf-8")
+    return [
+        "certify-v5-btc-is",
+        "--spec",
+        str(spec),
+        "--research-root",
+        str(tmp_path),
+        "--market-data-root",
+        str(tmp_path),
+        "--freeze-v4-reference",
+        str(freeze_v4),
+        "--output",
+        str(output),
+    ]
+
+
+def test_candidate_cli_writes_atomic_is_report(monkeypatch, tmp_path):
+    from ModelStrategy.research import certification, cli
+
+    monkeypatch.setattr(
+        certification,
+        "run_btc_is_certification",
+        lambda *args, **kwargs: fake_candidate_report(),
+    )
+    output = tmp_path / "output" / "candidate.json"
+    assert cli.main(candidate_cli_args(tmp_path, output)) == 0
+    assert json.loads(output.read_text(encoding="utf-8"))["status"] == "rejected"
+    assert not list(output.parent.glob("*.tmp"))
+
+
+def test_candidate_cli_reference_mismatch_leaves_no_output(
+    monkeypatch, tmp_path
+):
+    from ModelStrategy.research import certification, cli
+
+    report = fake_candidate_report()
+    monkeypatch.setattr(
+        certification,
+        "run_btc_is_certification",
+        lambda *args, **kwargs: report,
+    )
+    reference = certification.certification_reference_payload(report)
+    reference["selected_risk_pct"] = 0.01
+    reference_path = tmp_path / "candidate-reference.json"
+    reference_path.write_text(json.dumps(reference), encoding="utf-8")
+    output = tmp_path / "output" / "candidate.json"
+    args = candidate_cli_args(tmp_path, output)
+    args[args.index("--output"):args.index("--output")] = [
+        "--candidate-reference",
+        str(reference_path),
+    ]
+    assert cli.main(args) == 2
+    assert not output.exists()
+    assert not output.parent.exists() or not list(output.parent.glob("*.tmp"))
+
+
+def test_candidate_cli_empty_reference_cannot_bypass_freeze(
+    monkeypatch, tmp_path
+):
+    from ModelStrategy.research import certification, cli
+
+    monkeypatch.setattr(
+        certification,
+        "run_btc_is_certification",
+        lambda *args, **kwargs: fake_candidate_report(),
+    )
+    reference_path = tmp_path / "empty-reference.json"
+    reference_path.write_text("{}", encoding="utf-8")
+    output = tmp_path / "output" / "candidate.json"
+    args = candidate_cli_args(tmp_path, output)
+    args[args.index("--output"):args.index("--output")] = [
+        "--candidate-reference",
+        str(reference_path),
+    ]
+    assert cli.main(args) == 2
+    assert not output.exists()
+
+
+def test_candidate_is_cli_has_no_oos_capable_argument(tmp_path):
+    from ModelStrategy.research import cli
+
+    args = candidate_cli_args(tmp_path, tmp_path / "candidate.json")
+    args.extend(["--oos-input", str(tmp_path / "sealed.json")])
+    with pytest.raises(SystemExit):
+        cli.main(args)

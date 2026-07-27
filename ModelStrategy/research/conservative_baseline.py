@@ -373,8 +373,18 @@ def _metrics(result: ConservativeResult) -> dict[str, Any]:
 def calibrate_conservative(
     assembly: ConservativeAssembly, spec: ResearchSpec
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    rows = evaluate_conservative_grid(assembly, spec)
+    selected = next((row for row in reversed(rows) if row["passed"]), None)
+    if selected is None:
+        raise ValueError("no risk_grid value satisfies target_max_drawdown")
+    return rows, selected
+
+
+def evaluate_conservative_grid(
+    assembly: ConservativeAssembly, spec: ResearchSpec
+) -> list[dict[str, Any]]:
+    """Evaluate every frozen risk row without requiring one to pass."""
     rows = []
-    selected = None
     interval = assembly.marks.interval_seconds
     for risk_pct in spec.risk_grid:
         config = _portfolio_config(spec, risk_pct)
@@ -435,11 +445,7 @@ def calibrate_conservative(
             "passed": worst_dd <= spec.portfolio["target_max_drawdown"],
         }
         rows.append(row)
-        if row["passed"]:
-            selected = row
-    if selected is None:
-        raise ValueError("no risk_grid value satisfies target_max_drawdown")
-    return rows, selected
+    return rows
 
 
 def _execution_stats(outcomes: Iterable[ReplayOutcome]) -> dict[str, int]:

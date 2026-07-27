@@ -184,6 +184,26 @@ def test_funding_manifest_ignores_later_rate_changes(tmp_path):
     assert load_funding_events(*args)[1] == first
 
 
+def test_sealed_is_funding_loader_does_not_parse_2026_rows(tmp_path):
+    path = write_funding(
+        tmp_path,
+        [
+            ("2025-12-31T16:00:00+00:00", 0.001),
+            ("2026-not-a-valid-timestamp", "not-a-rate"),
+        ],
+    )
+    events, manifest = load_funding_events(
+        path,
+        "BTC/USDT",
+        parse_utc("2025-12-31T16:00:00Z"),
+        parse_utc("2026-01-01"),
+        sealed_end_year=2026,
+    )
+    assert [event.rate for event in events] == [0.001]
+    assert manifest["sealed_end_year"] == 2026
+    assert manifest["stopped_at_sealed_year"] is True
+
+
 def test_funding_loader_rejects_naive_timestamp(tmp_path):
     path = write_funding(tmp_path, [("2025-12-31 16:00:00", 0.001)])
     with pytest.raises(MarketDataError, match="timezone"):

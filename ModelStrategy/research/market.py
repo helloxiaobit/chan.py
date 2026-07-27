@@ -312,15 +312,23 @@ def load_funding_events(
     symbol: str,
     begin_ts: float,
     end_ts: float,
+    *,
+    sealed_end_year: int | None = None,
 ) -> tuple[tuple[FundingEvent, ...], dict[str, Any]]:
     """Load and logically hash funding rows inside an IS-only window."""
     source = Path(path)
     if not source.is_file():
         raise FileNotFoundError(source)
     begin, end = _validate_window(begin_ts, end_ts)
+    if sealed_end_year is not None and (
+        type(sealed_end_year) is not int
+        or not 1970 <= sealed_end_year <= 9999
+    ):
+        raise MarketDataError("sealed_end_year must be a four-digit integer")
     requested_symbol = _normalize_symbol(symbol)
     events = []
     logical_rows = []
+    stopped_at_sealed_year = False
     with source.open(encoding="utf-8", newline="") as stream:
         reader = csv.DictReader(stream)
         required = {"symbol", "fundingTime", "fundingRate"}
@@ -330,7 +338,15 @@ def load_funding_events(
             row_symbol = _normalize_symbol(row["symbol"])
             if row_symbol != requested_symbol:
                 continue
-            timestamp = _aware_timestamp(row["fundingTime"])
+            raw_timestamp = row["fundingTime"].strip()
+            if sealed_end_year is not None:
+                raw_year = raw_timestamp[:4]
+                if len(raw_year) != 4 or not raw_year.isdigit():
+                    raise MarketDataError("invalid funding timestamp year")
+                if int(raw_year) >= sealed_end_year:
+                    stopped_at_sealed_year = True
+                    break
+            timestamp = _aware_timestamp(raw_timestamp)
             if timestamp < begin or timestamp >= end:
                 continue
             rate = _finite("funding rate", row["fundingRate"])
@@ -349,6 +365,12 @@ def load_funding_events(
         rows=logical_rows,
         timestamps=(event.ts for event in events),
     )
+    if sealed_end_year is not None:
+        manifest = {
+            **manifest,
+            "sealed_end_year": sealed_end_year,
+            "stopped_at_sealed_year": stopped_at_sealed_year,
+        }
     return tuple(events), manifest
 
 

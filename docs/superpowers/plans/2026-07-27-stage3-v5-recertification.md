@@ -189,17 +189,17 @@ audit reported zero errors and no replay crossed the 2026 boundary.
 - Test: `tests/research/test_certification.py`
 - Test: `tests/research/test_cli.py`
 
-- [ ] **Step 1: Write failing gate/report/atomic CLI tests**
+- [x] **Step 1: Write failing gate/report/atomic CLI tests**
 
 Prove ordered gate evaluation, risk selection, exact failure reasons, compact
 reference comparison, input/spec hashes, no later-symbol reads after BTC failure,
 and no OOS-capable argument on the IS command.
 
-- [ ] **Step 2: Verify RED**
+- [x] **Step 2: Verify RED**
 
 Run: `pytest tests/research/test_certification.py tests/research/test_cli.py -q`
 
-- [ ] **Step 3: Implement BTC assembly and report**
+- [x] **Step 3: Implement BTC assembly and report**
 
 Load only BTC normalized trades, BTC logical bars, and BTC funding. Apply conviction
 on actual fills, evaluate the frozen grid through the Stage-2 marked portfolio, and

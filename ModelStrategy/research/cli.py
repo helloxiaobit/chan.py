@@ -50,6 +50,15 @@ def _parser() -> argparse.ArgumentParser:
     migrate.add_argument(
         "--timestamp-offset-seconds", type=int, required=True
     )
+    certify = commands.add_parser(
+        "certify-v5-btc-is", help="运行预登记 v5 的 BTC 样本内门禁"
+    )
+    certify.add_argument("--spec", type=Path, required=True)
+    certify.add_argument("--research-root", type=Path, required=True)
+    certify.add_argument("--market-data-root", type=Path, required=True)
+    certify.add_argument("--freeze-v4-reference", type=Path, required=True)
+    certify.add_argument("--candidate-reference", type=Path)
+    certify.add_argument("--output", type=Path, required=True)
     return parser
 
 
@@ -159,6 +168,44 @@ def _run_migrate_candidate(args: argparse.Namespace) -> int:
     return 0
 
 
+def _run_certify_v5_btc_is(args: argparse.Namespace) -> int:
+    from .certification import (
+        compare_certification_reference,
+        run_btc_is_certification,
+    )
+
+    report = run_btc_is_certification(
+        args.spec,
+        research_root=args.research_root,
+        market_data_root=args.market_data_root,
+        freeze_v4_reference=_load_reference(args.freeze_v4_reference),
+    )
+    if args.candidate_reference is not None:
+        reference = _load_reference(args.candidate_reference)
+        mismatches = compare_certification_reference(report, reference)
+        if mismatches:
+            details = json.dumps(
+                mismatches, ensure_ascii=False, sort_keys=True
+            )
+            raise ValueError(f"v5 BTC 参考不一致: {details}")
+    _write_atomic(args.output, canonical_json_bytes(report))
+    btc = report["btc"]
+    summary = (
+        "无合规风险"
+        if btc is None
+        else (
+            f"risk={report['selected_risk_pct']:.4f} "
+            f"CAGR={btc['cagr']:.6f} DD={btc['full_dd']:.6f} "
+            f"Calmar={btc['calmar']:.6f}"
+        )
+    )
+    print(
+        f"v5 BTC IS 门禁完成: status={report['status']} "
+        f"{summary} 报告={args.output}"
+    )
+    return 0
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     try:
@@ -168,6 +215,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             return _run_compare(args)
         if args.command == "migrate-candidate":
             return _run_migrate_candidate(args)
+        if args.command == "certify-v5-btc-is":
+            return _run_certify_v5_btc_is(args)
         raise ValueError(f"unsupported command: {args.command}")
     except Exception as exc:
         print(f"研究基线失败: {exc}", file=sys.stderr)
