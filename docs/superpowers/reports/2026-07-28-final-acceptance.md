@@ -82,7 +82,14 @@ git diff --check
   `68BD692C0B20C1440FD2B4BA79EE1F0FD988D1132815D4710ED57631981425D1`；
   v5 BTC IS
   `8E69D0EC6ECDE073E8BBB0D746BD7F0EAB18368377DFF5245EE4DBDE7D0FC368`。
-- Stage 5 最终软件测试结果：完成后在本节追加。
+- Stage 5 最终软件验收基点：提交
+  `5b90aea72ec5ce05637fd3e8454b00561738d1fb`，执行测试前工作树干净。
+- 针对性联合测试：173 passed、6 skipped（最终文档一致性、研究认证、交易安全、
+  状态机和旧 M6）。
+- 完整离线回归：288 passed、7 skipped、1 deselected；唯一警告仍为既有 xgboost
+  文本输入弃用提示。
+- `compileall`、`git diff --check`、冻结 baseline zero-diff、未跟踪文件审计和
+  YAML 非空凭据扫描均通过；没有外置行情、交易缓存或凭据进入仓库。
 - 所有研究命令只允许查询 `2026-01-01` 之前的正式 IS 输入；输出目录已被
   Git 忽略，不作为新的冻结参考提交。
 

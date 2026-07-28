@@ -44,13 +44,13 @@ shared portfolio certification, or any new 2026 OOS result. It cannot create a
 
 ### Task 3: Final offline software acceptance
 
-- [ ] Run focused research, safety, state-machine, legacy M6, and documentation
+- [x] Run focused research, safety, state-machine, legacy M6, and documentation
   consistency tests.
-- [ ] Run the complete `pytest -m "not network"` suite.
-- [ ] Run compileall and `git diff --check`; inspect tracked/untracked files and
+- [x] Run the complete `pytest -m "not network"` suite.
+- [x] Run compileall and `git diff --check`; inspect tracked/untracked files and
   confirm no credentials or external research data entered the repository.
-- [ ] Run a final independent read-only P0-P2 review and fix any confirmed issue.
-- [ ] Verify and commit.
+- [x] Run a final independent read-only P0-P2 review and fix any confirmed issue.
+- [x] Verify and commit.
 
 ### Task 4: Merge and release decision
 
