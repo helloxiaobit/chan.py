@@ -59,8 +59,12 @@ def create_exchange(conf: Optional[dict] = None, for_data: bool = False):
     if conf.get("testnet") and not for_data:
         try:
             exchange.set_sandbox_mode(True)
-        except Exception:
-            pass  # 部分交易所无沙盒
+        except Exception as exc:
+            # 交易用途绝不能在沙盒启用失败后静默落到生产端点。
+            raise CChanException(
+                "交易测试网沙盒启用失败，已拒绝创建交易会话",
+                ErrCode.TRADE_UNLOCK_FAIL,
+            ) from exc
     return exchange
 
 

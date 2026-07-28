@@ -50,7 +50,10 @@ def real_time_track(
     price_map: Optional[Dict[str, float]] = None,
 ) -> List[int]:
     open_conf = open_conf or COpenConfig()
-    records = [rec for rec in db.get_open_records() if rec["status"] == "open"]
+    records = [
+        rec for rec in db.get_open_records()
+        if rec["status"] in {"open", "partially_filled"}
+    ]
     if not records:
         return []
     if price_map is None:
@@ -69,7 +72,10 @@ def real_time_track(
         try:
             if hasattr(engine, "set_sim_price"):
                 engine.set_sim_price(code, price)
-            engine.cover_trade(rec, price, reason=reason)
+            if rec["status"] == "partially_filled":
+                engine.close_partial_open(rec, price, reason=reason)
+            else:
+                engine.cover_trade(rec, price, reason=reason)
             if db.get_record(rec["id"])["status"] in {"closed", "cover"}:
                 covered.append(rec["id"])
         except CChanException as e:

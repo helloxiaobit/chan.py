@@ -156,6 +156,42 @@ class CChanDB:
             "ORDER BY id"
         )
 
+    def get_order_intent(self, client_order_id: str) -> Optional[dict]:
+        if not client_order_id:
+            return None
+        rows = self.db.query(
+            f"SELECT * FROM {self.table} WHERE "
+            "open_client_order_id=? OR cover_client_order_id=?",
+            (client_order_id, client_order_id),
+        )
+        matches = []
+        for record in rows:
+            if record.get("open_client_order_id") == client_order_id:
+                matches.append({"phase": "open", "record": record})
+            if record.get("cover_client_order_id") == client_order_id:
+                matches.append({"phase": "close", "record": record})
+        return matches[0] if len(matches) == 1 else None
+
+    def claim_order_submission(self, record_id: int, phase: str) -> bool:
+        if phase == "open":
+            changed = self.db.execute(
+                f"UPDATE {self.table} SET open_order_status='submitting', "
+                "order_last_update=? WHERE id=? "
+                "AND status IN ('submitted', 'partially_filled') "
+                "AND open_order_status='created' AND open_order_id IS NULL",
+                (now_str(), record_id),
+            )
+        elif phase == "close":
+            changed = self.db.execute(
+                f"UPDATE {self.table} SET cover_order_status='submitting', "
+                "order_last_update=? WHERE id=? AND status='closing' "
+                "AND cover_order_status='created' AND cover_order_id IS NULL",
+                (now_str(), record_id),
+            )
+        else:
+            raise CChanException("订单意图阶段无效", ErrCode.PARA_ERROR)
+        return changed == 1
+
     def record_open_submission(
         self, record_id: int, order_id: str, order_status: str
     ) -> None:

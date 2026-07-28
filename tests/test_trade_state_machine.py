@@ -9,6 +9,7 @@ from Trade.MysqlDB import CREATE_TABLE_SQL as MYSQL_CREATE_TABLE_SQL
 from Trade.OpenQuotaGen import CBenchPriceQuotaGen
 from Trade.Script.MakeOpenTrade import make_open_trade
 from Trade.Script.OpenConfig import COpenConfig
+from Trade.Script.RealTimeTracker import real_time_track
 
 from .test_m6_trade import make_signal
 
@@ -386,4 +387,131 @@ def test_close_is_not_retried_until_cancel_is_confirmed(
     assert pending["status"] == "closing"
     assert pending["cover_attempt"] == 1
     assert pending["current_qty"] == 10.0
+    assert len(engine.sim_state.orders) == 2
+
+
+def test_offline_restart_acceptance_covers_full_order_lifecycle(
+    tmp_path, monkeypatch
+):
+    from DataAPI import ccxt as data_ccxt
+
+    def forbid_exchange(*args, **kwargs):
+        raise AssertionError("离线验收不得创建交易所或调用真实 create_order")
+
+    monkeypatch.setattr(data_ccxt, "create_exchange", forbid_exchange)
+    path = tmp_path / "restart-acceptance.db"
+
+    db1 = CChanDB(
+        db_conf={"type": "sqlite", "sqlite_path": str(path)}
+    )
+    record_id = db1.add_signal(make_signal())
+    engine1 = dry_engine(db1)
+    open_client = engine1.make_client_order_id(
+        db1.get_record(record_id), "open"
+    )
+    engine1.set_sim_fill_plan(open_client, [0.0, 4.0, 10.0])
+    placed = engine1.add_trade(db1.get_record(record_id), 100.0)
+    sim_state = engine1.sim_state
+    assert placed.filled == 0.0
+    assert db1.get_record(record_id)["status"] == "submitted"
+    assert engine1.get_balance()["USDT"] == 100000.0
+    db1.close()
+
+    db2 = CChanDB(
+        db_conf={"type": "sqlite", "sqlite_path": str(path)}
+    )
+    engine2 = dry_engine(db2, sim_state=sim_state)
+    engine2.restore()
+    partial_open = db2.get_record(record_id)
+    assert partial_open["status"] == "partially_filled"
+    assert partial_open["current_qty"] == 4.0
+    assert engine2.get_position("TEST/USDT") == 4.0
+    assert engine2.get_balance()["USDT"] == 99600.0
+    db2.close()
+
+    db3 = CChanDB(
+        db_conf={"type": "sqlite", "sqlite_path": str(path)}
+    )
+    engine3 = dry_engine(db3, sim_state=sim_state)
+    engine3.restore()
+    fully_open = db3.get_record(record_id)
+    assert fully_open["status"] == "open"
+    assert fully_open["current_qty"] == 10.0
+    assert fully_open["open_client_order_id"] == open_client
+    assert engine3.get_position("TEST/USDT") == 10.0
+    assert engine3.get_balance()["USDT"] == 99000.0
+
+    close_client = engine3.make_client_order_id(fully_open, "close")
+    engine3.set_sim_fill_plan(close_client, [0.0, 3.0, 10.0])
+    close_order = engine3.cover_trade(fully_open, 110.0, "acceptance")
+    assert close_order.filled == 0.0
+    assert db3.get_record(record_id)["status"] == "closing"
+    db3.close()
+
+    db4 = CChanDB(
+        db_conf={"type": "sqlite", "sqlite_path": str(path)}
+    )
+    engine4 = dry_engine(db4, sim_state=sim_state)
+    engine4.restore()
+    partial_close = db4.get_record(record_id)
+    assert partial_close["status"] == "closing"
+    assert partial_close["current_qty"] == 7.0
+    assert partial_close["cover_filled_qty"] == 3.0
+    assert engine4.get_position("TEST/USDT") == 7.0
+    assert engine4.get_balance()["USDT"] == 99330.0
+    db4.close()
+
+    db5 = CChanDB(
+        db_conf={"type": "sqlite", "sqlite_path": str(path)}
+    )
+    engine5 = dry_engine(db5, sim_state=sim_state)
+    engine5.restore()
+    closed = db5.get_record(record_id)
+    assert closed["status"] == "closed"
+    assert not closed["is_open"]
+    assert closed["current_qty"] == 0.0
+    assert closed["open_filled_qty"] == 10.0
+    assert closed["cover_filled_qty"] == 10.0
+    assert closed["open_client_order_id"] == open_client
+    assert closed["cover_client_order_id"] == close_client
+    assert closed["open_attempt"] == 1
+    assert closed["cover_attempt"] == 1
+    assert engine5.get_position("TEST/USDT") == 0.0
+    assert engine5.get_balance()["USDT"] == 100100.0
+    assert len(sim_state.orders) == 2
+    db5.close()
+
+
+def test_partial_open_stop_cancels_entry_then_closes_actual_exposure(
+    trade_db
+):
+    record_id = trade_db.add_signal(
+        make_signal(open_thred=100.0, sl_thred=95.0)
+    )
+    engine = dry_engine(trade_db)
+    record = trade_db.get_record(record_id)
+    open_client = engine.make_client_order_id(record, "open")
+    engine.set_sim_fill_plan(open_client, [0.0, 4.0])
+    engine.add_trade(record, 100.0)
+    engine.restore()
+    partial = trade_db.get_record(record_id)
+    assert partial["status"] == "partially_filled"
+    assert partial["current_qty"] == 4.0
+
+    closed_ids = real_time_track(
+        trade_db,
+        engine,
+        COpenConfig(),
+        price_map={"TEST/USDT": 90.0},
+    )
+
+    closed = trade_db.get_record(record_id)
+    assert closed_ids == [record_id]
+    assert closed["status"] == "closed"
+    assert closed["open_order_status"] == "canceled"
+    assert closed["open_filled_qty"] == 4.0
+    assert closed["cover_requested_qty"] == 4.0
+    assert closed["cover_filled_qty"] == 4.0
+    assert closed["current_qty"] == 0.0
+    assert engine.get_position("TEST/USDT") == 0.0
     assert len(engine.sim_state.orders) == 2

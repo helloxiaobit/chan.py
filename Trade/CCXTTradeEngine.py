@@ -160,6 +160,64 @@ class CCCXTTradeEngine(CTradeEngine):
             raise CChanException("dry_run 成交计划必须单调递增", ErrCode.PARA_ERROR)
         self._sim_fill_plans[client_order_id] = fills
 
+    def _claim_persisted_intent(
+        self,
+        code: str,
+        is_buy: bool,
+        amount: float,
+        client_order_id: Optional[str],
+        reduce_only: bool,
+        position_side: str,
+    ) -> None:
+        if not client_order_id:
+            raise CChanException(
+                "非 dry-run 下单必须提供客户端订单号",
+                ErrCode.TRADE_UNLOCK_FAIL,
+            )
+        intent = self.chan_db.get_order_intent(client_order_id)
+        if intent is None:
+            raise CChanException(
+                "客户端订单号没有唯一的持久化意图",
+                ErrCode.TRADE_UNLOCK_FAIL,
+            )
+        phase = intent["phase"]
+        record = intent["record"]
+        if phase == "open":
+            requested = float(record.get("open_requested_qty") or 0)
+            valid = (
+                record.get("status") in {"submitted", "partially_filled"}
+                and record.get("open_order_status") == "created"
+                and not record.get("open_order_id")
+                and is_buy == bool(record.get("is_buy"))
+                and not reduce_only
+            )
+        else:
+            requested = float(record.get("cover_requested_qty") or 0)
+            valid = (
+                record.get("status") == "closing"
+                and record.get("cover_order_status") == "created"
+                and not record.get("cover_order_id")
+                and is_buy != bool(record.get("is_buy"))
+                and reduce_only
+            )
+        valid = (
+            valid
+            and record.get("stock_code") == code
+            and math.isclose(requested, amount, rel_tol=1e-12, abs_tol=1e-12)
+        )
+        if self.market_type in _CONTRACT_TYPES:
+            valid = valid and record.get("position_side") == position_side
+        if not valid:
+            raise CChanException(
+                "下单参数与持久化意图不一致",
+                ErrCode.TRADE_UNLOCK_FAIL,
+            )
+        if not self.chan_db.claim_order_submission(record["id"], phase):
+            raise CChanException(
+                "持久化意图已提交或被其他进程获取",
+                ErrCode.TRADE_UNLOCK_FAIL,
+            )
+
     # ===== 撮合接口 =====
     def place_order(
         self,
@@ -191,6 +249,14 @@ class CCCXTTradeEngine(CTradeEngine):
                 reduce_only=reduce_only,
             )
         self.safety_policy.assert_order_allowed()
+        self._claim_persisted_intent(
+            code,
+            is_buy,
+            amount,
+            client_order_id,
+            reduce_only,
+            side,
+        )
         import ccxt  # 懒加载
         exchange = self.get_exchange()
         try:

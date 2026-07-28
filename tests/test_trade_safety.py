@@ -6,9 +6,12 @@ from types import SimpleNamespace
 import pytest
 
 from Common.ChanException import CChanException, ErrCode
+from DataAPI import ccxt as data_ccxt
 from Trade.CCXTTradeEngine import CCCXTTradeEngine
 from Trade.db_util import CChanDB
 from Trade.TradeEngine import COrderResult
+
+from .test_m6_trade import make_signal
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -216,6 +219,68 @@ def test_kill_switch_is_rechecked_before_non_dry_order(trade_db, tmp_path):
     assert engine.exchange is None
 
 
+def test_testnet_exchange_creation_fails_if_sandbox_cannot_be_enabled(
+    monkeypatch
+):
+    class BrokenSandboxExchange:
+        def set_sandbox_mode(self, enabled):
+            raise RuntimeError("sandbox unavailable")
+
+    fake_exchange = BrokenSandboxExchange()
+    monkeypatch.setitem(
+        sys.modules,
+        "ccxt",
+        SimpleNamespace(binance=lambda params: fake_exchange),
+    )
+    with pytest.raises(CChanException, match="沙盒") as caught:
+        data_ccxt.create_exchange(
+            {
+                "exchange": "binance",
+                "mode": "testnet",
+                "testnet": True,
+                "api_key": "key",
+                "secret": "secret",
+            },
+            for_data=False,
+        )
+    assert caught.value.errcode == ErrCode.TRADE_UNLOCK_FAIL
+
+
+def test_non_dry_order_requires_persisted_matching_intent(
+    trade_db, tmp_path
+):
+    receipt = write_candidate_receipt(tmp_path)
+    engine = CCCXTTradeEngine(
+        trade_db,
+        ccxt_conf={
+            "mode": "testnet",
+            "testnet": True,
+            "api_key": "key",
+            "secret": "secret",
+        },
+        trade_conf=enabled_trade_conf(receipt),
+        environ={"CHANPY_ENABLE_TESTNET": "YES"},
+        push_msg=False,
+    )
+    exchange = FakeContractExchange()
+    engine.exchange = exchange
+
+    with pytest.raises(CChanException, match="客户端订单号") as missing:
+        engine.place_order("BTC/USDT", True, 0.001, 50000.0)
+    assert missing.value.errcode == ErrCode.TRADE_UNLOCK_FAIL
+
+    with pytest.raises(CChanException, match="持久化意图") as unmatched:
+        engine.place_order(
+            "BTC/USDT",
+            True,
+            0.001,
+            50000.0,
+            client_order_id="unmatched-client",
+        )
+    assert unmatched.value.errcode == ErrCode.TRADE_UNLOCK_FAIL
+    assert exchange.created == []
+
+
 def test_order_result_rejects_unknown_status():
     with pytest.raises(CChanException, match="订单状态"):
         COrderResult(
@@ -389,6 +454,19 @@ def test_contract_order_passes_explicit_intent_and_queries_positions(
     engine.exchange = exchange
     monkeypatch.setitem(
         sys.modules, "ccxt", SimpleNamespace(BaseError=FakeCCXTError)
+    )
+
+    record_id = trade_db.add_signal(make_signal(code="BTC/USDT:USDT"))
+    assert trade_db.acquire_open_intent(
+        record_id,
+        2.0,
+        "open-contract-1",
+        position_side="LONG",
+    )
+    trade_db.record_open_submission(record_id, "old-open", "closed")
+    trade_db.apply_open_fill(record_id, 2.0, 100.0, "closed")
+    assert trade_db.acquire_close_intent(
+        record_id, 2.0, "close-42", "test"
     )
 
     result = engine.place_order(

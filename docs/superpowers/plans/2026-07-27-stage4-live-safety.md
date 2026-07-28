@@ -106,15 +106,15 @@ restart reconciles pending client/order IDs instead of submitting a duplicate.
 - Modify: `Config/config_demo.yaml`
 - Test: `tests/test_trade_state_machine.py`
 
-- [ ] Run a temporary-SQLite lifecycle: signal -> zero/partial fill -> restart -> full
+- [x] Run a temporary-SQLite lifecycle: signal -> zero/partial fill -> restart -> full
   open -> partial reduce-only close -> restart -> closed. Assert balances, positions,
   states, client IDs, and no duplicate submission.
-- [ ] Prove the tracked rejected v5 receipt blocks testnet/live and that no test opens
+- [x] Prove the tracked rejected v5 receipt blocks testnet/live and that no test opens
   a network exchange or invokes a real `create_order` implementation.
-- [ ] Document exact dry-run commands, safety environment variables, receipt rule,
+- [x] Document exact dry-run commands, safety environment variables, receipt rule,
   remaining exchange-specific testnet gaps, and the fact that real trading remains
   locked.
-- [ ] Run focused tests, full offline regression, compileall, diff-check, and an
+- [x] Run focused tests, full offline regression, compileall, diff-check, and an
   independent read-only review before merging.
 
 ## Completion evidence

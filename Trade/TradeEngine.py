@@ -217,6 +217,44 @@ class CTradeEngine(metaclass=abc.ABCMeta):
             )
         return order
 
+    def close_partial_open(
+        self, record: dict, price: Optional[float], reason: str
+    ) -> Optional[COrderResult]:
+        """先终止仍在成交的开仓单，再只平掉已经形成的实际仓位。"""
+        record_id = record["id"]
+        current = self.chan_db.get_record(record_id)
+        if current["status"] != "partially_filled":
+            _status = current["status"]
+            raise CChanException(
+                f"记录状态 {_status} 不是部分开仓",
+                ErrCode.PARA_ERROR,
+            )
+
+        def apply_snapshot(order: COrderResult) -> dict:
+            state = self.chan_db.get_record(record_id)
+            if state["status"] in {"submitted", "partially_filled"}:
+                self.chan_db.record_open_submission(
+                    record_id, order.order_id, order.status
+                )
+            self.chan_db.apply_open_fill(
+                record_id, order.filled, order.avg_price, order.status
+            )
+            return self.chan_db.get_record(record_id)
+
+        self.rate_limit()
+        order = self._query_persisted_order(current, "open")
+        current = apply_snapshot(order)
+        if order.status == "open":
+            if not self.cancel_order(current["stock_code"], order.order_id):
+                return None
+            confirmed = self._query_persisted_order(current, "open")
+            if confirmed.status == "open":
+                return None
+            current = apply_snapshot(confirmed)
+        if current["status"] == "open" and float(current["current_qty"] or 0) > 0:
+            return self.cover_trade(current, price, reason)
+        return None
+
     def cover_trade(self, record: dict, price: Optional[float], reason: str) -> COrderResult:
         """先持久化平仓意图，再以 reduce-only 提交当前剩余数量。"""
         record_id = record["id"]

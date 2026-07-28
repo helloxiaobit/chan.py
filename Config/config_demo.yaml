@@ -41,11 +41,11 @@ notify:
 
 ccxt:
   exchange: binance                # ccxt 交易所 id,如 binance / okx
-  mode: dry_run                    # dry_run / testnet / live;密钥不会自动改变模式
+  mode: dry_run                    # 默认保持 dry_run;密钥不会自动改变模式
   api_key: ""
   secret: ""
   password: ""                     # okx 等交易所需要
-  testnet: true                    # true 时启用 set_sandbox_mode
+  testnet: true                    # testnet 模式须 true;live 模式须 false
   proxy: ""                        # 可选,如 http://127.0.0.1:7890
   rate_limit: true                 # enableRateLimit
   default_type: spot               # spot / swap / future
@@ -67,6 +67,9 @@ trade:                             # 线上交易例行(Trade/Script)配置
   strategy: multi_lv               # multi_lv(三级联立) / custom(单级别demo策略)
   lv_list: [K_4H, K_60M, K_15M]    # 多级别从大到小:趋势/交易/入场;单级别用 lv: K_60M
   bench_price: 1000                # 单笔开仓名义金额(USDT)
-  strategy_receipt: ""             # testnet/live 必须指向 status=candidate 的认证收据
+  strategy_receipt: ""             # 非 dry-run 必须为 status=candidate;当前 v5 rejected 不可用
   strategy_id: ""                  # 可选:与收据严格比对
   strategy_spec_hash: ""           # 可选:与收据严格比对
+  # testnet 另需 CHANPY_ENABLE_TESTNET=YES
+  # live 另需 CHANPY_LIVE_TRADING_UNLOCK=I_ACCEPT_REAL_ORDERS
+  # 紧急停止新订单: CHANPY_KILL_SWITCH=1
