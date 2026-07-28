@@ -68,7 +68,21 @@ git diff --check
 - OS：Windows；时区：Asia/Shanghai；Python 3.14（仓库最低目标仍为 3.11+）。
 - Stage 4 合入前完整离线回归：284 passed、7 skipped、1 deselected。
 - 唯一已知测试警告：xgboost 3.1+ 弃用 libsvm 文本 URI 输入；不影响本轮结论。
-- Stage 5 clean-commit 参考复现与最终测试结果：完成后在本节追加。
+- Stage 5 clean-commit 参考复现：提交
+  `f8b73bf36c9e2d2471361d2c4d48e2eb4c7461bd`，三个报告的 provenance 均为
+  `dirty=false`、CPython 3.14.2、win32。
+- freeze-v4 legacy 比较通过：risk 0.0075、CAGR 46.9172%。
+- freeze-v4 conservative 比较通过：risk 0.005、CAGR 30.0756%、回撤 20.7326%。
+- v5 BTC IS 比较通过：`rejected / btc_full_calmar`、risk 0.005、CAGR
+  31.9570%、回撤 19.8066%、Calmar 1.613448；未打开层仍为 ETH、SOL、BNB、
+  shared_multi、OOS。
+- 冻结参考 SHA-256：legacy-v1
+  `C6B708F6E8B02FFD32F5C8A881D0F67965404546B20585B9A2BBAECB9D95505B`；
+  conservative-v2
+  `68BD692C0B20C1440FD2B4BA79EE1F0FD988D1132815D4710ED57631981425D1`；
+  v5 BTC IS
+  `8E69D0EC6ECDE073E8BBB0D746BD7F0EAB18368377DFF5245EE4DBDE7D0FC368`。
+- Stage 5 最终软件测试结果：完成后在本节追加。
 - 所有研究命令只允许查询 `2026-01-01` 之前的正式 IS 输入；输出目录已被
   Git 忽略，不作为新的冻结参考提交。
 

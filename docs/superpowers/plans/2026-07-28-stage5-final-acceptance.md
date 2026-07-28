@@ -35,12 +35,12 @@ shared portfolio certification, or any new 2026 OOS result. It cannot create a
 - `compare` for freeze-v4 conservative-v2 reference
 - `certify-v5-btc-is` for the rejected v5 BTC IS reference
 
-- [ ] Run from a clean Stage 5 commit with explicit external read-only roots.
-- [ ] Confirm reference comparisons pass and no 2026 candidate/OOS artifact is
+- [x] Run from a clean Stage 5 commit with explicit external read-only roots.
+- [x] Confirm reference comparisons pass and no 2026 candidate/OOS artifact is
   generated or modified.
-- [ ] Record commands, commit, environment, metric summaries, and reference hashes in
+- [x] Record commands, commit, environment, metric summaries, and reference hashes in
   the acceptance report.
-- [ ] Verify and commit.
+- [x] Verify and commit.
 
 ### Task 3: Final offline software acceptance
 
