@@ -38,6 +38,12 @@ Plot/PlotDriver.py 负责全部绘图(DrawElement 为分发入口)
 6. 每个里程碑(DEV_PLAN.md §3)完成后:跑验收标准 + `main.py`/`Debug/strategy_demo*.py` 回归 + 单独 commit(信息格式:`feat(M1): xxx`)。
 7. 密钥/个人配置只进 `config.yaml`(已 gitignore),仓库只放 `config_demo.yaml`。
 8. 一致性是最高验收:同一批K线,一次性 load 与 trigger_load 逐根投喂,最终笔/段/中枢/bsp 必须完全一致。
+9. CCXT 交易模式只认 `ccxt.mode`；API 密钥和 `dry_run=False` 均不得隐式开启
+   testnet/live。非 dry-run 必须通过 candidate 收据、环境解锁，并在每张订单前
+   复查 `CHANPY_KILL_SWITCH`。
+10. 订单意图先落库；数据库只接受交易所报告的单调累计成交量。恢复查不到订单时
+    不得猜测性重下，平仓重试必须先确认上一张订单进入终态，再以新客户端订单号
+    reduce-only 提交剩余数量。
 
 ## 当前状态
 
@@ -48,7 +54,11 @@ Plot/PlotDriver.py 负责全部绘图(DrawElement 为分发入口)
 - [x] M3 模型框架(CModelGenerator/CDataSet + XGB/LGBM/MLP + CCommModel/CXGBModel 接入)
 - [x] M4 回测+AutoML(eval_strategy评估报告、bayes/grid/PBT搜索、parse_automl_result→OpenConfig.yaml)
 - [x] M5 ccxt数据层(ccxt重构、ccxt_update增量落库、OfflineDataAPI、SnapshotAPI含CCXTSnapshot)
-- [x] M6 交易系统(CChanDB双后端、信号状态机、CCXTTradeEngine dry-run、Trade/Script全套、send_msg)
+- [x] M6 交易系统(CChanDB双后端、可恢复订单状态机、fail-closed CCXT 模式、
+      零/部分成交 dry-run、Trade/Script 全套、send_msg)
 - [x] M7 收尾(FeatureReconciliation、ExamGenerator、CosApi、多级别全量一致性测试、README_FULL.md)
 
-**完整版开发已全部完成**(M0~M7,86 个测试用例)。使用文档见 README_FULL.md。
+**完整版功能补全已完成**(M0~M7)。策略认证的当前结论不是可实盘：
+`freeze_v5_candidate_v1` 在 BTC 2021-25 IS 的 Calmar 为 1.613，状态为
+`rejected`，没有可用于 testnet/live 的 candidate 收据。交易层 Stage 4 已完成纯
+离线安全验收，真实交易继续锁定。操作与剩余交易所测试网缺口见 README_FULL.md。

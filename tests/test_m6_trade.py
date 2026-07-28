@@ -98,7 +98,7 @@ def test_db_open_cover_flow(tmp_env):
     db.mark_cover_order(sid, "c1", 9.9, "stop_loss")
     db.mark_cover_done(sid, 96.0)
     rec = db.get_record(sid)
-    assert rec["status"] == "cover" and rec["cover_avg_price"] == 96.0
+    assert rec["status"] == "closed" and rec["cover_avg_price"] == 96.0
     assert db.get_open_records() == []
     db.close()
 
@@ -158,7 +158,7 @@ def test_full_dryrun_lifecycle(tmp_env):
     covered = real_time_track(db, engine, open_conf, price_map={"TEST/USDT": 94.0})
     assert covered == [sid]
     rec = db.get_record(sid)
-    assert rec["status"] == "cover"
+    assert rec["status"] == "closed"
     assert rec["cover_reason"] == "stop_loss"
     assert rec["cover_avg_price"] == 94.0
     assert engine.get_position("TEST/USDT") == pytest.approx(0.0)
@@ -177,7 +177,7 @@ def test_check_open_score_error_flow(tmp_env):
     assert db.get_record(sid)["open_err"]
     closed = close_pre_error_open(db, engine, price_map={"TEST/USDT": 99.0})
     assert closed == [sid]
-    assert db.get_record(sid)["status"] == "cover"
+    assert db.get_record(sid)["status"] == "closed"
     assert "open_err" in db.get_record(sid)["cover_reason"]
     db.close()
 

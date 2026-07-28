@@ -56,8 +56,9 @@ def make_open_trade(
         try:
             if hasattr(engine, "set_sim_price"):  # dry_run 引擎注入市价参考
                 engine.set_sim_price(code, price)
-            engine.add_trade(rec, price)
-            opened.append(rec["id"])
+            order = engine.add_trade(rec, price)
+            if order.filled > 0:
+                opened.append(rec["id"])
         except CChanException as e:
             send_msg("开仓失败", f"{code} id={rec['id']}: {e}", level="ERROR")
     return opened

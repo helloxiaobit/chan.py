@@ -35,7 +35,22 @@ class CFutuTradeEngine(CTradeEngine):
             port=int(futu_conf.get("port", 11111)),
         )
 
-    def place_order(self, code: str, is_buy: bool, amount: float, price: Optional[float] = None) -> COrderResult:
+    def place_order(
+        self,
+        code: str,
+        is_buy: bool,
+        amount: float,
+        price: Optional[float] = None,
+        *,
+        client_order_id: Optional[str] = None,
+        reduce_only: bool = False,
+        post_only: bool = False,
+        position_side: Optional[str] = None,
+    ) -> COrderResult:
+        if post_only and price is None:
+            raise CChanException(
+                "post-only 订单必须指定限价", ErrCode.PLACE_ORDER_FAIL
+            )
         ft = self.ft
         ret, data = self.trd_ctx.place_order(
             price=price or 0,
@@ -48,7 +63,14 @@ class CFutuTradeEngine(CTradeEngine):
         if ret != ft.RET_OK:
             raise CChanException(f"futu 下单失败: {data}", ErrCode.PLACE_ORDER_FAIL)
         row = data.iloc[0]
-        return COrderResult(str(row["order_id"]), float(row.get("dealt_qty", 0) or 0), None, "open")
+        return COrderResult(
+            str(row["order_id"]),
+            float(row.get("dealt_qty", 0) or 0),
+            None,
+            "open",
+            requested=amount,
+            client_order_id=client_order_id,
+        )
 
     def cancel_order(self, code: str, order_id: str) -> bool:
         ft = self.ft
@@ -57,7 +79,17 @@ class CFutuTradeEngine(CTradeEngine):
             raise CChanException(f"futu 撤单失败: {data}", ErrCode.CANDEL_ORDER_FAIL)
         return True
 
-    def query_order(self, code: str, order_id: str) -> COrderResult:
+    def query_order(
+        self,
+        code: str,
+        order_id: Optional[str] = None,
+        *,
+        client_order_id: Optional[str] = None,
+    ) -> COrderResult:
+        if order_id is None:
+            raise CChanException(
+                "futu 查单需要交易所订单号", ErrCode.LIST_ORDER_FAIL
+            )
         ft = self.ft
         ret, data = self.trd_ctx.order_list_query(order_id=order_id, trd_env=self.trd_env)
         if ret != ft.RET_OK or len(data) == 0:
@@ -68,6 +100,7 @@ class CFutuTradeEngine(CTradeEngine):
             str(row["order_id"]), float(row.get("dealt_qty", 0) or 0),
             float(row["dealt_avg_price"]) if row.get("dealt_avg_price") else None,
             status_map.get(str(row["order_status"]), "open"),
+            requested=float(row.get("qty", 0) or row.get("dealt_qty", 0) or 0),
         )
 
     def get_balance(self) -> Dict[str, float]:

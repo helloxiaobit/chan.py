@@ -30,6 +30,11 @@ CREATE TABLE IF NOT EXISTS {table_name}(
     quota FLOAT DEFAULT 0,
     open_date TEXT,
     open_order_id VARCHAR(32),
+    open_client_order_id VARCHAR(128),
+    open_requested_qty FLOAT DEFAULT 0,
+    open_filled_qty FLOAT DEFAULT 0,
+    open_order_status VARCHAR(20),
+    open_attempt INTEGER DEFAULT 0,
     open_image_url VARCHAR(64),
     cover_image_url VARCHAR(64),
     peak_price_after_open FLOAT,
@@ -39,6 +44,19 @@ CREATE TABLE IF NOT EXISTS {table_name}(
     cover_date TEXT,
     cover_reason VARCHAR(256),
     cover_order_id VARCHAR(256),
+    cover_client_order_id VARCHAR(128),
+    cover_requested_qty FLOAT DEFAULT 0,
+    cover_order_filled_qty FLOAT DEFAULT 0,
+    cover_order_avg_price FLOAT,
+    cover_filled_qty FLOAT DEFAULT 0,
+    cover_order_status VARCHAR(20),
+    cover_attempt INTEGER DEFAULT 0,
+
+    current_qty FLOAT DEFAULT 0,
+    order_last_update TEXT,
+    position_side VARCHAR(10) DEFAULT 'BOTH',
+    strategy_version VARCHAR(256),
+    risk_multiplier FLOAT DEFAULT 1,
 
     open_err BOOLEAN DEFAULT 0,
     close_err BOOLEAN DEFAULT 0,
@@ -51,13 +69,78 @@ CREATE TABLE IF NOT EXISTS {table_name}(
 """
 
 
+MIGRATION_COLUMNS = {
+    "open_client_order_id": "VARCHAR(128)",
+    "open_requested_qty": "FLOAT DEFAULT 0",
+    "open_filled_qty": "FLOAT DEFAULT 0",
+    "open_order_status": "VARCHAR(20)",
+    "open_attempt": "INTEGER DEFAULT 0",
+    "cover_client_order_id": "VARCHAR(128)",
+    "cover_requested_qty": "FLOAT DEFAULT 0",
+    "cover_order_filled_qty": "FLOAT DEFAULT 0",
+    "cover_order_avg_price": "FLOAT",
+    "cover_filled_qty": "FLOAT DEFAULT 0",
+    "cover_order_status": "VARCHAR(20)",
+    "cover_attempt": "INTEGER DEFAULT 0",
+    "current_qty": "FLOAT DEFAULT 0",
+    "order_last_update": "TEXT",
+    "position_side": "VARCHAR(10) DEFAULT 'BOTH'",
+    "strategy_version": "VARCHAR(256)",
+    "risk_multiplier": "FLOAT DEFAULT 1",
+}
+
+
 class CSqliteDB:
     def __init__(self, db_path: str, table_name: str = "chan_trade"):
         self.table_name = table_name
         self.conn = sqlite3.connect(db_path)
         self.conn.row_factory = sqlite3.Row
         self.conn.execute(CREATE_TABLE_SQL.format(table_name=table_name))
+        self._migrate_state_machine()
         self.conn.commit()
+
+    def _migrate_state_machine(self) -> None:
+        existing = {
+            row["name"]
+            for row in self.conn.execute(
+                f"PRAGMA table_info({self.table_name})"
+            )
+        }
+        for name, definition in MIGRATION_COLUMNS.items():
+            if name not in existing:
+                self.conn.execute(
+                    f"ALTER TABLE {self.table_name} ADD COLUMN {name} {definition}"
+                )
+        self.conn.execute(
+            f"CREATE UNIQUE INDEX IF NOT EXISTS "
+            f"idx_{self.table_name}_open_client_order_id "
+            f"ON {self.table_name}(open_client_order_id) "
+            "WHERE open_client_order_id IS NOT NULL "
+            "AND open_client_order_id != ''"
+        )
+        self.conn.execute(
+            f"CREATE UNIQUE INDEX IF NOT EXISTS "
+            f"idx_{self.table_name}_cover_client_order_id "
+            f"ON {self.table_name}(cover_client_order_id) "
+            "WHERE cover_client_order_id IS NOT NULL "
+            "AND cover_client_order_id != ''"
+        )
+        # 旧库仅补充可推导的数量；历史状态 cover 保持原样供审计读取。
+        self.conn.execute(
+            f"UPDATE {self.table_name} SET "
+            "open_requested_qty=quota, open_filled_qty=quota, "
+            "open_order_status=COALESCE(open_order_status, 'closed'), "
+            "current_qty=CASE WHEN status='cover' THEN 0 ELSE quota END "
+            "WHERE is_open=1 AND quota>0 AND open_filled_qty=0"
+        )
+        self.conn.execute(
+            f"UPDATE {self.table_name} SET "
+            "cover_requested_qty=cover_quota, "
+            "cover_order_filled_qty=cover_quota, "
+            "cover_filled_qty=cover_quota, "
+            "cover_order_status=COALESCE(cover_order_status, 'closed') "
+            "WHERE status='cover' AND cover_quota>0 AND cover_filled_qty=0"
+        )
 
     def execute(self, sql: str, args: Tuple = ()) -> int:
         # 返回 lastrowid(INSERT)或影响行数

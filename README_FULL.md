@@ -151,21 +151,68 @@ python -m ModelStrategy.research.cli certify-v5-btc-is --spec ModelStrategy/rese
 
 ### 5. 7×24 交易例行(dry-run 起步)
 
-`config.yaml` 不配置 `ccxt.api_key` 时,交易引擎自动进入 **dry-run 模拟撮合**(内存持仓,订单即时成交),可先完整演练;配置密钥 + `testnet: true` 走交易所测试网;确认无误后再上实盘。
+交易模式只能由 `ccxt.mode` 显式选择，默认且推荐保持 `dry_run`。API
+密钥本身永远不会打开测试网或实盘，`dry_run=False` 也不能绕过该配置。
+dry-run 不创建 CCXT 会话；默认即时成交，测试时还可注入零成交/部分成交序列，
+完整验证重启恢复而不连接交易所。
+
+```yaml
+ccxt:
+  mode: dry_run                 # dry_run / testnet / live
+  default_type: spot            # spot / swap / future
+  leverage: 1                   # 合约显式设置
+  position_side: BOTH           # 合约 BOTH / LONG / SHORT
+trade:
+  strategy_receipt: ""          # 非 dry-run 必填
+  strategy_id: ""               # 可选，与收据严格比对
+  strategy_spec_hash: ""        # 可选，与收据严格比对
+```
+
+不使用行情网络的安全验收命令：
+
+```powershell
+pytest tests/test_trade_safety.py tests/test_trade_state_machine.py -q
+```
+
+日常例行仍可在 `mode: dry_run` 下运行；行情快照是否联网由
+`snapshot_engine` 决定，但下单侧不会建立交易所会话：
 
 ```bash
 # 单轮例行:更新数据→信号入库→突破开仓→后验→跟踪止损止盈(可放任务计划每小时跑)
 bash Trade/Script/update_data_signal.sh    # Windows: pwsh Trade/Script/update_data_signal.ps1
 ```
 
-信号生命周期(库表见 `Trade/SqliteDB.py`,与 README 的 SQL 一致):
+非 dry-run 还必须同时满足以下门禁：
+
+- 策略收据是有效 JSON，`status` 必须为 `candidate`，并包含非空
+  `strategy_id` 与 64 位小写十六进制 `spec_hash`。配置了预期编号/哈希时必须
+  精确相等。当前仓库内 v5 收据是 `rejected`，因此不能解锁测试网或实盘。
+- 测试网要求 `mode: testnet`、`testnet: true`、API 凭据，并在进程环境中设置
+  `CHANPY_ENABLE_TESTNET=YES`。
+- 实盘要求 `mode: live`、`testnet: false`、API 凭据，并设置精确令牌
+  `CHANPY_LIVE_TRADING_UNLOCK=I_ACCEPT_REAL_ORDERS`。
+- `CHANPY_KILL_SWITCH=1`（也接受 true/yes 的大小写形式）会在每一张非
+  dry-run 订单前重新检查并拒绝下单。取消和只读对账仍可执行，便于降风险。
+
+状态机（库表见 `Trade/SqliteDB.py`）：
 
 ```
-signal → watching → open(突破+分数达标) → tracking(峰值/止损/止盈) → cover(平仓,记 reason)
-                 ↘ unwatch(失效/被过滤,记 reason)
+signal → submitted → partially_filled → open → closing → closed
+              └────────── 0 成交时不产生仓位 ──────────┘
+开仓 0 成交可终止为 canceled/rejected；部分开仓终止后按真实仓位进入 open。
+平仓 canceled/rejected 且仍有仓位时回到 open，取得新意图后才可重试。
 ```
 
-崩溃重启后 `CTradeEngine.restore()` 从 DB 恢复现场,不会重复开仓。
+意图在提交交易所之前落库，客户端订单号由记录编号和尝试次数确定生成。
+`CTradeEngine.restore()` 优先按交易所订单号、缺失时按客户端订单号恢复；只应用
+单调增加的累计成交量。撤单只有在再次查单确认 `canceled/closed/rejected` 后，
+才会以新客户端编号对剩余仓位提交 reduce-only 重试。
+
+当前只完成了离线可证明的安全边界，尚未完成交易所逐一测试网认证。待验证项包括：
+沙盒支持与市场映射、客户端订单号历史查询窗口/分页、post-only/reduce-only/
+positionSide 的交易所差异、单向/双向持仓模式、杠杆和最小下单量、部分成交后
+撤单延迟、限频与断线恢复。在这些测试网缺口关闭且出现新的 `candidate` 收据前，
+**真实交易保持锁定**。
 
 ## 三级联立策略(4H定方向 / 1H交易 / 15M区间套入场)
 
