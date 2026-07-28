@@ -214,6 +214,9 @@ positionSide 的交易所差异、单向/双向持仓模式、杠杆和最小下
 撤单延迟、限频与断线恢复。在这些测试网缺口关闭且出现新的 `candidate` 收据前，
 **真实交易保持锁定**。
 
+五阶段的冻结数字、复现命令、已知限制和未完成的测试网/实盘检查项统一记录在
+[最终验收与实盘前检查表](docs/superpowers/reports/2026-07-28-final-acceptance.md)。
+
 ## 三级联立策略(4H定方向 / 1H交易 / 15M区间套入场)
 
 `CustomBuySellPoint/MultiLevelStrategy.py` 的 `CMultiLevelStrategy` 把形态学/动力学买卖点与多级别K线联立整合成一个策略:
