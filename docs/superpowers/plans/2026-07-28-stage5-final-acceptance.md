@@ -54,12 +54,12 @@ shared portfolio certification, or any new 2026 OOS result. It cannot create a
 
 ### Task 4: Merge and release decision
 
-- [ ] Merge the clean Stage 5 branch into `full-version` with an auditable decision
+- [x] Merge the clean Stage 5 branch into `full-version` with an auditable decision
   commit.
-- [ ] Re-run the final focused acceptance checks on the merged commit.
-- [ ] Record the release decision as **research/dry-run accepted; testnet/live not
+- [x] Re-run the final focused acceptance checks on the merged commit.
+- [x] Record the release decision as **research/dry-run accepted; testnet/live not
   approved** and list the exact external evidence still required.
-- [ ] Mark the five-stage goal complete only after all preceding evidence is present.
+- [x] Mark the five-stage goal complete only after all preceding evidence is present.
 
 ## Completion evidence
 

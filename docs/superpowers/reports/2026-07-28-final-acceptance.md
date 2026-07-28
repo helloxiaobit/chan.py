@@ -90,6 +90,8 @@ git diff --check
   文本输入弃用提示。
 - `compileall`、`git diff --check`、冻结 baseline zero-diff、未跟踪文件审计和
   YAML 非空凭据扫描均通过；没有外置行情、交易缓存或凭据进入仓库。
+- Stage 5 合并提交：`e1751fbaf544ecc3ce8deb7c00af5ef37075580f`。合并后聚焦
+  验收 55 passed、2 skipped；`compileall`、`git diff --check` 和工作树检查通过。
 - 所有研究命令只允许查询 `2026-01-01` 之前的正式 IS 输入；输出目录已被
   Git 忽略，不作为新的冻结参考提交。
 
