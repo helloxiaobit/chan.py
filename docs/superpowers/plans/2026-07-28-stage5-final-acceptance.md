@@ -20,13 +20,13 @@ shared portfolio certification, or any new 2026 OOS result. It cannot create a
 - Modify: `CLAUDE.md`
 - Modify: `STRATEGY_LOG.md`
 
-- [ ] Write failing tests that compare the documented v4/v5 metrics, cutoff,
+- [x] Write failing tests that compare the documented v4/v5 metrics, cutoff,
   execution model, status, and trading lock against tracked JSON references.
-- [ ] Record the five-stage decision trail without converting the rejected v5 into a
+- [x] Record the five-stage decision trail without converting the rejected v5 into a
   deployable receipt or exposing secrets/machine-specific data roots.
-- [ ] Add a pre-live checklist with explicit testnet evidence requirements and a
+- [x] Add a pre-live checklist with explicit testnet evidence requirements and a
   separate irreversible live authorization gate.
-- [ ] Verify and commit.
+- [x] Verify and commit.
 
 ### Task 2: Re-run clean, read-only strategy references
 

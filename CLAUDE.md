@@ -62,3 +62,5 @@ Plot/PlotDriver.py 负责全部绘图(DrawElement 为分发入口)
 `freeze_v5_candidate_v1` 在 BTC 2021-25 IS 的 Calmar 为 1.613，状态为
 `rejected`，没有可用于 testnet/live 的 candidate 收据。交易层 Stage 4 已完成纯
 离线安全验收，真实交易继续锁定。操作与剩余交易所测试网缺口见 README_FULL.md。
+五阶段最终发布决定和不可跳过的外部检查项见
+`docs/superpowers/reports/2026-07-28-final-acceptance.md`。
