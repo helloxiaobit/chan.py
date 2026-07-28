@@ -62,7 +62,7 @@ Data:
     status: unopened
   indicators:
     Chan: [S1bz_long, S2py10_long]
-    SMA_daily: {period: 200, slope_lookback: 20}
+    EMA_daily: {period: 50, slope_lookback: 20}
     EMA_4h: {periods: [50, 200]}
     ADX_4h: {period: 14}
     RSI_4h: {period: 14}
@@ -72,8 +72,8 @@ Data:
 Signal:
   entry_all:
     - S1bz_long OR S2py10_long
-    - daily_close > daily_SMA200
-    - daily_SMA200_slope_20 > 0
+    - daily_close > daily_EMA50
+    - daily_EMA50_slope_20 > 0
     - EMA50_4h > EMA200_4h
     - ADX14_4h >= adx_threshold
     - 45 <= RSI14_4h <= 75
@@ -85,6 +85,7 @@ Signal:
     - hard stop
     - 30-day time stop without a new high
   schedule: every 4h
+  warmup_policy: no signal until every required rolling value is causal and complete
 
 Capital:
   initial_equity: 10000
@@ -97,10 +98,13 @@ Capital:
   max_positions: 1
 
 Risk:
-  risk_budget_pct:
-    base: 4
-    strong_conviction: 6
-    maximum: 8
+  base_risk_budget_pct: 4
+  conviction:
+    bs_type_1_mult: 1.0
+    bs_type_1p_mult: 1.5
+    other_stack_long_already_active_mult: 1.5
+    mult_cap: 2.0
+  effective_risk_budget: base risk budget * conviction multiplier
   atr_stop_multiplier_grid: [2.5, 3.0, 3.5]
   initial_stop: clamp(ATR multiplier distance, 8%, 12%)
   drawdown_de_risk:
@@ -119,6 +123,10 @@ Execution:
   stop_slippage: 0.0005
 ```
 
+`other_stack_long_already_active` 按已审计来源交易的时间窗口判定：同一时间戳
+先平后开；新信号成交时，另一信号栈至少一笔多头来源交易尚未到达其审计退出
+时间才算共振。先过滤空头，再计算该乘数，避免空头来源改变现货仓位预算。
+
 ## 5. 预登记搜索预算
 
 只允许下列离散维度，总评估数不得超过 24：
@@ -128,8 +136,8 @@ Execution:
 - `atr_stop_multiplier`: 2.5、3.0、3.5；
 - `entry_source`: `S1_ONLY`、`S1_OR_S2`。
 
-组合上限为 `2 × 2 × 3 × 2 = 24`。EMA、SMA、RSI、时间止损、回撤降风险和
-费用参数不参与搜索。任何组合缺少所需的历史真 K 线时都记为无效，不回退到
+组合上限为 `2 × 2 × 3 × 2 = 24`。EMA 周期、RSI 区间、时间止损、回撤
+降风险、费用和仓位规则不参与搜索。任何组合缺少所需的历史真 K 线时都记为无效，不回退到
 更乐观的成交假设。
 
 ## 6. 串行研究协议
