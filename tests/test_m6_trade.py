@@ -18,7 +18,7 @@ from Trade.Script.RealTimeTracker import real_time_track
 from Trade.Script.SignalMonitor import run_signal_monitor
 from Trade.Script.UpdatePeakPrice import update_peak_price
 
-from .conftest import make_klu
+from .conftest import CRYPTO_TEST_SOURCE, make_klu
 
 
 @pytest.fixture()
@@ -204,6 +204,7 @@ def test_signal_monitor_on_synthetic(tmp_env, synthetic_bars):
     """SignalMonitor 全流程:离线数据→缠论→bsp_signal→入库/清理(信号有无取决于数据形态)"""
     from OfflineData.offline_data_util import CKLineDB, parse_dt_to_ts
     with CKLineDB(str(tmp_env / "kline.db")) as kdb:
+        kdb.bind_source(CRYPTO_TEST_SOURCE)
         rows = [
             (parse_dt_to_ts(f"{b['year']:04}-{b['month']:02}-{b['day']:02}"),
              b["open"], b["high"], b["low"], b["close"], b["volume"])

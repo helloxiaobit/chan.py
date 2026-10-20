@@ -41,14 +41,34 @@ cp Config/config_demo.yaml Config/config.yaml   # 已 gitignore,密钥只进这�
 python -m OfflineData.ccxt_update BTC/USDT K_60M K_DAY
 ```
 
-首次全量(2017 至今约 8 万根 1h),之后每次只拉新增。已有本地 csv 历史数据可先灌库:
+首次从指定起点获取历史，之后重取最后一根再续传；仅保存已收盘 K 线，修订会幂等覆盖。在线/离线 crypto reader 统一输出 UTC 收盘边界；日、周、月使用各自真实周期，`close_ms == available_at_ms`。ticker 快照标记 `is_final=False`，确认计算拒绝接收。
+
+每个行情 SQLite 库绑定一个交易所/市场类型/结算币/价格类型；symbol 和 timeframe 继续在行级隔离。现货与永续、Binance 与 OKX、contract 与 mark 使用独立库。未声明来源的旧库不会自动贴上当前配置的标签。
+
+旧库迁移前先停止所有写入器，并核实实际来源；以下是现货库示例，不能用于来源不明或冻结研究 DB：
+
+```python
+from OfflineData.offline_data_util import migrate_legacy_source
+migrate_legacy_source(
+    "OfflineData/data/kline.db",
+    {"exchange": "binance", "market_type": "spot", "settle": "", "price_type": "contract"},
+    "OfflineData/data/kline.before-crypto-c1.db",
+)
+```
+
+该入口拒绝覆盖备份，保留全部原表，逐行比较备份与原库后才绑定来源；发现错误需更换独立库，不能改写已有来源。`CKLineDB.inspect_quality(..., now_ms=...)` 会返回 `ready/no_data/stale/gap/inactive/unknown_source` 等状态，C6 将把该结果接入开新仓门禁。
+
+已有本地 csv 历史数据可先明确来源再灌库：
 
 ```python
 from OfflineData.offline_data_util import CKLineDB, import_csv
 from Common.CEnum import KL_TYPE
 with CKLineDB() as db:
+    db.bind_source({"exchange": "binance", "market_type": "spot", "settle": "", "price_type": "contract"})
     import_csv(db, "BTC/USDT", KL_TYPE.K_60M, r"C:\chanpy\data\btc\btc_1h.csv")
 ```
+
+直接 CSV 回退还需在 `offline_data.source_identity` 显式声明同一来源。文件名保留 `BTC_USDT_60m.csv`；永续 `BTC/USDT:USDT` 使用 Windows 可用的 `BTC_USDT_USDT_60m.csv`。合约更新需使用交易所的统一合约 symbol 和匹配的 `ccxt.default_type`，不把现货 symbol 重新标成合约。
 
 ### 2. 离线数据跑缠论 + cbsp 策略
 

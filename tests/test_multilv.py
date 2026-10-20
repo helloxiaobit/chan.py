@@ -15,6 +15,7 @@ from Config.EnvConfig import CEnv
 from CustomBuySellPoint.MultiLevelStrategy import CMultiLevelStrategy
 from KLine.KLine_Unit import CKLine_Unit
 from OfflineData.offline_data_util import KLTYPE_TO_MS, CKLineDB
+from .conftest import CRYPTO_TEST_SOURCE
 
 BASE_CONF = {
     "divergence_rate": float("inf"),
@@ -71,6 +72,7 @@ db:
 offline_data:
   root: {tmp_path.as_posix()}
   sqlite_path: {(tmp_path / 'kline.db').as_posix()}
+  source_identity: {{exchange: binance, market_type: spot, settle: '', price_type: contract}}
 notify:
   backend: none
 trade:
@@ -82,6 +84,7 @@ trade:
     os.environ["CHANPY_CONFIG"] = str(conf_path)
     CEnv.reset_instance()
     with CKLineDB(str(tmp_path / "kline.db")) as db:
+        db.bind_source(CRYPTO_TEST_SOURCE)
         db.upsert_klines("TEST/USDT", KL_TYPE.K_15M, bars_3lv["15m"])
         db.upsert_klines("TEST/USDT", KL_TYPE.K_60M, bars_3lv["1h"])
         db.upsert_klines("TEST/USDT", KL_TYPE.K_4H, bars_3lv["4h"])

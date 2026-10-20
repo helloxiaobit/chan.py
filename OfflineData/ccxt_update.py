@@ -2,7 +2,7 @@
 
 用法:
     python -m OfflineData.ccxt_update BTC/USDT K_60M [K_DAY ...]
-首次全量(从 begin_ts 或交易所最早数据),之后增量(从库内最后一根之后续传)。
+首次全量(从 begin_ts 或交易所最早数据),之后重取最后一根以修订尾K，仅保存已收盘行情。
 """
 import os
 import sys
@@ -13,9 +13,10 @@ if __package__ in (None, ""):
 
 from Common.CEnum import KL_TYPE
 from Common.ChanException import CChanException, ErrCode
+from Common.KLineTime import bar_close_ms, utc_now_ms, validate_ohlcv_page
 from DataAPI.ccxt import KLTYPE2TIMEFRAME, PAGE_LIMIT, create_exchange
 
-from .offline_data_util import CKLineDB, parse_dt_to_ts
+from .offline_data_util import CKLineDB, parse_dt_to_ts, validate_source_identity
 
 DEFAULT_BEGIN = "2017-01-01"  # 首次全量的起始时间(binance 现货最早 2017-07)
 
@@ -27,12 +28,14 @@ def update_symbol(
     exchange=None,
     begin_time: str = DEFAULT_BEGIN,
     verbose: bool = True,
+    *,
+    now_ms=None,
+    source=None,
 ) -> int:
     """增量更新单个 symbol+级别,返回新增/更新K线数;网络失败抛出带明确提示的异常"""
     import ccxt  # 懒加载
 
     own_db = db is None
-    db = db or CKLineDB()
     exchange = exchange or create_exchange(for_data=True)
     if isinstance(lv, str):
         lv = KL_TYPE[lv]
@@ -40,25 +43,39 @@ def update_symbol(
         raise CChanException(f"ccxt 不支持K线级别: {lv}", ErrCode.SRC_DATA_TYPE_ERR)
     timeframe = KLTYPE2TIMEFRAME[lv]
 
-    last = db.last_ts(symbol, lv)
-    since = last + 1 if last is not None else parse_dt_to_ts(begin_time)
+    if source is None:
+        market_type = getattr(exchange, "options", {}).get("defaultType")
+        source = {"exchange": exchange.id, "market_type": market_type,
+                  "settle": symbol.split(":", 1)[1] if ":" in symbol else "",
+                  "price_type": "contract"}
+    source = validate_source_identity(source)
+    if (source["exchange"] != exchange.id or source["price_type"] != "contract"
+            or source["market_type"] != getattr(exchange, "options", {}).get("defaultType")
+            or source["settle"] != (symbol.split(":", 1)[1] if ":" in symbol else "")):
+        raise CChanException("更新器只读取当前交易所 contract OHLCV，不可重标记来源", ErrCode.SRC_DATA_TYPE_ERR)
+    db = db or CKLineDB()
     total = 0
     try:
+        db.bind_source(source)
+        last = db.last_ts(symbol, lv)
+        since = last if last is not None else parse_dt_to_ts(begin_time)
+        previous_open = None
+        available_ms = (now_ms or utc_now_ms)()
         while True:
             data = exchange.fetch_ohlcv(symbol, timeframe, since=since, limit=PAGE_LIMIT)
             if not data:
                 break
-            rows = [
-                (item[0], float(item[1]), float(item[2]), float(item[3]), float(item[4]),
-                 float(item[5]) if len(item) > 5 and item[5] is not None else 0.0)
-                for item in data
-            ]
-            db.upsert_klines(symbol, lv, rows)
-            total += len(rows)
+            rows = validate_ohlcv_page(data, lv, since=since, previous_open=previous_open)
+            if last is not None and previous_open is None and rows[0][0] > bar_close_ms(last, lv):
+                raise CChanException("增量窗口与已有行情之间有缺口", ErrCode.KL_TIME_INCONSISTENT)
+            closed = [row for row in rows if bar_close_ms(row[0], lv) <= available_ms]
+            changed = db.upsert_klines(symbol, lv, closed)
+            total += changed
+            previous_open = data[-1][0]
             since = data[-1][0] + 1
             if verbose:
-                print(f"[ccxt_update] {symbol} {lv.name}: +{len(rows)} (累计{total}), 已到 ts={data[-1][0]}")
-            if len(data) < PAGE_LIMIT:
+                print(f"[ccxt_update] {symbol} {lv.name}: 改变{changed} (累计{total}), 已到 ts={data[-1][0]}")
+            if len(data) < PAGE_LIMIT or len(closed) < len(rows):
                 break
     except ccxt.NetworkError as e:
         raise CChanException(

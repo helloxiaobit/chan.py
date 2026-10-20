@@ -9,6 +9,7 @@ from Common.CEnum import AUTYPE, DATA_FIELD, KL_TYPE
 from Common.ChanException import CChanException
 from Config.EnvConfig import CEnv
 from OfflineData.offline_data_util import CKLineDB, import_csv, parse_dt_to_ts
+from .conftest import CRYPTO_TEST_SOURCE
 
 HOUR_MS = 3600 * 1000
 
@@ -17,8 +18,9 @@ class FakeExchange:
     """模拟 ccxt 交易所:确定性K线 + 分页 fetch_ohlcv + fetch_tickers"""
 
     id = "fake"
+    options = {"defaultType": "spot"}
 
-    def __init__(self, n=2500, start_ts=1600000000000, step=HOUR_MS):
+    def __init__(self, n=2500, start_ts=1599998400000, step=HOUR_MS):
         self.bars = []
         price = 100.0
         for i in range(n):
@@ -61,6 +63,7 @@ db:
 offline_data:
   root: {tmp_path.as_posix()}
   sqlite_path: {(tmp_path / 'kline.db').as_posix()}
+  source_identity: {{exchange: binance, market_type: spot, settle: '', price_type: contract}}
 ccxt:
   exchange: binance
 """, encoding="utf-8")
@@ -150,6 +153,7 @@ def test_offline_reader_from_sqlite(tmp_env, synthetic_bars):
     """sqlite 落地数据 → CStockFileReader → 缠论计算跑通"""
     db_path = str(tmp_env / "kline.db")
     with CKLineDB(db_path) as db:
+        db.bind_source(CRYPTO_TEST_SOURCE)
         rows = [
             (parse_dt_to_ts(f"{b['year']:04}-{b['month']:02}-{b['day']:02}"),
              b["open"], b["high"], b["low"], b["close"], b["volume"])

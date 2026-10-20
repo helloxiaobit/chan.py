@@ -1,5 +1,8 @@
 """ccxt 实时行情快照(加密货币,实盘主场景;fetch_tickers 批量获取)"""
 from typing import List, Optional
+from datetime import datetime, timezone
+
+from Common.CTime import CTime
 
 from .CommSnapshot import CCommSnapshot, T_SNAPSHOT_RES
 
@@ -37,4 +40,12 @@ class CCCXTSnapshot(CCommSnapshot):
                 "high": float(ticker["high"]) if ticker.get("high") is not None else last,
                 "low": float(ticker["low"]) if ticker.get("low") is not None else last,
             }, return_klu, ts=ts)
+            # ticker 是当下快照，不能冒充已确认周期 K 线。
+            if return_klu:
+                dt = datetime.fromtimestamp(ts, tz=timezone.utc) if ts is not None else datetime.now(timezone.utc)
+                res[code].time = CTime(dt.year, dt.month, dt.day, dt.hour, dt.minute,
+                                       dt.second, auto=False, tzinfo=timezone.utc)
+                res[code].is_final = False
+            else:
+                res[code]["is_final"] = False
         return res

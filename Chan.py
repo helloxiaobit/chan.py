@@ -291,6 +291,8 @@ class CChan:
             else:
                 try:
                     kline_unit = self.get_next_lv_klu(lv_idx)
+                    if getattr(kline_unit, "is_final", True) is False:
+                        raise CChanException("未收盘 provisional K线不可进入确认计算", ErrCode.KL_DATA_INVALID)
                     self.try_set_klu_idx(lv_idx, kline_unit)
                     if not kline_unit.time > self.klu_last_t[lv_idx]:
                         raise CChanException(f"kline time err, cur={kline_unit.time}, last={self.klu_last_t[lv_idx]}, or refer to quick_guide.md, try set auto=False in the CTime returned by your data source class", ErrCode.KL_NOT_MONOTONOUS)

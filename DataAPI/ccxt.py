@@ -1,10 +1,8 @@
-from datetime import datetime, timezone
 from typing import Optional
 
-from Common.CEnum import AUTYPE, DATA_FIELD, KL_TYPE
+from Common.CEnum import AUTYPE, KL_TYPE
 from Common.ChanException import CChanException, ErrCode
-from Common.CTime import CTime
-from Common.func_util import kltype_lt_day
+from Common.KLineTime import bar_close_ms, make_crypto_klu, utc_now_ms, validate_ohlcv_page
 
 from .CommonStockAPI import CCommonStockApi
 
@@ -73,8 +71,9 @@ class CCXT(CCommonStockApi):
 
     exchange = None  # 类级共享,do_init 创建,do_close 释放
 
-    def __init__(self, code, k_type=KL_TYPE.K_DAY, begin_date=None, end_date=None, autype=AUTYPE.QFQ):
+    def __init__(self, code, k_type=KL_TYPE.K_DAY, begin_date=None, end_date=None, autype=AUTYPE.QFQ, *, now_ms=None):
         super(CCXT, self).__init__(code, k_type, begin_date, end_date, autype)
+        self.now_ms = now_ms or utc_now_ms
 
     def get_kl_data(self):
         import ccxt  # 懒加载(异常类型判断用)
@@ -84,6 +83,7 @@ class CCXT(CCommonStockApi):
         timeframe = self.__convert_type()
         since = exchange.parse8601(f"{self.begin_date}T00:00:00Z") if self.begin_date else None
         end_ts = exchange.parse8601(f"{self.end_date}T00:00:00Z") if self.end_date else None
+        available_ms = self.now_ms()  # 一次读取固定可用边界，避免分页期间改变输入窗口
 
         last_ts = None
         while True:
@@ -99,11 +99,14 @@ class CCXT(CCommonStockApi):
                 raise CChanException(f"ccxt 获取K线失败({exchange.id} {self.code} {timeframe}): {e}", ErrCode.SRC_DATA_NOT_FOUND) from e
             if not data:
                 break
+            data = validate_ohlcv_page(data, self.k_type, since=since, previous_open=last_ts)
             for item in data:
                 ts = item[0]
                 if last_ts is not None and ts <= last_ts:  # 去重防回绕
                     continue
                 if end_ts is not None and ts >= end_ts:
+                    return
+                if bar_close_ms(ts, self.k_type) > available_ms:
                     return
                 last_ts = ts
                 yield self.make_klu(item)
@@ -112,21 +115,7 @@ class CCXT(CCommonStockApi):
             since = last_ts + 1  # 下一页从最后一根之后开始
 
     def make_klu(self, ohlcv) -> "CKLine_Unit":
-        from KLine.KLine_Unit import CKLine_Unit
-        time_obj = datetime.fromtimestamp(ohlcv[0] / 1000, tz=timezone.utc)
-        item_dict = {
-            DATA_FIELD.FIELD_TIME: CTime(
-                time_obj.year, time_obj.month, time_obj.day, time_obj.hour, time_obj.minute,
-                auto=not kltype_lt_day(self.k_type),
-                tzinfo=timezone.utc,
-            ),
-            DATA_FIELD.FIELD_OPEN: float(ohlcv[1]),
-            DATA_FIELD.FIELD_HIGH: float(ohlcv[2]),
-            DATA_FIELD.FIELD_LOW: float(ohlcv[3]),
-            DATA_FIELD.FIELD_CLOSE: float(ohlcv[4]),
-            DATA_FIELD.FIELD_VOLUME: float(ohlcv[5]) if len(ohlcv) > 5 and ohlcv[5] is not None else 0.0,
-        }
-        return CKLine_Unit(item_dict, autofix=True)
+        return make_crypto_klu(ohlcv, self.k_type, self.now_ms())
 
     def SetBasciInfo(self):
         pass

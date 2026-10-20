@@ -13,6 +13,9 @@ if ROOT not in sys.path:
 
 os.environ.setdefault("MPLBACKEND", "Agg")  # 测试环境无显示器
 
+# 明确声明合成 fixture 的来源，不从 symbol 或真实用户数据推断。
+CRYPTO_TEST_SOURCE = {"exchange": "binance", "market_type": "spot", "settle": "", "price_type": "contract"}
+
 
 def gen_synthetic_bars(n=1000, seed=7, start_year=2020):
     """确定性合成日K线:趋势+双周期正弦+噪声,保证产生足够的分型/笔/段/中枢/买卖点"""

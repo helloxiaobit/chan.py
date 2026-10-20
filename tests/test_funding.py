@@ -3,6 +3,7 @@ import pytest
 
 from Common.ChanException import CChanException
 from DataAPI.FundingRate import CFundingRate
+from .conftest import CRYPTO_TEST_SOURCE
 
 
 @pytest.fixture()
@@ -74,7 +75,8 @@ def test_funding_filter_blocks_longs(tmp_path):
 
     conf_path = tmp_path / "config.yaml"
     conf_path.write_text(
-        f"offline_data:\n  root: {tmp_path.as_posix()}\n  sqlite_path: {(tmp_path / 'kline.db').as_posix()}\n",
+        f"offline_data:\n  root: {tmp_path.as_posix()}\n  sqlite_path: {(tmp_path / 'kline.db').as_posix()}\n"
+        "ccxt:\n  exchange: binance\n  default_type: spot\n",
         encoding="utf-8")
     old = os.environ.get("CHANPY_CONFIG")
     os.environ["CHANPY_CONFIG"] = str(conf_path)
@@ -82,6 +84,7 @@ def test_funding_filter_blocks_longs(tmp_path):
     try:
         b15 = gen_15m_bars()
         with CKLineDB(str(tmp_path / "kline.db")) as db:
+            db.bind_source(CRYPTO_TEST_SOURCE)
             db.upsert_klines("TEST/USDT", KL_TYPE.K_15M, b15)
             db.upsert_klines("TEST/USDT", KL_TYPE.K_60M, aggregate(b15, 4))
             db.upsert_klines("TEST/USDT", KL_TYPE.K_4H, aggregate(b15, 16))

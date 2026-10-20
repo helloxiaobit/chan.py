@@ -35,4 +35,4 @@ def test_ccxt_crypto_bar_epoch_is_utc():
     )
     reader = CCXT("BTC/USDT", KL_TYPE.K_60M, None, None, AUTYPE.NONE)
     klu = reader.make_klu([raw_start_ms, 100, 101, 99, 100, 1])
-    assert klu.time.ts == raw_start_ms / 1000
+    assert klu.time.ts == raw_start_ms / 1000 + 3600
