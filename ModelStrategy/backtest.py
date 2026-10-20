@@ -17,11 +17,14 @@ from Chan import CChan
 from ChanConfig import CChanConfig
 from ChanModel.FeatureDesc import FEATURE_REG
 from ChanModel.ModelContract import feature_code_identity, freeze_config
-from Common.CEnum import BI_DIR
+from Common.CEnum import AUTYPE, BI_DIR
 from Common.ChanException import CChanException, ErrCode
+from Common.KLineTime import make_crypto_klu
 from CustomBuySellPoint.Decision import bar_snapshot, canonical_bytes, read_decision
 
 from .BacktestChanConfig import CBacktestConfig
+
+LABEL_SEMANTICS = {"version": "observed-labels-v1", "structure_timing": "terminal-source-close", "barrier_tie": "loss-first"}
 
 
 class CSample:
@@ -68,9 +71,35 @@ class CBacktestResult:
 
 
 class _CSampleChan(CChan):
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, source_view=None, **kwargs):
+        self.source_view = source_view
         self.input_hashes, self.input_counts, self.input_sources = {}, {}, {}
         super().__init__(*args, **kwargs)
+
+    def GetStockAPI(self):
+        if self.source_view is None:
+            return super().GetStockAPI()
+        view = self.source_view
+        class CBoundPacketReader:
+            @classmethod
+            def do_init(cls):
+                pass
+
+            @classmethod
+            def do_close(cls):
+                pass
+
+            def __init__(self, code, k_type, **kwargs):
+                self.code, self.level = code, k_type
+
+            def get_kl_data(self):
+                for row in view["contract"][self.code][self.level.name]:
+                    if row[0] < view["window"]["start_ms"]:
+                        continue
+                    unit = make_crypto_klu(row, self.level, now_ms=view["window"]["end_ms"])
+                    unit.source_identity = dict(view["contract_source"])
+                    yield unit
+        return CBoundPacketReader
 
     def load_stock_data(self, stockapi_instance, lv):
         source = super().load_stock_data(stockapi_instance, lv)
@@ -160,7 +189,21 @@ def cal_labels(chan: CChan, cbsp, label_para: Dict, lv_idx: int = 0, *, with_end
     return (labels, ends) if with_end_times else labels
 
 
-def run_backtest(bt_conf: CBacktestConfig) -> CBacktestResult:
+def run_backtest(bt_conf: CBacktestConfig, *, source_data=None) -> CBacktestResult:
+    source_view = None
+    if source_data is not None:
+        from .parameterEvaluate.crypto_evaluate import CCryptoEvaluationData
+        from OfflineData.offline_data_util import parse_dt_to_ts
+        if not isinstance(source_data, CCryptoEvaluationData) or not bt_conf.begin_time or not bt_conf.end_time:
+            raise CChanException("显式数据包训练需要真实 packet 与完整 UTC 起止窗口", ErrCode.MODEL_ERROR)
+        try:
+            source_view = source_data.view(start_ms=parse_dt_to_ts(bt_conf.begin_time), end_ms=parse_dt_to_ts(bt_conf.end_time))
+        except (ValueError, TypeError) as error:
+            raise CChanException("显式数据包训练窗口格式无效", ErrCode.MODEL_ERROR) from error
+        if (set(bt_conf.code_list) != set(source_view["contract"]) or len(set(bt_conf.code_list)) != len(bt_conf.code_list)
+                or any(lv.name not in source_view["contract"][code] for code in bt_conf.code_list for lv in bt_conf.lv_list)
+                or bt_conf.chan_config.get("trigger_step") or bt_conf.autype != AUTYPE.NONE):
+            raise CChanException("训练标的/级别或复权方式与显式数据包不匹配", ErrCode.MODEL_ERROR)
     samples: List[CSample] = []
     input_manifests = {}
     source_identities = {}
@@ -177,6 +220,7 @@ def run_backtest(bt_conf: CBacktestConfig) -> CBacktestResult:
             lv_list=bt_conf.lv_list,
             config=CChanConfig(chan_conf),
             autype=bt_conf.autype,
+            source_view=source_view,
         )
         input_manifests[code] = chan.input_manifest()
         source_identities[code] = {lv.name: identity for lv, identity in chan.input_sources.items()}
@@ -189,7 +233,8 @@ def run_backtest(bt_conf: CBacktestConfig) -> CBacktestResult:
         label_parameters=bt_conf.label_para, generation_context=freeze_config({
             "chan_config": bt_conf.chan_config, "lv_list": bt_conf.lv_list, "trade_lv_idx": bt_conf.lv_idx,
             "code_list": sorted(bt_conf.code_list), "begin_time": bt_conf.begin_time, "end_time": bt_conf.end_time,
-            "data_src": bt_conf.data_src, "autype": bt_conf.autype, "input_manifests": input_manifests,
+            "data_src": "explicit-crypto-evaluation-packet" if source_view is not None else bt_conf.data_src,
+            "autype": bt_conf.autype, "input_manifests": input_manifests,
             "source_identities": source_identities}))
     return CBacktestResult(samples, bt_conf.output_dir, feature_meta, unregistered)
 
@@ -251,8 +296,7 @@ def write_samples(samples: List[CSample], output_dir: str, primary_label: str, *
     with open(os.path.join(output_dir, "sample_manifest.json"), "w", encoding="utf-8") as manifest:
         manifest.write(canonical_bytes({"schema": "chan-samples-v1", "primary_label": primary_label,
             "generation_context": generation_context, "feature_code": feature_code_identity(),
-            "label_definition": {"version": "observed-labels-v1", "structure_timing": "terminal-source-close",
-                                 "barrier_tie": "loss-first", "parameters": label_parameters},
+            "label_definition": {**LABEL_SEMANTICS, "parameters": label_parameters},
             "known_count": training_row, "unknown_count": len(rows)-training_row, "files": files}).decode("utf-8"))
     unregistered = FEATURE_REG.check_features(feature_meta.keys())
     if unregistered:

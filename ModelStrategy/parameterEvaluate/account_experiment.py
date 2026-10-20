@@ -125,7 +125,7 @@ def _documents(data, config, search):
     validation = {"schema": "chan-account-validation-v1", "context_id": context["context_id"],
                   "selection_uses": "search_only", "selected_parameters": best.para, "evaluations": evaluations}
     model = config.chan_config.get("model")
-    model_evidence = None if model is None else {"artifact_id": model.artifact_id, "path": model.path,
+    model_evidence = None if model is None else {"artifact_id": model.artifact_id, "file_name": Path(model.path).name,
         "feature_meta": model.contract["feature_meta"], "samples_manifest_sha256": model.contract["samples_manifest_sha256"],
         "label_definition": model.contract["label_definition"]}
     proposal = {"schema": "chan-account-parameter-proposal-v1", "status": "offline_windows_evaluated_not_candidate",

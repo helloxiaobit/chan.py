@@ -178,13 +178,15 @@ def test_purged_empty_training_set_cannot_be_filled_with_validation_rows(tmp_pat
 
 
 @pytest.fixture()
-def tiny_sample_dir(tmp_path):
+def tiny_sample_dir(tmp_path, request):
     from .test_decision_snapshots import CDecisionStrategy
     class CEveryBar(CDecisionStrategy):
         def try_open(self, chan, lv):
             cur = chan[lv][-1][-1]
             cbsp = CCustomBSP(None, cur, "fixture", True)
             cbsp.add_feat({"alpha": float(cur.idx % 2), "beta": float(cur.idx % 7)})
+            if getattr(request, "param", False):
+                cbsp.add_feat({"smc_fvg_bull_cnt": 1, "smc_fvg_bull_dist": 0.01})
             return cbsp
     chan = CChan("TEST/USDT:USDT", lv_list=[KL_TYPE.K_60M], config=CChanConfig({
         "trigger_step": True, "cbsp_strategy": CEveryBar, "strategy_para": {"skip_features": True}}))
@@ -246,6 +248,57 @@ def test_online_model_uses_the_exact_persisted_artifact(kind, tiny_sample_dir, t
     cbsp.features = CFeatures({"beta": 3.0})
     with pytest.raises(CChanException, match="特征|feature"):
         online.predict(cbsp)
+
+
+@pytest.mark.parametrize("kind", ["xgb", "lgbm", "mlp"])
+@pytest.mark.parametrize("tiny_sample_dir", [True], indirect=True)
+def test_conditional_fvg_absence_uses_count_evidence_not_training_frequency(kind, tiny_sample_dir, tmp_path):
+    from ChanModel.GeneratorModel import CGeneratorModel
+    from ChanModel.Features import CFeatures
+    gen = model_factory(kind, tmp_path / "model")
+    gen.trainProcess(str(tiny_sample_dir))
+    online = CGeneratorModel(gen.GetModelPath())
+    cbsp = fixture_chan()[0].cbsp_strategy[0]
+    absent = {"alpha": 1.0, "beta": 3.0, "smc_fvg_bull_cnt": 0}
+    cbsp.features = CFeatures(absent)
+    score = online.predict(cbsp)
+    sparse = {gen.feature_meta[k]: v for k, v in absent.items()}
+    expected = gen.predict(gen.create_data_set(gen.samples_to_feature_arr([{"features": sparse}])))[0]
+    assert score == pytest.approx(expected)
+    for bad in ({"alpha": 1.0, "beta": 3.0},
+                {**absent, "smc_fvg_bull_cnt": 1},
+                {**absent, "smc_fvg_bull_cnt": -1},
+                {**absent, "smc_fvg_bull_cnt": 0.5},
+                {**absent, "smc_fvg_bull_dist": 0.01},
+                {"beta": 3.0, "smc_fvg_bull_cnt": 0}):
+        cbsp.features = CFeatures(bad)
+        with pytest.raises(CChanException, match="特征|feature"):
+            online.predict(cbsp)
+    # Batch/offline prediction uses the same presence rule, even if this entire
+    # new window has no FVG and hence no FVG-detail column in its sparse meta.
+    prediction = tmp_path / "prediction"
+    prediction.mkdir()
+    (prediction/"feature.meta").write_text(json.dumps({"alpha": 0, "beta": 1, "smc_fvg_bull_cnt": 2}))
+    (prediction/"feature.libsvm").write_text("1 0:1 1:3 2:0\n")
+    assert gen.PredictProcess(str(prediction)) == pytest.approx([score])
+
+
+@pytest.mark.parametrize("obj,side", [("fvg", "bull"), ("fvg", "bear"), ("ob", "bull"), ("ob", "bear")])
+def test_declared_object_presence_never_masks_lost_or_contradictory_evidence(obj, side):
+    from ChanModel.ModelContract import CONDITIONAL_OBJECT_FEATURES, validate_feature_presence
+    counter = f"smc_{obj}_{side}_cnt"
+    details = [k for k, v in CONDITIONAL_OBJECT_FEATURES.items() if v == counter]
+    meta = {name: i for i, name in enumerate(["ordinary", counter]+details)}
+    absent = {"ordinary": 1, counter: 0}
+    validate_feature_presence(absent, meta, meta)
+    validate_feature_presence({**absent, **dict.fromkeys(details)}, meta, meta)
+    present = {**absent, counter: 1, **dict.fromkeys(details, 0.1)}
+    validate_feature_presence(present, meta, meta)
+    for bad in ([{**absent, counter: value} for value in (None, -1, 0.5, True, float("nan"))]
+                + [{"ordinary": 1}, {counter: 0}, {**absent, details[0]: 1}]
+                + [{k: v for k, v in present.items() if k != detail} for detail in details]):
+        with pytest.raises(CChanException, match="特征|feature"):
+            validate_feature_presence(bad, meta, meta)
 
 
 def test_strategy_failure_closes_active_source_generators(monkeypatch):

@@ -1,6 +1,7 @@
 """C4 实际策略/原始数据/next-open 账户桥接；只用小合成行。"""
 from copy import deepcopy
 from decimal import Decimal
+from pathlib import Path
 
 import pytest
 
@@ -179,3 +180,22 @@ def test_next_open_execution_price_does_not_depend_on_the_remainder_of_its_bar()
     marks[699] = (mr[0], mr[1], mr[2]*2, mr[3]/2, mr[4]*1.1, mr[5])
     assert row[0] == last_open
     assert evaluate_crypto_strategy(dataset(rows, marks, funding), configuration(), start_ms=START, end_ms=START+700*HOUR).to_dict() == result
+
+
+def test_modelled_experiment_can_move_with_its_verified_model_without_staging_paths(tmp_path, deployment_model):
+    import shutil
+    from ChanModel.GeneratorModel import CGeneratorModel
+    from ModelStrategy.parameterEvaluate.account_experiment import run_account_experiment, verify_account_experiment
+    model = CGeneratorModel(deployment_model["model"].GetModelPath())
+    source = dataset(*raw_fixture())
+    config = configuration(chan_config={**deployment_model["chan_config"], "model": model, "score_thred": 0})
+    root = tmp_path / "experiment"
+    receipt = run_account_experiment(source, config, search_window=(START+600*HOUR, START+800*HOUR),
+        validation_windows=[(START+800*HOUR, START+1000*HOUR)], space={"entry_notional": {"type": "choice", "choices": [10.0]}},
+        objective="total_return", n_trials=1, algorithm="grid", seed=7, output_dir=root)
+    relocated = tmp_path / "relocated"
+    shutil.copytree(deployment_model["root"] / "models", relocated / "model")
+    root.rename(relocated / "experiment")
+    restored = CGeneratorModel(relocated / "model" / Path(model.path).name)
+    moved_config = configuration(chan_config={**deployment_model["chan_config"], "model": restored, "score_thred": 0})
+    assert verify_account_experiment(relocated / "experiment", source, moved_config) == receipt

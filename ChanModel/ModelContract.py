@@ -19,6 +19,40 @@ MODEL_KEYS = {"schema", "model_type", "model_tag", "generator_config", "generato
               "model_sha256", "meta_sha256", "samples_manifest_sha256", "label_definition", "generation_context",
               "sample_files", "unknown_count", "training_window"}
 
+# cal_smc_family omits details exactly when no live object exists. A training
+# intersection cannot turn an object-dependent column into permanent evidence.
+CONDITIONAL_OBJECT_FEATURES = {
+    **{f"smc_{obj}_{side}_{suffix}": f"smc_{obj}_{side}_cnt"
+       for obj, suffixes in (("fvg", ("dist", "size", "age", "fill")),
+                             ("ob", ("dist", "size", "age", "test_cnt")))
+       for side in ("bull", "bear") for suffix in suffixes},
+    **{f"smc_in_{obj}_{side}": f"smc_{obj}_{side}_cnt"
+       for obj in ("fvg", "ob") for side in ("bull", "bear")},
+}
+
+
+def validate_feature_presence(features, meta, required):
+    """Only explicit zero-object evidence permits missing FVG/OB detail columns."""
+    expected = set(required)
+    for name, counter in CONDITIONAL_OBJECT_FEATURES.items():
+        if name not in meta:
+            continue
+        count = features.get(counter)
+        if (counter not in meta or type(count) not in (int, float) or not math.isfinite(count)
+                or count < 0 or count % 1):
+            raise CChanException(f"条件特征 feature 缺少有效对象计数: {counter}", ErrCode.MODEL_ERROR)
+        expected.add(counter)
+        if count == 0:
+            if features.get(name) is not None:
+                raise CChanException(f"条件特征 feature 与零对象计数矛盾: {name}", ErrCode.MODEL_ERROR)
+            expected.discard(name)
+        else:
+            expected.add(name)
+    missing = sorted(expected-features.keys())
+    null = sorted(k for k in expected if k in features and features[k] is None)
+    if missing or null or not features:
+        raise CChanException(f"缺少必需特征 feature: missing={missing[:12]}, null={null[:12]}", ErrCode.MODEL_ERROR)
+
 
 def sha256_file(path):
     digest = hashlib.sha256()

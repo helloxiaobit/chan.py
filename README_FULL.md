@@ -103,12 +103,41 @@ CPlotDriver(chan, plot_config={"plot_kline": True, "plot_bi": True, "plot_seg": 
 ### 3. 回测出样本 → 训练模型 → AutoML
 
 ```bash
-bash Trade/Script/run_train_pipeline.sh    # Windows: pwsh Trade/Script/run_train_pipeline.ps1
+python -m ModelStrategy.training_pipeline --spec path/to/training-spec.json
+# 同一入口的脚本包装，必须显式给 spec：
+bash Trade/Script/run_train_pipeline.sh path/to/training-spec.json
+pwsh -File Trade/Script/run_train_pipeline.ps1 path/to/training-spec.json
 ```
 
-流水线脚本仍待 C6 完整失败传播验收；不要将当前脚本退出 0 当作模型已可部署。正式参数搜索仍受独立研究门禁约束。
+该有界入口不读取默认行情目录、不下载数据、不复用旧模型。spec 使用
+`chan-crypto-training-cli-v1`，明确给 `data_packet`、`output_dir`、`configuration`
+和 `training`；文件路径相对 spec 目录解析。数据包用 `CCryptoEvaluationData.to_dict()`
+导出，configuration 用 `CCryptoEvaluationConfig.to_dict()` 导出；reader 重验来源、周期、
+OHLCV、mark 和 exact-ms funding 日程，不凭文件名猜市场。
 
-等价的 python 流程:
+Python API 为 `ModelStrategy.training_pipeline.run_crypto_training_pipeline(data, config, ...)`。
+`training` 与 API 关键字相同，必须预先固定：
+
+- `training_window`、`search_window`、`validation_windows`：升序不重叠的 UTC 毫秒半开窗口。
+- `primary_label`、`label_parameters`、`model_type`（xgb/lgbm/mlp）、`model_options`：实际样本标签与训练超参。
+- `thresholds={candidate, entry, post}`：显式概率阈值；只有 entry 可在事先声明的搜索空间内调整。
+- `space`、`objective`、`n_trials`、`algorithm`、`seed`：本次固定搜索规格；可另给 `min_closed_positions` 和 `algorithm_parameters`。
+
+训练后搜索只允许实际生效的 `entry_notional`、`score_thred`，不能换策略/特征参数后继续使用旧模型。
+原始无模型策略的参数搜索仍通过下面独立的 account_experiment 接口完成。
+先生成训练窗口内的真实样本、训练所选模型，再在后续窗口搜索与验证。
+模型、feature.meta、样本、来源、策略配置、评估器和部署三个阈值绑定同一运行。
+验证、导出重读和全部 trial 的逐事件重放完成后，才把本运行独有 staging 目录发布到显式新目录；
+训练失败、验证失败或目标已存在时不留下新部署包、不覆盖旧产物。
+
+输出包含 `samples/`、`model/`、`experiment/`、`deployment.json` 和最终 `receipt.json`。
+`verify_crypto_training_pipeline(output_dir, data)` 从实际数据重放核验，目录移动后仍可验证，
+不依赖已删除的 staging 绝对路径。状态为 `offline_training_and_window_checks_passed`，
+始终 `candidate_authorized=false`；不是测试网、实盘或策略经济采用授权。
+PS1/SH 共用一个 Python 调用并传递非零退出码；完整调度、单实例锁、安装矩阵和跨环境验收仍在 C6。
+正式参数搜索继续受独立研究门禁约束，不能将本软件入口作为绕过入口。
+
+低级接口继续兼容，用于单独检查样本、模型和逐笔统计；不能替代上述完整流水线收据：
 
 ```python
 # 1) 回测落样本(libsvm + feature.meta + 五种标签,兼容 demo5 格式)
@@ -136,7 +165,7 @@ from ModelStrategy.parameterEvaluate.parse_automl_result import parse_automl_res
 
 `CParaAutoML.run(n_trials=...)` 对 grid、bayes 和种群参数扰动均强制正整数上限；grid 实际组合更少时提前结束。grid_num 至少 2，整数轴去重并包含完整网格的两端；大轴不会在小预算下整条分配。每次运行重置随机种子与 trial 状态。`pbt` 只是 `population-perturbation` 的兼容名称，没有模型 checkpoint 继承。
 
-搜索 JSONL 是有限 canonical、write-once，记录空间、算法、seed、预算和代码身份；无有效分数不发布。NaN/Infinity trial 拒绝且保留原因，reader 再核验预算/参数/状态/身份。`parse_automl_result(result_path, output_path)` 必须显式指定**新建议文件**，不再默认写 `Trade/Script/OpenConfig.yaml`，现有文件拒绝覆盖；输出状态为 `unvalidated_parameter_proposal`，不是 candidate 或交易授权。旧 `automl_verify` 闭包无法证明数据窗口隔离，现明确返回 `window_isolation_verified=False`；C4 的显式窗口账户验证仍在接入。
+搜索 JSONL 是有限 canonical、write-once，记录空间、算法、seed、预算和代码身份；无有效分数不发布。NaN/Infinity trial 拒绝且保留原因，reader 再核验预算/参数/状态/身份。`parse_automl_result(result_path, output_path)` 必须显式指定**新建议文件**，不再默认写 `Trade/Script/OpenConfig.yaml`，现有文件拒绝覆盖；输出状态为 `unvalidated_parameter_proposal`，不是 candidate 或交易授权。旧 `automl_verify` 闭包无法证明数据窗口隔离，现明确返回 `window_isolation_verified=False`；需要真实数据窗口证明时用下述 account_experiment 或训练入口。
 
 `eval_strategy` 的总收益是逐笔百分比之和，回撤是这条加法曲线的百分点回撤，不是组合净值/最大权益回撤。兼容数值属性保留，JSON 增加单位；无亏损时的盈亏比以 null 与显式 infinite 标志输出，不写 JSON Infinity。正式策略研究及参数搜索继续保留独立门禁。
 
@@ -154,13 +183,14 @@ from ModelStrategy.parameterEvaluate.parse_automl_result import parse_automl_res
 
 `account_experiment.run_account_experiment(...)` 进一步要求预先指定 `search_window`、升序且不重叠的 `validation_windows`、`space`、`objective`（total_return/cagr/calmar）、`n_trials`、算法、seed 和新 `output_dir`。允许搜索的实际生效参数当前为 entry_notional、max_sl_rate、max_profit_rate 和有模型时的 score_thred；不能搜索未使用的任意键，也不能修改策略上下文后沿用旧模型。目标按固定 Decimal 账户指标转换为有限 float 排序，至少一笔完整持仓，曾触发 liquidation_required/insolvent 的 trial 拒绝；这些是软件有效性条件，不是策略经济采用门槛。
 
-只用搜索窗口选择一次参数，原样在全部验证窗口评估，不因验证收益重选。搜索每个 trial（包括非最优项）和验证窗口都逐事件重放；全部完成后才创建 `search.jsonl`、`validation.json`、`proposal.json` 和最终 `receipt.json`，失败不留参数建议，既有运行拒绝覆盖。`verify_account_experiment(output_dir, data, config)` 使用实际原数据和配置复算，不只是检查重新可算的文件 SHA。结果始终 `candidate_authorized=false`；即使三种算法小任务可复现，也不能越过正式研究、测试网或实盘门禁。C4 训练入口与样本/模型/该多窗口接口的完整编排仍待接线，C6 再完成两种调度脚本的失败传播。
+只用搜索窗口选择一次参数，原样在全部验证窗口评估，不因验证收益重选。搜索每个 trial（包括非最优项）和验证窗口都逐事件重放；全部完成后才创建 `search.jsonl`、`validation.json`、`proposal.json` 和最终 `receipt.json`，失败不留参数建议，既有运行拒绝覆盖。`verify_account_experiment(output_dir, data, config)` 使用实际原数据和配置复算，不只是检查重新可算的文件 SHA。结果始终 `candidate_authorized=false`；即使三种算法小任务可复现，也不能越过正式研究、测试网或实盘门禁。训练 API 已将该多窗口接口接入；C5 再处理部署额度与真实合约单位，C6 再做完整在线式调度/限价撮合的对齐。
 
 C3 新样本保留 `feature.meta` 的名称→索引格式，新增 `sample_manifest.json` 绑定文件、标签参数、输入 count/SHA、特征代码及配置。`sample_info.jsonl` 记录全部样本的 UTC 决策/特征可用/标签观察结束时刻；未知标签的 `training_row=null`，不作为 0 写入 libsvm。终局结构标签保守依赖窗口末端，未确认段不写负例。因而默认 `label_bsp_hold` 可能在时序 purge 后无训练样本；不能把这些标签回填进验证前的训练段。
 
 三种 generator 都支持显式 `split_boundaries_ms={"train_end_ms": ..., "validation_end_ms": ..., "test_end_ms": ...}`；UTC 边界 end-exclusive，标签观察穿越分段末端会清除。未指定时按全池不同 UTC 时刻冻结 `folder_thred` 训练边界，其余时刻均分 validation/holdout，再按方向/市场分桶；旧 `test_cnt/test_auc` 字段是 validation 的兼容名称，独立 holdout 不传给训练器。
 
-模型文件旁的同名 `.contract.json` 绑定模型/meta SHA、特征与训练代码、标签定义、样本清单、分段、配置及运行库身份。`CGeneratorModel(path)` 支持 XGB/LGBM/MLP，`CXGBModel(path)` 保留原 XGB 类名；复用 generator 的 estimator 与缺失策略。列按训练名称对齐；必需列缺失、非有限值、错误版本/摘要均拒绝。条件列只有在训练中已观察到缺失时才按冻结缺失策略处理。旧 demo5 的无契约目录不自动升级为在线部署模型，须用新样本重建。
+模型文件旁的同名 `.contract.json` 绑定模型/meta SHA、特征与训练代码、标签定义、样本清单、分段、配置及运行库身份。`CGeneratorModel(path)` 支持 XGB/LGBM/MLP，`CXGBModel(path)` 保留原 XGB 类名；复用 generator 的 estimator 与缺失策略。列按训练名称对齐；必需列缺失、非有限值、错误版本/摘要均拒绝。SMC FVG/OB 详情有显式数量依赖：仅数量为零时可缺详情；数量缺失/非法、数量大于零却缺详情或零数量附带详情均拒绝。该语义不取决于小训练集是否碰巧全都有 FVG/OB；其他列仍按冻结的必需/稀疏列契约处理。新公式身份须重生成模型，不能改旧 contract 续用。
+旧 demo5 的无契约目录不自动升级为在线部署模型，须用新样本重建。
 
 这些本地完整性摘要不是制品发布者签名；只加载可信来源的本地模型，尤其不要加载不可信 pickle。模型功能测试不代表收益或实盘授权。
 

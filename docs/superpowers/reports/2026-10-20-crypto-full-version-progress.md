@@ -35,7 +35,7 @@
 | C1 | 已完成离线实现与验收 | UTC 日/周/月边界、finality、尾 K 修订、分页/完整性、来源绑定、显式备份迁移、质量状态；见下方记录 |
 | C2 | 已完成离线实现与验收 | 父 K/原始关系发布边界、不可变决策、完整身份对账、真实三层策略 future/prefix 变异；非外部认证 |
 | C3 | 已完成离线实现与验收 | UTC purge/unknown、三模型身份、write-once 部署、三阶段评分与 SQLite 版本链；非实盘/外部认证 |
-| C4 | 进行中 | 先处理 AutoML 预算/有限产物，再接独立账户事件与多窗口验证 |
+| C4 | 已完成离线实现与验收 | 有界实际样本→三模型→搜索/独立验证→部署→全 trial 重放；93 项组合、608 项全仓离线通过，非经济采用 |
 | C5 | 待开发 | 合约适配/恢复/对账 |
 | C6 | 待开发 | 调度/API/离线 E2E |
 | C7 | 待前置验收 | 公共行情与有准入后的外部认证；代码发布按阶段进行 |
@@ -182,3 +182,21 @@ C1 收尾清理计划：迁移校验由两份全表内存列表改为有序逐�
 - 初始组合 113 passed（41.12s，1 小 XGB 单类 warning）；随后 bayes 与 pbt 各两次固定小任务的四文件逐字节复现通过。下一步全仓最新树串行复验，之后 Lore 发布。C4 尚余样本→模型→账户多窗口接口在训练入口的实际编排；C5–C7 均未完成，不改变 Goal 总范围。
 - 最新完整工作树严格串行复验：575 passed / 7 expected skipped / 1 network deselected / 8 warnings，346.57s。8 警告为合成 XGB validation 单类 AUC、三次 MLP 60 步未收敛和既有 libsvm 文本输入弃用；跳过仍为六个需外部研究资产的测试及缺 PyQt6 的股票 GUI。未设置研究路径来消除跳过，未运行正式参数搜索/绩效或外部订单。
 - 下轮可执行起点：训练 API 先 TDD 接受显式 bounded data 的真实 sample reader，复用 C3 的 run_backtest/三 generator/contract，再在训练标签已知之后的 search+validation 窗口使用本接口；选定模型/feature.meta/策略/输入/评估器/阈值构成清单，导出后重读并 replay。不得把任意测试闭包或现有 PS1/SH 的退出 0 当成该条完成；脚本失败传播及核心/完整环境矩阵留 C6。整个 C0–C7 Goal 仍 active。
+
+### C4 第五子边界实施与清理计划：实际训练入口
+
+- 前一轮为有效进展；本轮起始 `361ca0fc5e8436027a444188a4582d543b37a822` 干净。先用缺 `source_data` API 的 RED，扩展既有 run_backtest 为显式完整来源数据包的限定窗口 reader；保留默认 reader 兼容，不接受任意假 producer 回调来构造已验证证据，不复制样本/标签/训练器逻辑。
+- 训练窗口、后续搜索窗口和验证窗口预先固定且不重叠。只复用三种现有 generator，显式新目录、固定标签与模型超参；已训练 artifact/特征 meta/输入/策略/执行器/三个阶段阈值与实验收据合成清单，导出重读及账户 replay 后才发布。模型失败或验证失败不得把旧 artifact 当作新产物。
+- 临时制品只在本运行独有 staging 目录内生成，最终路径不得覆盖；所有引用须可迁移，不把临时绝对路径写成部署依赖。默认训练脚本改为调用同一个有界入口，不再在 PS1/SH 分别拼不同样本窗口或模型训练程序；完整脚本故障注入/锁/进度和环境矩阵仍在 C6 验收。
+- 该改动会更新已绑定的样本/特征代码身份，旧模型须按 C3 规则重生成，不能修改旧 contract 续用。验证仅小合成数据与临时库，无正式研究、网络订单、配置权限变更或新依赖。
+
+### C4 第五子边界证据：有界训练、可迁移制品与失败零发布
+
+- RED 已观察：缺 source_data API、缺训练模块/CLI、PS1 未传递 native 非零码、SH 错拼 Windows 绝对 spec、临时模型绝对路径导致移目录失效、重算摘要后篡改 training window/model/label/search window/thresholds 仍被接受、零轮/bool 预算及非法 split 未在样本前拒绝。逐项修复，不用测试闭包伪装生产路径。
+- run_backtest 复用原标签/样本实现，额外接受显式 CCryptoEvaluationData 的 UTC 限定 reader；只消费 training 起止内已收盘数据，不查默认环境。future suffix 和未收盘末尾变异不改训练文件。样本、模型 contract、元参数、实际 UTC 切分/必需列、源 count/SHA、账户所有 trial/窗口、部署阈值与最终收据交叉核验；仅 hash 自洽不算通过。
+- 新 training_pipeline 单入口从全新 staging 目录训练指定 XGB/LGBM/MLP，再做后续不重叠窗口的搜索与验证、部署导出重读和全 trial 重放，全部完成才 rename 到新目标。已有目标拒绝；训练或后段验证失败整包不发布。proposal 使用模型文件名/内容身份，部署使用相对路径，移动最终目录后仍能重读/重放。删除 PS1/SH 内各自拼训练流程与静默复用旧模型的入口，不新增训练器/搜索器/账户实现。
+- 真实三级 CMultiLevelStrategy 流水线首先暴露训练交集错误地把 SMC 多头 FVG 详情当永久必需列；确认缺失字段后，三模型最小 fixture 均观察同样 RED。现在仅 FVG/OB 已声明的数量零状态允许缺详情，数量缺失/负数/分数/bool、正数量缺详情、零数量附带详情或普通必需列缺失仍拒绝。训练、批量推理与在线评分共用同一 presence 校验；未删列、跳过 guard 或换成易通过数据。三级 4h/1h/15m 真训练中间级别、搜索、验证、重读重放通过。
+- 当前组合严格串行：93 passed / 9 warnings，177.49s。包括 25 pipeline、16 binding、37 model、15 experiment；警告仅小 XGB validation 单类 AUC 与四次 MLP 60 步未收敛。曾误拼不存在的测试文件名，pytest 明确 no tests ran，修正真实文件名后独立运行本结果；未把失败命令算通过。完整最新树复验另记，不沿用 575 旧树结果。
+- 限定：candidate/post 阈值是用户显式冻结值，本阶段不宣称在线三阶段价格相同或限价撮合等价。搜索额度仍属账户/建议口径，C5 绑定真实合约单位和在线额度；C6 验收完整调度/锁/环境矩阵。所有结果 candidate_authorized=false；C5–C7、交易所外部认证与正式经济采用未完成，Goal 保持 active。
+- 最新完整代码树独立串行复验：608 passed / 7 expected skipped / 1 network deselected / 14 warnings，487.51s。14 警告为八次小 XGB validation 单类 AUC、五次 MLP 60 步未收敛及既有 libsvm 文本输入弃用；跳过仍为六项外部研究资产及缺 PyQt6 的股票 GUI。不设置研究路径、不使用网络订单来消除跳过。compileall 与 diff 检查通过；后续只更新本台账的状态/结果，不修改通过验证的运行时代码。
+- C4 离线验收完成；进入 C5 时仍以币数量/合约张数、精度化后的持久化意图一致、exchange 参数与累计成交/重启对账为先，不重建状态机。C6 还需 fresh checkout 行尾、Python 3.11/当前版本核心与完整安装矩阵、调度锁/故障管理/在线式 E2E；当前 608 项通过不是这些外部/跨环境门槛的替代。

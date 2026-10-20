@@ -87,6 +87,23 @@ class CCryptoEvaluationData:
             body["funding"][code], body["funding_schedule_ms"][code] = fund, schedule
         self._raw = canonical_bytes(body)
 
+    def to_dict(self):
+        return {"schema": "chan-crypto-evaluation-data-v1", **json.loads(self._raw)}
+
+    @classmethod
+    def from_dict(cls, packet):
+        expected = {"schema", "contract_source", "mark_source", "mark_level", "contract", "marks", "funding", "funding_schedule_ms"}
+        try:
+            if not isinstance(packet, dict) or set(packet) != expected or packet["schema"] != "chan-crypto-evaluation-data-v1":
+                raise _error("未知或不完整的来源数据包 schema")
+            canonical_bytes(packet)
+            return cls(contract_source=packet["contract_source"], mark_source=packet["mark_source"],
+                contract_rows={code: {KL_TYPE[level]: rows for level, rows in by_level.items()} for code, by_level in packet["contract"].items()},
+                mark_rows=packet["marks"], mark_level=KL_TYPE[packet["mark_level"]],
+                funding_rows=packet["funding"], funding_schedule_ms=packet["funding_schedule_ms"])
+        except (KeyError, TypeError, ValueError, AttributeError) as error:
+            raise _error("来源数据包无法完整重读") from error
+
     def view(self, *, start_ms, end_ms):
         start_ms, end_ms = _clock(start_ms), _clock(end_ms)
         if start_ms >= end_ms:

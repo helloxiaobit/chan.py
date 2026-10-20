@@ -15,7 +15,8 @@ from typing import Dict, List, Optional, Tuple
 from Common.ChanException import CChanException, ErrCode
 from CustomBuySellPoint.Decision import canonical_bytes
 from ChanModel.ModelContract import (MISSING_POLICIES, MODEL_SCHEMA, contract_path, feature_code_identity,
-                                     freeze_config, model_runtime, read_model_contract, sha256_file, validate_feature_meta)
+                                     freeze_config, model_runtime, read_model_contract, sha256_file, validate_feature_meta,
+                                     validate_feature_presence)
 
 MISSING_VALUE = -9999999  # 与 demo6 的 missing 约定一致
 
@@ -330,6 +331,11 @@ class CModelGenerator(metaclass=abc.ABCMeta):
             raise CChanException("purge 后训练/验证/测试样本不足，不能回填跨界观察标签", ErrCode.MODEL_ERROR)
         common = set.intersection(*(set(s["features"]) for s in train))
         self.required_features = sorted(name for name, idx in (self.feature_meta or {}).items() if idx in common)
+        reverse = {idx: name for name, idx in (self.feature_meta or {}).items()}
+        for sample in train + validation + self.holdout_samples:
+            if reverse:
+                validate_feature_presence({reverse[i]: value for i, value in sample["features"].items()},
+                                          self.feature_meta, self.required_features)
         return train, validation
 
     def _freeze_split_boundaries(self, samples):
@@ -419,11 +425,16 @@ class CModelGenerator(metaclass=abc.ABCMeta):
         self.load_meta()  # 模型的列身份为准，不允许样本 meta 覆盖训练 meta。
         dim = self.load_model()
         required = set(self.contract["required_features"]) if self.contract else self.feature_meta.keys()
-        if dim != len(self.feature_meta) or required - input_meta.keys():
+        if dim != len(self.feature_meta):
             raise CChanException("模型维度或输入特征集合与训练 meta 不兼容", ErrCode.MODEL_ERROR)
         reverse = {idx: name for name, idx in input_meta.items()}
-        return [{**s, "features": {self.feature_meta[reverse[i]]: value for i, value in s["features"].items()
-                                    if reverse[i] in self.feature_meta}} for s in samples]
+        result = []
+        for sample in samples:
+            named = {reverse[i]: value for i, value in sample["features"].items()}
+            validate_feature_presence(named, self.feature_meta, required)
+            result.append({**sample, "features": {self.feature_meta[name]: value for name, value in named.items()
+                                                  if name in self.feature_meta}})
+        return result
 
     def _checked_predict(self, dataset):
         count = dataset.get_count() if hasattr(dataset, "get_count") else len(dataset)
@@ -434,10 +445,9 @@ class CModelGenerator(metaclass=abc.ABCMeta):
         return scores
 
     def predict_features(self, features):
-        required = set(self.contract["required_features"]) if self.contract else set()
-        if (self.contract is None or required - features.keys()
-                or any(features[k] is None for k in required) or not features):
-            raise CChanException("在线模型缺少 artifact 或必需特征 feature", ErrCode.MODEL_ERROR)
+        if self.contract is None:
+            raise CChanException("在线模型缺少 artifact", ErrCode.MODEL_ERROR)
+        validate_feature_presence(features, self.feature_meta, self.contract["required_features"])
         values = {}
         for name, idx in self.feature_meta.items():
             value = features.get(name)
