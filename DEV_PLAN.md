@@ -200,6 +200,8 @@ Script/
 
 ## 6. 参考锚点(省去重找)
 
+2026-10-20 起，虚拟货币链路按 [C0–C7 补充开发计划](docs/superpowers/plans/2026-10-20-crypto-full-version-completion.md) 执行；原 M0–M7 为历史模块里程碑，不代表行情因果性、在线部署或交易所认证均已通过。当前状态见 [开发验收台账](docs/superpowers/reports/2026-10-20-crypto-full-version-progress.md)。股票相关补齐暂缓。
+
 - 完整版功能总览:README §功能介绍;目录结构:README §目录结构(即本计划的文件清单来源)
 - CChanConfig 全参数说明:README §CChanConfig 配置;策略参数:§自定义策略类相关
 - cbsp/策略接口:README §cbsp 买卖点策略;区间套 20 行示例:§区间套策略示例

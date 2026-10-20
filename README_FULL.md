@@ -1,8 +1,8 @@
 # chan.py 完整版使用文档
 
-本仓库 fork 自 [Vespa314/chan.py](https://github.com/Vespa314/chan.py)(MIT)。原开源版只包含"静态缠论计算"部分(约 7200 行),`README.md` 却是按作者私有完整版写的。本 fork **按 README 描述的功能规格自研补齐了全部缺失模块**:cbsp 策略框架、特征引擎(500+ 特征)、模型训练/评估/AutoML、ccxt 数据层与 7×24 加密货币交易系统。
+本仓库 fork 自 [Vespa314/chan.py](https://github.com/Vespa314/chan.py)(MIT)。原开源版主要提供静态缠论计算，`README.md` 描述作者私有完整版。本 fork 已独立实现 cbsp、特征、模型、AutoML、数据和交易模块；虚拟货币完整链路仍在按 [C0–C7 计划](docs/superpowers/plans/2026-10-20-crypto-full-version-completion.md) 开发验收。当前支持范围与证据见 [验收台账](docs/superpowers/reports/2026-10-20-crypto-full-version-progress.md)，股票功能暂缓。
 
-- 原版 `README.md`:功能与接口的完整说明(本仓库已全部对齐实现)
+- 原版 `README.md`:上游功能与接口说明；不表示本 fork 已与私有实现逐项等价
 - `quick_guide.md`:缠论计算部分的快速入门
 - 本文档:完整版的安装、配置与实战流程(以加密货币为主场景)
 
