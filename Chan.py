@@ -72,6 +72,7 @@ class CChan:
             obj.klu_cache = copy.deepcopy(self.klu_cache, memo)
         if hasattr(self, 'klu_last_t'):
             obj.klu_last_t = copy.deepcopy(self.klu_last_t, memo)
+        obj.pending_kl = copy.deepcopy(self.pending_kl, memo)
         obj.kl_datas = {}
         for kl_type, ckline in self.kl_datas.items():
             obj.kl_datas[kl_type] = copy.deepcopy(ckline, memo)
@@ -85,6 +86,7 @@ class CChan:
         return obj
 
     def do_init(self):
+        self.pending_kl = {}  # 已读到但尚未到发布边界的父 K，不提前改变结构状态
         self.kl_datas: Dict[KL_TYPE, CKLine_List] = {}
         for idx in range(len(self.lv_list)):
             self.kl_datas[self.lv_list[idx]] = CKLine_List(self.lv_list[idx], conf=self.conf)
@@ -97,7 +99,20 @@ class CChan:
         # 调用某级别的策略判断(策略内部保证同一根K线只判断一次)
         strategy = self.kl_datas[self.lv_list[lv_idx]].cbsp_strategy
         if strategy is not None and len(self[lv_idx]) > 0:
+            cur = self[lv_idx][-1][-1]
+            if strategy.last_judge_klu_idx >= cur.idx:
+                return
+            if any(len(self[i]) and self[i][-1][-1].time > cur.time for i in range(lv_idx)):
+                raise CChanException("父级别尚未在本次决策时发布，拒绝历史判断", ErrCode.KL_DATA_NOT_ALIGN)
             strategy.update(self, lv_idx)
+
+    def publish_pending_kl(self, decision_time):
+        # 同一时刻大级别先发布；结构计算仍复用既有增量算法。
+        for lv in self.lv_list:
+            pending = self.pending_kl.get(lv)
+            if pending is not None and pending.time <= decision_time:
+                self.add_new_kl(lv, pending)
+                del self.pending_kl[lv]
 
     def update_all_cbsp_strategy(self):
         # 从最低级别往最高级别,保证区间套拿到次级别最新状态
@@ -305,13 +320,18 @@ class CChan:
                 break
             kline_unit.set_pre_klu(pre_klu)
             pre_klu = kline_unit
-            self.add_new_kl(cur_lv, kline_unit)
+            if lv_idx == len(self.lv_list)-1:
+                self.publish_pending_kl(kline_unit.time)
+                self.add_new_kl(cur_lv, kline_unit)
+            else:
+                self.pending_kl[cur_lv] = kline_unit
             if parent_klu:
                 self.set_klu_parent_relation(parent_klu, kline_unit, cur_lv, lv_idx)
             if lv_idx != len(self.lv_list)-1:
                 for _ in self.load_iterator(lv_idx+1, kline_unit, step):
                     ...
                 self.check_kl_align(kline_unit, lv_idx)
+                self.publish_pending_kl(kline_unit.time)
             # 每根K线完成(含次级别递归完成)后触发本级别策略判断(次级别在递归中已先触发)
             if self.conf.cbsp_strategy is not None and not self.conf.only_judge_last \
                and self.kl_datas[cur_lv].step_calculation:
@@ -320,6 +340,10 @@ class CChan:
                 yield self
 
     def check_kl_consitent(self, parent_klu, sub_klu):
+        if hasattr(parent_klu, "open_ms") and hasattr(sub_klu, "open_ms"):
+            if not (parent_klu.open_ms <= sub_klu.open_ms < sub_klu.close_ms <= parent_klu.close_ms):
+                raise CChanException("子K线不属于父K线 UTC 半开区间", ErrCode.KL_TIME_INCONSISTENT)
+            return
         if parent_klu.time.year != sub_klu.time.year or \
            parent_klu.time.month != sub_klu.time.month or \
            parent_klu.time.day != sub_klu.time.day:

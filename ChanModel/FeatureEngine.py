@@ -427,6 +427,9 @@ class CFeatureEngine:
                         pass
         # 父级别
         sup_kl = cbsp.klu.sup_kl
+        decision_time = chan[lv][-1][-1].time
+        while sup_kl is not None and sup_kl.time > decision_time:
+            sup_kl = sup_kl.pre  # 包含关系不等于当时可读；仅选择已收盘父 K
         if sup_kl is not None:
             feat["sup_lv_klu_is_up"] = sup_kl.close > sup_kl.open
             if lv > 0:

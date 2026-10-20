@@ -395,8 +395,10 @@ def test_strategy_ensemble_equivalence(tmp_env):
         chan_s = run_load(tmp_env, {"strategy_para": {
             "skip_features": True, "require_sub_confirm": False, **para}})
         assert sig(ensemble.get_variant(name)) == sig(chan_s[1].cbsp_strategy), f"变体{name}与单独跑不一致"
-    # 两个变体应有差异(否则测试无意义)——盘中止损会改变部分平仓
-    assert sig(ensemble.get_variant("base")) != sig(ensemble.get_variant("intrabar"))
+    # 因果时序修复后这段行情不保证触发盘中止损。参数传播继续校验，
+    # 实际行为差异由 test_ensemble_intrabar_override_changes_an_explicit_stop_fixture 固定触价验证。
+    assert ensemble.get_variant("intrabar").get_p("sl_intrabar", False) is True
+    assert ensemble.get_variant("base").get_p("sl_intrabar", False) is False
 
 
 def test_regime_stamp_and_silent(tmp_env):
