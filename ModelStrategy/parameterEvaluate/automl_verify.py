@@ -1,18 +1,17 @@
 """automl 结果验证:用最优参数在另一时段重新评估,对比搜索时的表现(防过拟合)"""
-import json
 from typing import Callable, Dict
 
 from .eval_strategy import CEvalResult
+from .para_automl import read_search_result
 
 
 def automl_verify(result_path: str, eval_func: Callable[[Dict], CEvalResult]) -> dict:
     """eval_func 应绑定验证时段(与搜索时段不同)的评估配置"""
-    trials = []
-    with open(result_path, encoding="utf-8") as f:
-        trials.extend(json.loads(line) for line in f if line.strip())
-    best = max(trials, key=lambda t: t["score"])
+    search, search_sha = read_search_result(result_path)
+    best = search.best.to_dict()
     verify_res = eval_func(dict(best["para"]))
     report = {
+        "search_sha256": search_sha, "window_isolation_verified": False,
         "para": best["para"],
         "search_eval": best["eval"],
         "verify_eval": verify_res.to_dict(),

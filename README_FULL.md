@@ -128,11 +128,17 @@ from ChanModel.XGBModel import CXGBModel
 config = CChanConfig({"cbsp_strategy": CCustomStrategy,
                       "model": CXGBModel(gen.GetModelPath()), "score_thred": 0.6})
 
-# 4) 策略评估 + AutoML 搜参(贝叶斯/网格/PBT)→ OpenConfig.yaml
+# 4) 逐笔统计与参数搜索；搜索结果只是独立建议，不覆盖活动配置
 from ModelStrategy.parameterEvaluate.eval_strategy import CEvalConfig, eval_strategy
 from ModelStrategy.parameterEvaluate.para_automl import CParaAutoML
 from ModelStrategy.parameterEvaluate.parse_automl_result import parse_automl_result
 ```
+
+`CParaAutoML.run(n_trials=...)` 对 grid、bayes 和种群参数扰动均强制正整数上限；grid 实际组合更少时提前结束。grid_num 至少 2，整数轴去重并包含完整网格的两端；大轴不会在小预算下整条分配。每次运行重置随机种子与 trial 状态。`pbt` 只是 `population-perturbation` 的兼容名称，没有模型 checkpoint 继承。
+
+搜索 JSONL 是有限 canonical、write-once，记录空间、算法、seed、预算和代码身份；无有效分数不发布。NaN/Infinity trial 拒绝且保留原因，reader 再核验预算/参数/状态/身份。`parse_automl_result(result_path, output_path)` 必须显式指定**新建议文件**，不再默认写 `Trade/Script/OpenConfig.yaml`，现有文件拒绝覆盖；输出状态为 `unvalidated_parameter_proposal`，不是 candidate 或交易授权。旧 `automl_verify` 闭包无法证明数据窗口隔离，现明确返回 `window_isolation_verified=False`；C4 的显式窗口账户验证仍在接入。
+
+`eval_strategy` 的总收益是逐笔百分比之和，回撤是这条加法曲线的百分点回撤，不是组合净值/最大权益回撤。兼容数值属性保留，JSON 增加单位；无亏损时的盈亏比以 null 与显式 infinite 标志输出，不写 JSON Infinity。正式策略研究及参数搜索继续保留独立门禁。
 
 C3 新样本保留 `feature.meta` 的名称→索引格式，新增 `sample_manifest.json` 绑定文件、标签参数、输入 count/SHA、特征代码及配置。`sample_info.jsonl` 记录全部样本的 UTC 决策/特征可用/标签观察结束时刻；未知标签的 `training_row=null`，不作为 0 写入 libsvm。终局结构标签保守依赖窗口末端，未确认段不写负例。因而默认 `label_bsp_hold` 可能在时序 purge 后无训练样本；不能把这些标签回填进验证前的训练段。
 

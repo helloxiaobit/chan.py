@@ -35,7 +35,7 @@
 | C1 | 已完成离线实现与验收 | UTC 日/周/月边界、finality、尾 K 修订、分页/完整性、来源绑定、显式备份迁移、质量状态；见下方记录 |
 | C2 | 已完成离线实现与验收 | 父 K/原始关系发布边界、不可变决策、完整身份对账、真实三层策略 future/prefix 变异；非外部认证 |
 | C3 | 已完成离线实现与验收 | UTC purge/unknown、三模型身份、write-once 部署、三阶段评分与 SQLite 版本链；非实盘/外部认证 |
-| C4 | 待开发 | 账户评估/AutoML 产物 |
+| C4 | 进行中 | 先处理 AutoML 预算/有限产物，再接独立账户事件与多窗口验证 |
 | C5 | 待开发 | 合约适配/恢复/对账 |
 | C6 | 待开发 | 调度/API/离线 E2E |
 | C7 | 待前置验收 | 公共行情与有准入后的外部认证；代码发布按阶段进行 |
@@ -142,3 +142,18 @@ C1 收尾清理计划：迁移校验由两份全表内存列表改为有序逐�
 - 实际三级 CMultiLevelStrategy 合成 fixture：先只写训练前缀、训练模型，再追加未来数据；固定未来首个候选的批量重建与在线输入评分 canonical 字节相等，真实交易级别为中间 1h。XGB/LGBM/MLP 均经真实样本训练/持久化/加载并完成候选和 entry 同 artifact 验证；不是收益筛选。
 - 收尾回归：100 项 workflow/model/M6/state-machine/safety passed；随后 LGBM/MLP 两项部署通过。测试中曾误用不支持 context-manager 的 CChanDB，改为既有 try/finally close；没有为 fixture 改写生产 DB API。最新完整树另行串行验证后再提交。
 - 最新完整树严格串行复验：476 passed / 7 expected skipped / 1 network deselected / 7 warnings，378.81s。警告为小夹具的单类 validation AUC 未定义、三次 MLP 60 步未收敛与既有 libsvm 文本输入弃用；不以这些功能夹具证明模型质量。跳过项仍为六个需外部研究资产的测试及缺 PyQt6 的股票 GUI。C3 离线软件门槛完成；C4–C7 与外部交易所、正式策略研究仍未完成。
+
+## C4 实施与清理计划
+
+- C3 已推送并 fresh ls-remote 核验 `b4eaf329f2239105661fa32a2604fc93480d53e0`，起始工作树干净。继续执行已批准的原计划，无新依赖、无子代理、无正式策略/绩效任务。
+- 先以确定性 eval stub 复现所有算法忽略/超过预算、零 trial、grid 边界、重复运行累积、NaN/Infinity 和默认覆盖活动配置等问题。复用现有 CParaAutoML，删除重复/不受限循环；`pbt` 保留兼容别名，准确命名为参数种群扰动，不声称 checkpoint 继承。失败不生成可部署产物。
+- 逐笔 eval_strategy 保留原百分比统计属性，明确百分点/单位名义口径；旧 portfolio_eval 保留兼容回归，但不作为资金费/mark/部分退出的完整账户实现。已审查 research/conservative.py 的即时费用、按剩余名义资金费与 marked equity 思路；该实现依赖研究专用 ExecutionTrade、只支持最终平仓/固定 mark 对齐，不能直接作为 spot/部分退出/未平仓生产接口，且不改其冻结实现。
+- 新的通用账户入口接受显式成交/mark/funding 事件，以 USDT 与币数量分别记账，覆盖 long/short、费用、滑点、部分退出、未平仓、杠杆/保证金边界与幂等事件；保留逐事件现金/持仓/权益证据，不从最终百分比反推资金曲线。只验合成数据；交易所真实强平/手续费细则不冒称认证。
+- AutoML 搜索窗口/允许参数/目标/seed 和代码身份与验证窗口分别冻结。搜索结果、验证报告和部署建议分开 write-once；不默认覆盖活动 OpenConfig 或当前模型。多周期验证接入训练 API，脚本失败传播和完整调度验收留在 C6；完整 C4 验收后才更新阶段状态。
+
+### C4 第一子边界：有限预算与无覆盖参数建议（C4 仍未完成）
+
+- 已观察 RED：31 项预算/重复运行/非法空间/非有限分数/产物失败，8 项默认活动配置/写覆盖/reader 漂移/单位失败；另 1 项证明 trial=2 仍会构造 10^12 长网格轴。大轴测试使用 checked_range 在分配前失败，不实际耗尽内存。
+- 原有 CParaAutoML 原位修复，未新增第二个搜索器：所有算法 budget 上限、每次 seed/state 重置、有限 trial 与拒绝原因、int 轴上下界/去重、轴构造预算约束、种群兼容别名与准确命名。删除默认覆盖活动配置、无元数据 max 读取、重复不受限循环及直接 JSON Infinity 发布路径。
+- 复用同一个独立 reader 核验 canonical/代码/预算/参数/状态，供建议导出和 legacy verify；write-once 原子发布只写显式新路径。逐笔属性兼容，JSON 明示百分比单位和 undefined ratio。legacy verify 的窗口隔离明确未证明，不能假称完整 C4 闭环。
+- 适用验收：41 新契约 + 8 原 M4 + 8 原 portfolio = 57 passed（17.12s）；C3 及其他未变代码的 476 全仓证据保留为前一树证据，不重标成本次完整树。编译/diff 随 Lore 核验。账户事件、多窗口/目标/数据身份、训练流程整合仍待后续 C4 子边界。

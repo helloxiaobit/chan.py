@@ -1,5 +1,5 @@
-"""策略离线收益评估:输入(阈值/止盈止损/bsp类型过滤/股票池/时段),
-输出盈亏比/交易次数/最大回撤/平均收益/持仓成本/各票明细"""
+"""逐笔单位名义的百分比统计，不是资金账户净值；账户需显式成交/mark/funding。"""
+import math
 from typing import Dict, List, Optional
 
 from Chan import CChan
@@ -131,10 +131,13 @@ class CEvalResult:
     def to_dict(self) -> dict:
         return {
             "trade_cnt": self.trade_cnt, "win_cnt": self.win_cnt, "lose_cnt": self.lose_cnt,
-            "win_rate": self.win_rate, "profit_loss_ratio": self.profit_loss_ratio,
+            "win_rate": self.win_rate, "profit_loss_ratio": self.profit_loss_ratio if math.isfinite(self.profit_loss_ratio) else None,
+            "profit_loss_ratio_infinite": math.isinf(self.profit_loss_ratio),
             "total_profit_rate": self.total_profit_rate, "avg_profit_rate": self.avg_profit_rate,
             "max_drawdown": self.max_drawdown, "max_hold_cnt": self.max_hold_cnt,
             "per_code": self.per_code,
+            "units": {"total_profit_rate": "summed_trade_percentage_points", "avg_profit_rate": "trade_percentage_points",
+                      "max_drawdown": "additive_percentage_point_drawdown", "win_rate": "fraction", "not_account_equity": True},
         }
 
     def __str__(self):
