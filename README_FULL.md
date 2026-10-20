@@ -150,7 +150,11 @@ from ModelStrategy.parameterEvaluate.parse_automl_result import parse_automl_res
 
 `crypto_evaluate.CCryptoEvaluationData` 将明确来源的 contract/mark OHLCV 和独立声明的 exact-ms funding 日程绑定成不可变数据包；不读取默认环境、不下载数据、不接触冻结研究。`evaluate_crypto_strategy(data, config, start_ms=..., end_ms=...)` 在真实 CCustomStrategy/CMultiLevelStrategy 上逐收盘喂入，保留结构预热，评估开始前不接受交易级别持仓。执行口径冻结为 **confirmed-decision-next-real-base-open-v1**：只能以确认时刻的下一真实 base open 作为成交参考，taker 费率与不利滑点，不能倒填决策 K 内的有利成交价；输入缺口、next open 或资金费缺失均拒绝，不用别的行替代。它不是线上限价单撮合等价证明。
 
-配置显式指定固定每 lot USDT 名义和账户口径。报告记录真实不可变策略决策、逐事件账户和数据窗口/来源/count/SHA/配置/执行器代码。模型可选；若使用，必须验证 artifact、训练标签已知时间、原始训练前缀 count/SHA、策略/特征配置、币种/级别和来源完全匹配。不能把模型从 Binance 换贴 OKX，也不能换训练数据后只保留同一个文件名。窗口末尾未完成 K 的 high/low/close 不进入结构或输入证据，已观察到的 open 只用于执行；三级未来父 K 变异测试覆盖这一边界。C4 多窗口搜索、验证和训练编排仍在开发。
+配置显式指定固定每 lot USDT 名义和账户口径。报告记录真实不可变策略决策、逐事件账户和数据窗口/来源/count/SHA/配置/执行器代码。模型可选；若使用，必须验证 artifact、训练标签已知时间、原始训练前缀 count/SHA、策略/特征配置、币种/级别和来源完全匹配。不能把模型从 Binance 换贴 OKX，也不能换训练数据后只保留同一个文件名。窗口末尾未完成 K 的 high/low/close 不进入结构或输入证据，已观察到的 open 只用于执行；三级未来父 K 变异测试覆盖这一边界。
+
+`account_experiment.run_account_experiment(...)` 进一步要求预先指定 `search_window`、升序且不重叠的 `validation_windows`、`space`、`objective`（total_return/cagr/calmar）、`n_trials`、算法、seed 和新 `output_dir`。允许搜索的实际生效参数当前为 entry_notional、max_sl_rate、max_profit_rate 和有模型时的 score_thred；不能搜索未使用的任意键，也不能修改策略上下文后沿用旧模型。目标按固定 Decimal 账户指标转换为有限 float 排序，至少一笔完整持仓，曾触发 liquidation_required/insolvent 的 trial 拒绝；这些是软件有效性条件，不是策略经济采用门槛。
+
+只用搜索窗口选择一次参数，原样在全部验证窗口评估，不因验证收益重选。搜索每个 trial（包括非最优项）和验证窗口都逐事件重放；全部完成后才创建 `search.jsonl`、`validation.json`、`proposal.json` 和最终 `receipt.json`，失败不留参数建议，既有运行拒绝覆盖。`verify_account_experiment(output_dir, data, config)` 使用实际原数据和配置复算，不只是检查重新可算的文件 SHA。结果始终 `candidate_authorized=false`；即使三种算法小任务可复现，也不能越过正式研究、测试网或实盘门禁。C4 训练入口与样本/模型/该多窗口接口的完整编排仍待接线，C6 再完成两种调度脚本的失败传播。
 
 C3 新样本保留 `feature.meta` 的名称→索引格式，新增 `sample_manifest.json` 绑定文件、标签参数、输入 count/SHA、特征代码及配置。`sample_info.jsonl` 记录全部样本的 UTC 决策/特征可用/标签观察结束时刻；未知标签的 `training_row=null`，不作为 0 写入 libsvm。终局结构标签保守依赖窗口末端，未确认段不写负例。因而默认 `label_bsp_hold` 可能在时序 purge 后无训练样本；不能把这些标签回填进验证前的训练段。
 

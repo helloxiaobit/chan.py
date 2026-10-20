@@ -268,7 +268,9 @@ def read_search_result(path):
         if not records or b"".join(canonical_bytes(r)+b"\n" for r in records) != raw:
             raise CChanException("搜索产物缺少 canonical 行", ErrCode.CONFIG_ERROR)
         run = records[0]["run"]
-        if (set(run) != {"schema", "algorithm", "seed", "trial_budget", "allowed_space", "algorithm_parameters", "candidate_authorized", "code_sha256"}
+        required_run = {"schema", "algorithm", "seed", "trial_budget", "allowed_space", "algorithm_parameters", "candidate_authorized", "code_sha256"}
+        if (set(run) not in (required_run, required_run|{"context"})
+                or ("context" in run and not isinstance(run["context"], dict))
                 or run["schema"] != "chan-parameter-search-v1" or run["candidate_authorized"] is not False
                 or run["algorithm"] not in {"grid", "bayes", "population-perturbation"}
                 or type(run["trial_budget"]) is not int or not 0 < len(records) <= run["trial_budget"]

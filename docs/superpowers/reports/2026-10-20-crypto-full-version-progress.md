@@ -173,3 +173,12 @@ C1 收尾清理计划：迁移校验由两份全表内存列表改为有序逐�
 - 模型绑定测试观察到 3 RED（缺 artifact 字段、错交易所、改训练前缀仍接受）；补强验证原始训练 count/SHA、来源、级别、策略参数及标签可用边界，错误在策略执行前拒绝。原始训练前缀应完整出现在同一明确数据包内，不给缺证据旧模型补贴身份。
 - 三级 fixture 发现 trigger API 每批需要包含空根级别键，复用既有 FeatureReconciliation 的空列表约定修正，不改 Chan 调度。原生三级 long/short/exit 的完整早期报告在尚未收盘父 K body 及未来 suffix 变异后相等；末尾未完成 base K 也仅保留真实已观察 open，不能用其后 high/low/close。
 - 适用组合为 15 新桥接 + 28 账户 + 57 AutoML/M4/portfolio = 100 passed（24.09s，1 个小 XGB validation 单类警告）；随后只补数据 manifest 可审查计数并复验 bridge。C4 仍剩明确目标与不重叠多窗口、搜索/验证/部署建议隔离和训练流程；未运行正式参数搜索、冻结绩效或真实网络订单。
+
+### C4 第四子边界：冻结多窗口实验与全 trial 重放（C4 仍未完成）
+
+- 桥接已推送并核验 `7f90de5234db1ab13d0a1cec2079430f754c9be4`。先观察 account_experiment 缺模块 RED，复用原 CParaAutoML + 真实账户评估，不另造搜索器；固定目标、允许参数、seed、budget、搜索/验证窗口、数据/配置/代码身份，禁止窗口重叠、倒序、无验证或无效参数。搜索结束只选择一次，后续原样验证不反选。
+- 各阶段内存完成并逐事件重放后，才创建独立新运行目录的 search/validation/proposal/receipt 四文件；不修改活动配置或模型。注入发布中断已证实仅清理本运行新目录，既有运行字节完全不动。receipt 是 offline_window_checks_passed 且 candidate_authorized=false，不是正式经济采用。
+- 额外 RED 证明途中 liquidation_required 后恢复不能当可部署建议，现按全历史状态拒绝；另一 RED 证明仅重放最优项会放过重新计算 SHA 的非最优伪造，现每个 trial 完整重放，所有 cashflow/account/指标/窗口/模型数据身份必须相等。实际数据变异和单文件变异均拒绝。
+- 初始组合 113 passed（41.12s，1 小 XGB 单类 warning）；随后 bayes 与 pbt 各两次固定小任务的四文件逐字节复现通过。下一步全仓最新树串行复验，之后 Lore 发布。C4 尚余样本→模型→账户多窗口接口在训练入口的实际编排；C5–C7 均未完成，不改变 Goal 总范围。
+- 最新完整工作树严格串行复验：575 passed / 7 expected skipped / 1 network deselected / 8 warnings，346.57s。8 警告为合成 XGB validation 单类 AUC、三次 MLP 60 步未收敛和既有 libsvm 文本输入弃用；跳过仍为六个需外部研究资产的测试及缺 PyQt6 的股票 GUI。未设置研究路径来消除跳过，未运行正式参数搜索/绩效或外部订单。
+- 下轮可执行起点：训练 API 先 TDD 接受显式 bounded data 的真实 sample reader，复用 C3 的 run_backtest/三 generator/contract，再在训练标签已知之后的 search+validation 窗口使用本接口；选定模型/feature.meta/策略/输入/评估器/阈值构成清单，导出后重读并 replay。不得把任意测试闭包或现有 PS1/SH 的退出 0 当成该条完成；脚本失败传播及核心/完整环境矩阵留 C6。整个 C0–C7 Goal 仍 active。
