@@ -257,3 +257,46 @@ def test_ensemble_wrapper_does_not_rejudge_an_old_parent_after_tail_progress():
     assert len(list(chan[1].klu_iter())) == 8
     chan.trigger_load({lv: [] for lv in LEVELS})
     assert chan[1].cbsp_strategy.get_variant("base").last_judge_klu_idx == 7
+
+
+def test_raw_parent_pointer_is_not_exposed_before_parent_publication():
+    class CParentObserver(CPublicationObserver):
+        def __init__(self, conf):
+            super().__init__(conf)
+            self.raw_parents = []
+
+        def update(self, chan, lv):
+            super().update(chan, lv)
+            cur = chan[lv][-1][-1]
+            self.raw_parents.append((cur.close_ms, cur.sup_kl.close_ms if cur.sup_kl else None))
+    chan = run(inputs(hours=8), cbsp_strategy=CParentObserver)
+    for at, parent in chan[1].cbsp_strategy.raw_parents:
+        assert parent is None or parent <= at
+    assert chan[1].cbsp_strategy.raw_parents[0] == (START + HOUR, None)
+    assert chan[1].cbsp_strategy.raw_parents[3] == (START + 4 * HOUR, START + 4 * HOUR)
+
+
+def test_published_parent_next_pointer_cannot_expose_an_unpublished_successor():
+    class CNextObserver(CPublicationObserver):
+        def __init__(self, conf):
+            super().__init__(conf)
+            self.successors = []
+
+        def update(self, chan, lv):
+            super().update(chan, lv)
+            if lv == 1 and len(chan[0]):
+                nxt = chan[0][-1][-1].next
+                self.successors.append((chan[lv][-1][-1].close_ms, nxt.close_ms if nxt else None))
+    chan = run(inputs(hours=12), cbsp_strategy=CNextObserver)
+    assert chan[1].cbsp_strategy.successors
+    assert all(nxt is None or nxt <= at for at, nxt in chan[1].cbsp_strategy.successors)
+
+
+def test_separately_arriving_child_at_closed_parent_boundary_attaches_once():
+    payload = inputs(hours=4)
+    final_child = payload[KL_TYPE.K_60M].pop()
+    chan = run(payload)
+    chan.trigger_load({KL_TYPE.K_4H: [], KL_TYPE.K_60M: [final_child]})
+    parent = chan[0][-1][-1]
+    assert final_child.sup_kl is parent
+    assert [k.close_ms for k in parent.sub_kl_list] == [START + i * HOUR for i in range(1, 5)]

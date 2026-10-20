@@ -115,11 +115,13 @@ class CChan:
 
     def publish_pending_kl(self, decision_time):
         # 同一时刻大级别先发布；结构计算仍复用既有增量算法。
-        for lv in self.lv_list:
+        for lv_idx, lv in enumerate(self.lv_list):
             pending = self.pending_kl.get(lv)
             if pending is not None and pending.time <= decision_time:
+                pending.set_pre_klu(pending.pre)
                 self.add_new_kl(lv, pending)
                 del self.pending_kl[lv]
+                self.attach_waiting_children(pending, lv_idx)
 
     def update_all_cbsp_strategy(self):
         # 从最低级别往最高级别,保证区间套拿到次级别最新状态
@@ -142,7 +144,7 @@ class CChan:
             if hasattr(parent, "open_ms") and hasattr(child, "open_ms"):
                 belongs = parent.open_ms <= child.open_ms < child.close_ms <= parent.close_ms
             else:
-                belongs = parent.pre is not None and parent.pre.time < child.time <= parent.time
+                belongs = (parent.pre is None or parent.pre.time < child.time) and child.time <= parent.time
             if belongs:
                 self.set_klu_parent_relation(parent, child, child_lv, lv_idx + 1)
             else:
@@ -304,9 +306,12 @@ class CChan:
         if len(self[0]) == 0:
             raise CChanException("最高级别没有获得任何数据", ErrCode.NO_DATA)
 
-    def set_klu_parent_relation(self, parent_klu, kline_unit, cur_lv, lv_idx):
+    def set_klu_parent_relation(self, parent_klu, kline_unit, cur_lv, lv_idx, *, defer=False):
         if self.conf.kl_data_check and kltype_lte_day(cur_lv) and kltype_lte_day(self.lv_list[lv_idx-1]):
             self.check_kl_consitent(parent_klu, kline_unit)
+        if defer:
+            self.unparented_kl[cur_lv].append(kline_unit)
+            return
         parent_klu.add_children(kline_unit)
         kline_unit.set_parent(parent_klu)
 
@@ -351,23 +356,30 @@ class CChan:
             if parent_klu and kline_unit.time > parent_klu.time:
                 self.klu_cache[lv_idx] = kline_unit
                 break
-            kline_unit.set_pre_klu(pre_klu)
+            # 父 K 的前驱可用于自身增量计算，但不能提前由已发布前驱的 next 暴露。
+            if lv_idx == len(self.lv_list)-1:
+                kline_unit.set_pre_klu(pre_klu)
+            else:
+                kline_unit.pre = pre_klu
             pre_klu = kline_unit
             if lv_idx == len(self.lv_list)-1:
                 self.publish_pending_kl(kline_unit.time)
                 self.add_new_kl(cur_lv, kline_unit)
             else:
                 self.pending_kl[cur_lv] = kline_unit
-                self.attach_waiting_children(kline_unit, lv_idx)
             if parent_klu:
-                self.set_klu_parent_relation(parent_klu, kline_unit, cur_lv, lv_idx)
+                self.set_klu_parent_relation(
+                    parent_klu, kline_unit, cur_lv, lv_idx,
+                    defer=self.pending_kl.get(self.lv_list[lv_idx-1]) is parent_klu)
             elif lv_idx > 0:
                 self.unparented_kl[cur_lv].append(kline_unit)
+                if len(self[lv_idx-1]):
+                    self.attach_waiting_children(self[lv_idx-1][-1][-1], lv_idx-1)
             if lv_idx != len(self.lv_list)-1:
                 for _ in self.load_iterator(lv_idx+1, kline_unit, step):
                     ...
-                self.check_kl_align(kline_unit, lv_idx)
                 self.publish_pending_kl(kline_unit.time)
+                self.check_kl_align(kline_unit, lv_idx)
             # 每根K线完成(含次级别递归完成)后触发本级别策略判断(次级别在递归中已先触发)
             if self.conf.cbsp_strategy is not None and not self.conf.only_judge_last \
                and self.kl_datas[cur_lv].step_calculation:

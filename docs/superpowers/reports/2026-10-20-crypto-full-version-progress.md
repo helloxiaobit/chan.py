@@ -33,7 +33,7 @@
 |---|---|---|
 | C0 | 已完成范围冻结 | 本台账、README/DEV_PLAN 与批准计划对齐；远端身份新鲜核验 |
 | C1 | 已完成离线实现与验收 | UTC 日/周/月边界、finality、尾 K 修订、分页/完整性、来源绑定、显式备份迁移、质量状态；见下方记录 |
-| C2 | 进行中 | 先固定父 K 最终值变异、发布边界和 prefix/suffix 决策快照测试 |
+| C2 | 已完成离线实现与验收 | 父 K/原始关系发布边界、不可变决策、完整身份对账、真实三层策略 future/prefix 变异；非外部认证 |
 | C3 | 待开发 | 时序切分/标签/meta/部署 |
 | C4 | 待开发 | 账户评估/AutoML 产物 |
 | C5 | 待开发 | 合约适配/恢复/对账 |
@@ -91,3 +91,15 @@ C1 收尾清理计划：迁移校验由两份全表内存列表改为有序逐�
 - 已完成真实 CStrategy/CCustomBSP/CCloseAction/CSignal 的不可变记录、同 K 线即时退出顺序、深拷贝回调隔离、重复身份漂移拒绝；SignalMonitor 使用整批发布并在失败时保留原 watching。信号决策时刻取最新已发布时刻，锚点仍为本级 bar。
 - RED/GREEN：25 个快照/真实生命周期用例（含初始 11 RED、批次/身份 6 RED、来源 3 RED、来源结构 3 RED及实际 Monitor 的 2 RED）；46 个数据契约回归。真实笔/段类型后续改写不会改变已发布 origin 字节。
 - 全仓：376 passed / 7 expected skipped / 1 network deselected / 1 既有 XGBoost 弃用警告，181.02s。C2 尚未完成：下一步必须替换 FeatureReconciliation 的 zip 比较，并证明多级别完整身份/时序/字段的单变异检测。
+
+### C2 第四子边界：完整身份对账与原始关系发布
+
+- 第三子边界已推送并核验 `8eac03c6ca8b97cc2a6ee402e61431154b3b1956`。本批未修改冻结研究资产、段算法或交易授权。
+- RED 证明：虽然父结构延迟计算，原始 `sup_kl` 仍可暴露未来父 K；已发布前驱的 `next` 也可暴露未来 K。连接父子/相邻指针推迟到真实发布边界，且保留区间校验、最终图形关系、单独到达的边界子 K 和低级别尾部补链。
+- 删除 FeatureReconciliation 的最终 cbsp zip 对比。新路径按完整 event identity 核对开仓、部分/最终退出、观察信号的完整 payload；缺失/额外/重复/回绕/同刻乱序/坏 canonical/非有限值/缺开仓依赖/退出跳号均拒绝。默认零容差；显式浮点特征容差不能产生 `is_exact`。
+- 三次独立读取：批量 load、按真实收盘时刻合并后 trigger、无历史信号回调的控制 load。逐级输入 count/SHA 包含完整 OHLC、量能、时钟和来源；无交易时也不能绕过输入核验。控制路径仍记录逐时刻结构/去重检查点，避免“回调临时改写后恢复”的两条被观察路径自证。
+- 检查点对列明公开状态作 finite canonical 内容承诺：原始关系图、合并 K、笔/段/段段、中枢/段中枢、买卖点及特征、确认状态、去重状态。不以舍入/剔除虚结构消除差异；历史决策的形成锚点、当时确认状态与实际可用/决策时刻分开保留。原始结构允许后续合法重建，已发布决策字节不回写。
+- 真实 CCustomStrategy/CMultiLevelStrategy、4h/1h/15m、有非空特征的 long/short/exit：prefix-only、full 后截取、未收盘父 K 及未来 suffix 变异三路径历史字节相等，来源端点重建已实际发生。夹具 census 确认 CustomStrategy 同时覆盖 sure/virtual 来源，多级别策略只从 sure 来源接受；未强行要求后一策略接受 virtual。
+- 验证：原有整合 100 passed；新增真实策略/驱动/单变异组合 31 passed；审查补强前全仓 410 passed / 7 expected skipped / 1 network deselected / 1 既有 XGBoost warning（300.84s）。随后新增临时结构副作用的 RED，最小修复后 49 focused passed；提交前再次复验最新完整工作树。
+- 复核按 requesting-code-review 的质量/架构/边界清单串行进行，未启动子代理，不能冒称独立审计。诊断会做三次读取与完整结构承诺，当前三层 80×4h 小夹具约 75s（控制路径补强前），不宣称已完成大规模性能优化或交易所认证。
+- 审查补强后的最新完整树：411 passed / 7 expected skipped / 1 network deselected / 1 既有 XGBoost 文本输入弃用 warning，350.80s；三层实际策略诊断 109.70s。compileall 与 diff 检查随 Lore 提交核验。上述证据完成 C2 的离线软件门槛；C3–C7、任何真实交易所认证和策略经济采用仍未完成。

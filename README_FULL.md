@@ -304,7 +304,11 @@ pytest -m "not network"     # 跳过联网用例
 
 `strategy.publish_signals(chan, lv)` 是信号发布入口，SignalMonitor 已使用该入口；低层 `bsp_signal` 仍可查询。信号锚点为本级最后完成的 K 线，决策时刻为所有已发布级别的最新时刻。整批信号通过身份、有限数值、重复与时序检查后才进入记录，失败时不替换原 watching 集合。
 
-`CustomBuySellPoint.Decision.read_decision(raw)` 重新验证版本、完整 canonical 字节、事件身份及 payload SHA。身份含来源市场、code、level、决策/锚点时刻、方向、类型、父事件和序号；内容变化不会伪装成另一个身份。历史或人工合成单元的市场来源为显式 null，不代表验证过交易所来源。多级别按身份对账仍按 C2 台账继续开发。
+`CustomBuySellPoint.Decision.read_decision(raw)` 重新验证版本、完整 canonical 字节、事件身份及 payload SHA。身份含来源市场、code、level、决策/锚点时刻、方向、类型、父事件和序号；内容变化不会伪装成另一个身份。历史或人工合成单元的市场来源为显式 null，不代表验证过交易所来源。
+
+`feature_reconcile(..., lv_list=[KL_TYPE.K_4H, KL_TYPE.K_60M, KL_TYPE.K_15M])` 支持三级对账，原单级别 `lv=` 调用保留。它独立读取三次：批量 load、按收盘时刻分组的 trigger、无历史信号回调的控制路径；核对完整事件 payload、输入 count/SHA、每次策略更新时的结构和去重检查点。`report.is_exact and report.input_verified` 才表示本次精确路径对账通过；显式 `rel_tol` 只允许特征浮点容差，不把容差一致标为精确通过。缺证据、重复、乱序、无交易但输入不同，以及信号回调副作用均不能默认通过。
+
+诊断输入仍须遵守 C1 的来源与 finality 契约。输入摘要相同不是交易所真实性认证，一致性也不代替独立的未来父 K/suffix 变异测试。诊断会完整读取并承诺结构内容，适合受控验证窗口，不自动启动全历史或冻结研究任务；`only_judge_last` 模式不能声明历史逐决策覆盖。
 
 ## A股与可选件
 
