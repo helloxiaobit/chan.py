@@ -6,6 +6,8 @@ from Common.CEnum import KL_TYPE
 
 from .CustomBSP import CCustomBSP
 from .Signal import CSignal
+from .Decision import read_decision
+from Common.ChanException import CChanException, ErrCode
 
 if TYPE_CHECKING:
     from Chan import CChan
@@ -27,6 +29,8 @@ class CStrategy(metaclass=abc.ABCMeta):
         self.cbsp_lst: List[CCustomBSP] = []
         self.signals: List[CSignal] = []  # 最近一次 update 产生的实盘信号
         self.last_judge_klu_idx = -1  # 防止同一根K线重复判断(load_iterator 与 trigger_load 尾部都会触发)
+        self._decision_records = []
+        self._decision_by_id = {}
 
     # ===== 用户需实现的三个接口 =====
     @abc.abstractmethod
@@ -64,7 +68,60 @@ class CStrategy(metaclass=abc.ABCMeta):
                 from ChanModel.FeatureEngine import CFeatureEngine  # 懒加载
                 cbsp.add_feat(CFeatureEngine.cal_features(chan, lv, cbsp))
             if self.model_filter(cbsp):
+                cbsp.freeze_open_decision(chan.code, chan.lv_list[lv], cur_klu,
+                                           dedupe=self.decision_state(), sink=self._record_decision)
                 self.cbsp_lst.append(cbsp)
+
+    @property
+    def decision_records(self):
+        return tuple(self._decision_records)
+
+    def decision_state(self):
+        result = {"last_judge_klu_idx": self.last_judge_klu_idx}
+        for name in ("opened_bsp_klu_idx", "marked_bsp_klu_idx"):
+            if hasattr(self, name):
+                result[name] = sorted(getattr(self, name))
+        return result
+
+    def _record_decision(self, raw):
+        self._validate_decision_batch((raw,))
+        event_id = read_decision(raw)["event_id"]
+        if event_id not in self._decision_by_id:
+            self._decision_records.append(raw)
+            self._decision_by_id[event_id] = raw
+
+    def _validate_decision_batch(self, records):
+        known = {}  # 只存本批新增身份，不复制完整历史
+        last_at = read_decision(self._decision_records[-1])["identity"]["decision_ms"] if self._decision_records else -1
+        for raw in records:
+            record = read_decision(raw)
+            event_id, identity = record["event_id"], record["identity"]
+            existing = known.get(event_id, self._decision_by_id.get(event_id))
+            if existing is not None:
+                if existing != raw:
+                    raise CChanException("同一决策身份 identity 的 payload 发生漂移", ErrCode.FEATURE_ERROR)
+                continue
+            if identity["decision_ms"] < last_at:
+                raise CChanException("决策记录发生时间回绕", ErrCode.FEATURE_ERROR)
+            if identity["kind"] == "exit":
+                parent = known.get(identity["parent_event_id"], self._decision_by_id.get(identity["parent_event_id"]))
+                if parent is None or read_decision(parent)["identity"]["kind"] != "open":
+                    raise CChanException("退出缺少先前的开仓身份", ErrCode.FEATURE_ERROR)
+            known[event_id], last_at = raw, identity["decision_ms"]
+
+    def publish_signals(self, chan, lv):
+        signals = self.bsp_signal(chan, lv)
+        at_ms = max(int(chan[i][-1][-1].time.ts * 1000) for i in range(len(chan.lv_list)) if len(chan[i]))
+        records = []
+        for signal in signals:
+            if (signal.code != chan.code or signal.lv != chan.lv_list[lv]
+                    or signal.sig_klu.time.ts != chan[lv][-1][-1].time.ts):
+                raise CChanException("信号身份与实际决策的 instrument/level/anchor 不一致", ErrCode.FEATURE_ERROR)
+            records.append(signal.freeze_decision(dedupe=self.decision_state(), decision_ms=at_ms))
+        self._validate_decision_batch(records)  # 全批通过后才追加，不留下已接受的半批信号
+        for raw in records:
+            self._record_decision(raw)
+        return signals
 
     def update_holding_state(self, cur_klu):
         # 更新持仓中 cbsp 的峰值价格(动态止损/止盈用)

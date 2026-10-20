@@ -24,6 +24,14 @@ KLTYPE2TIMEFRAME = {
 PAGE_LIMIT = 1000  # 单次 fetch_ohlcv 最大根数(binance 上限)
 
 
+def exchange_source_identity(exchange, symbol):
+    from OfflineData.offline_data_util import validate_source_identity
+    return validate_source_identity({"exchange": exchange.id,
+                                     "market_type": getattr(exchange, "options", {}).get("defaultType"),
+                                     "settle": symbol.split(":", 1)[1] if ":" in symbol else "",
+                                     "price_type": "contract"})
+
+
 def create_exchange(conf: Optional[dict] = None, for_data: bool = False):
     """按 config.yaml 的 ccxt 段创建交易所实例(懒加载 ccxt)
 
@@ -80,6 +88,7 @@ class CCXT(CCommonStockApi):
         if CCXT.exchange is None:
             CCXT.do_init()
         exchange = CCXT.exchange
+        source = exchange_source_identity(exchange, self.code)
         timeframe = self.__convert_type()
         since = exchange.parse8601(f"{self.begin_date}T00:00:00Z") if self.begin_date else None
         end_ts = exchange.parse8601(f"{self.end_date}T00:00:00Z") if self.end_date else None
@@ -109,7 +118,9 @@ class CCXT(CCommonStockApi):
                 if bar_close_ms(ts, self.k_type) > available_ms:
                     return
                 last_ts = ts
-                yield self.make_klu(item)
+                klu = self.make_klu(item)
+                klu.source_identity = dict(source)
+                yield klu
             if len(data) < PAGE_LIMIT or since is None:
                 break  # 不足一页说明已到最新;未指定begin_date只取最近一页
             since = last_ts + 1  # 下一页从最后一根之后开始

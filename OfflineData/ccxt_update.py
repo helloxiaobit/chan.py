@@ -14,7 +14,7 @@ if __package__ in (None, ""):
 from Common.CEnum import KL_TYPE
 from Common.ChanException import CChanException, ErrCode
 from Common.KLineTime import bar_close_ms, utc_now_ms, validate_ohlcv_page
-from DataAPI.ccxt import KLTYPE2TIMEFRAME, PAGE_LIMIT, create_exchange
+from DataAPI.ccxt import KLTYPE2TIMEFRAME, PAGE_LIMIT, create_exchange, exchange_source_identity
 
 from .offline_data_util import CKLineDB, parse_dt_to_ts, validate_source_identity
 
@@ -43,15 +43,9 @@ def update_symbol(
         raise CChanException(f"ccxt 不支持K线级别: {lv}", ErrCode.SRC_DATA_TYPE_ERR)
     timeframe = KLTYPE2TIMEFRAME[lv]
 
-    if source is None:
-        market_type = getattr(exchange, "options", {}).get("defaultType")
-        source = {"exchange": exchange.id, "market_type": market_type,
-                  "settle": symbol.split(":", 1)[1] if ":" in symbol else "",
-                  "price_type": "contract"}
-    source = validate_source_identity(source)
-    if (source["exchange"] != exchange.id or source["price_type"] != "contract"
-            or source["market_type"] != getattr(exchange, "options", {}).get("defaultType")
-            or source["settle"] != (symbol.split(":", 1)[1] if ":" in symbol else "")):
+    observed_source = exchange_source_identity(exchange, symbol)
+    source = observed_source if source is None else validate_source_identity(source)
+    if source != observed_source:
         raise CChanException("更新器只读取当前交易所 contract OHLCV，不可重标记来源", ErrCode.SRC_DATA_TYPE_ERR)
     db = db or CKLineDB()
     total = 0

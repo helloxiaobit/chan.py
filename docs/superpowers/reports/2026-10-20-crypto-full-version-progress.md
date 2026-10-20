@@ -78,3 +78,16 @@ C1 收尾清理计划：迁移校验由两份全表内存列表改为有序逐�
 - 新失败测试发现：晚到父 K 可能读到更晚子级别状态，现对所有其他级别检查时刻；调度器持有自己的去重状态，代理/ensemble 不会因此对旧父 K 重判。
 - 当前专注组合 61 passed（44 data contracts + 17 causal publication），全仓复验后在 Lore trailer 记录。C2 仍剩不可变真实决策/退出/信号证据及按身份对账，不能仅凭观测策略测试宣称整个 C2 完成。
 - 全仓复验：349 passed / 7 skipped / 1 deselected / 1 既有 XGBoost 弃用警告，166.75s；跳过和排除范围与第一子边界相同。下一步从真实 CStrategy/CCustomBSP 的开仓/退出不可变记录 RED 开始，再接 FeatureReconciliation 的多级别身份对账。
+
+### C2 第三子边界实施计划：真实决策与身份对账
+
+- 第二子边界已推送并核验 `4d6f5a2bab72c8e5bf85812bee82eba07b3e9cbc`。上一 Goal turn 属于有效进展；本轮开始工作树干净。
+- 冻结 finite canonical JSON bytes，事件身份包含 instrument、level、decision_ms、kind、方向、类型、anchor、parent event 与序号。特征/分数/初始止损属于 payload，不混入身份；同一身份 payload 改变必须报告漂移。
+- CStrategy 在模型准入后冻结开仓，CCustomBSP 在每次实际退出时冻结该动作；同 K 线即时退出保留 entry-before-that-exit，旧仓退出仍先于新仓开仓。历史特征、追踪止损、结构对象后续变化不得改写已发布字节。
+- 信号由显式 publish 入口冻结，不额外调用用户 bsp_signal 回调来改变默认策略行为；ensemble 的记录和去重状态跟随所选默认变体。
+- 清理计划：FeatureReconciliation 用多级别身份索引、时序和完整 payload 检查替换 zip 对比；保留原单级别调用兼容，增加缺失/额外/重复/乱序/非有限/字段变异的单变异测试。先证明现有正确回归和新增失败，再移除旧比较逻辑。
+- 新增 RED 发现单靠 code/level 仍会把 Binance 和 OKX 的相同决策归成同一身份。把 C1 已验证来源传到 bar 和事件身份；复用原来源校验，集中 updater/online 的实际来源提取，深拷贝不共享可变来源字典。无市场信息的历史/合成单元保留显式 null，不伪装成已验证交易所数据。
+- 追加开仓来源笔/段状态与类型快照，拒绝超过决策时刻的目标结构；退出只能引用真实开仓。收尾清理用本批新增身份 delta 校验重复/先后依赖，移除逐条复制全历史字典的开销，继续复用已建立的批次原子性和重放测试。
+- 已完成真实 CStrategy/CCustomBSP/CCloseAction/CSignal 的不可变记录、同 K 线即时退出顺序、深拷贝回调隔离、重复身份漂移拒绝；SignalMonitor 使用整批发布并在失败时保留原 watching。信号决策时刻取最新已发布时刻，锚点仍为本级 bar。
+- RED/GREEN：25 个快照/真实生命周期用例（含初始 11 RED、批次/身份 6 RED、来源 3 RED、来源结构 3 RED及实际 Monitor 的 2 RED）；46 个数据契约回归。真实笔/段类型后续改写不会改变已发布 origin 字节。
+- 全仓：376 passed / 7 expected skipped / 1 network deselected / 1 既有 XGBoost 弃用警告，181.02s。C2 尚未完成：下一步必须替换 FeatureReconciliation 的 zip 比较，并证明多级别完整身份/时序/字段的单变异检测。

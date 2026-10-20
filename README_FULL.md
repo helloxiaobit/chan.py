@@ -296,7 +296,15 @@ pytest                      # 全量(80+ 用例)
 pytest -m "not network"     # 跳过联网用例
 ```
 
-一致性是最高验收:同一批K线,一次性 load 与 trigger_load 逐根投喂,笔/段/中枢/bsp/cbsp/特征值完全一致(见 `tests/test_consistency.py`、`tests/test_m7_final.py`);特征引擎防未来函数由该机制保证。
+同一批K线的 load/trigger 结构与特征一致性仍是必需验收（`tests/test_consistency.py`、`tests/test_m7_final.py`）。因果性还需要发布时刻、未来父 K 变异、prefix/suffix 和低级别独立增量检查，不能仅由最终结果相同推出。
+
+### 不可变策略决策记录
+
+`CStrategy.decision_records` 返回只读的 canonical bytes 元组；`CCustomBSP.open_decision`、每次 `CCloseAction.decision` 保存首次发布时的特征、分数、初始止损、来源笔/段确认状态和退出动作。追踪止损、结构确认或类型后续改变不会改写这些字节。这些是策略决策证据，交易所实际成交/账户对账仍走独立交易层。
+
+`strategy.publish_signals(chan, lv)` 是信号发布入口，SignalMonitor 已使用该入口；低层 `bsp_signal` 仍可查询。信号锚点为本级最后完成的 K 线，决策时刻为所有已发布级别的最新时刻。整批信号通过身份、有限数值、重复与时序检查后才进入记录，失败时不替换原 watching 集合。
+
+`CustomBuySellPoint.Decision.read_decision(raw)` 重新验证版本、完整 canonical 字节、事件身份及 payload SHA。身份含来源市场、code、level、决策/锚点时刻、方向、类型、父事件和序号；内容变化不会伪装成另一个身份。历史或人工合成单元的市场来源为显式 null，不代表验证过交易所来源。多级别按身份对账仍按 C2 台账继续开发。
 
 ## A股与可选件
 

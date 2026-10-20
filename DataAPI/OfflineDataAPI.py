@@ -26,10 +26,12 @@ class CStockFileReader(CCommonStockApi):
         db_path = default_db_path()
         begin_ts = parse_dt_to_ts(self.begin_date) if self.begin_date else None
         end_ts = parse_dt_to_ts(self.end_date) if self.end_date else None
+        source = None
         if os.path.exists(db_path):
             with CKLineDB(db_path) as db:
                 if "/" in self.code and db.count(self.code, self.k_type):
-                    db.check_source(configured_source_identity(self.code))
+                    source = configured_source_identity(self.code)
+                    db.check_source(source)
                 rows = db.query_klines(self.code, self.k_type, begin_ts, end_ts)
             if rows:
                 if "/" in self.code:
@@ -38,7 +40,10 @@ class CStockFileReader(CCommonStockApi):
                 for ts, o, h, l, c, v in rows:
                     if "/" in self.code and bar_close_ms(ts, self.k_type) > available_ms:
                         break
-                    yield self.make_klu(ts, o, h, l, c, v)
+                    klu = self.make_klu(ts, o, h, l, c, v)
+                    if source is not None:
+                        klu.source_identity = dict(source)
+                    yield klu
                 return
         # sqlite 无数据 → 回退 csv
         yield from self.read_csv_fallback()
@@ -81,11 +86,12 @@ class CStockFileReader(CCommonStockApi):
                 f"请先运行 OfflineData/ccxt_update.py 或 bao_download.py 落地数据",
                 ErrCode.SRC_DATA_NOT_FOUND,
             )
+        source = None
         if "/" in self.code:
             from OfflineData.offline_data_util import configured_source_identity
             if env is None or not env.offline_data_conf.get("source_identity"):
                 raise CChanException("CSV 回退需要 offline_data.source_identity 显式声明来源", ErrCode.SRC_DATA_TYPE_ERR)
-            configured_source_identity(self.code)
+            source = configured_source_identity(self.code)
         begin_ts = parse_dt_to_ts(self.begin_date) if self.begin_date else None
         end_ts = parse_dt_to_ts(self.end_date) if self.end_date else None
         available_ms = self.now_ms()
@@ -109,7 +115,10 @@ class CStockFileReader(CCommonStockApi):
                 if "/" in self.code:
                     row = validate_ohlcv_page([row], self.k_type, previous_open=previous_open)[0]
                 previous_open = ts
-                yield self.make_klu(*row)
+                klu = self.make_klu(*row)
+                if source is not None:
+                    klu.source_identity = dict(source)
+                yield klu
 
     def SetBasciInfo(self):
         pass

@@ -324,3 +324,27 @@ def test_perpetual_csv_uses_a_windows_safe_settlement_symbol(source_env):
     klus = list(CStockFileReader("BTC/USDT:USDT", KL_TYPE.K_60M).get_kl_data())
     assert len(klus) == 1
     assert klus[0].close_ms == ms("2024-01-01T01:00")
+
+
+def test_online_and_offline_bars_retain_the_verified_market_identity(source_env, monkeypatch):
+    row = bar(ms("2024-01-01T00:00"))
+    with CKLineDB(str(source_env / "kline.db")) as db:
+        db.bind_source(SOURCE)
+        db.upsert_klines("BTC/USDT", KL_TYPE.K_60M, [row])
+    monkeypatch.setattr(CCXT, "exchange", CExchange([row]))
+    online = list(CCXT("BTC/USDT", KL_TYPE.K_60M).get_kl_data())[0]
+    offline = list(CStockFileReader("BTC/USDT", KL_TYPE.K_60M).get_kl_data())[0]
+    assert online.source_identity == offline.source_identity == SOURCE
+    online.macd = online.boll = None
+    from copy import deepcopy
+    cloned = deepcopy(online)
+    cloned.source_identity["exchange"] = "okx"
+    assert online.source_identity == SOURCE
+
+
+def test_existing_stock_csv_fallback_does_not_require_crypto_identity(source_env):
+    (source_env / "sz.test_day.csv").write_text(
+        "datetime,open,high,low,close,volume\n2024-01-01,100,110,90,100,1\n", encoding="utf-8")
+    bars = list(CStockFileReader("sz.test", KL_TYPE.K_DAY).get_kl_data())
+    assert len(bars) == 1
+    assert not hasattr(bars[0], "source_identity")

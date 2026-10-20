@@ -66,6 +66,16 @@ class CStrategyEnsemble(CStrategy):
         return self.variants[0][1].bsp_signal(chan, lv)
 
     @property
+    def decision_records(self):
+        return self.variants[0][1].decision_records
+
+    def decision_state(self):
+        return self.variants[0][1].decision_state()
+
+    def publish_signals(self, chan, lv):
+        return self.variants[0][1].publish_signals(chan, lv)
+
+    @property
     def cbsp_lst(self):  # type: ignore[override]
         return self.variants[0][1].cbsp_lst
 

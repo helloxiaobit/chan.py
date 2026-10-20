@@ -61,9 +61,9 @@ class CKLine_Unit:
         obj.demark = copy.deepcopy(self.demark, memo)
         obj.trend = copy.deepcopy(self.trend, memo)
         obj.limit_flag = self.limit_flag
-        for name in ("open_ms", "close_ms", "available_at_ms", "is_final"):
+        for name in ("open_ms", "close_ms", "available_at_ms", "is_final", "source_identity"):
             if hasattr(self, name):
-                setattr(obj, name, getattr(self, name))
+                setattr(obj, name, copy.deepcopy(getattr(self, name), memo))
         obj.macd = copy.deepcopy(self.macd, memo)
         obj.boll = copy.deepcopy(self.boll, memo)
         if hasattr(self, "rsi"):

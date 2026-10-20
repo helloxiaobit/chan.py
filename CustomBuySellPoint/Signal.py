@@ -2,6 +2,8 @@ from typing import Optional
 
 from Common.CTime import CTime
 from KLine.KLine_Unit import CKLine_Unit
+from .Decision import bar_snapshot, decision_identity, make_decision
+from Common.ChanException import CChanException, ErrCode
 
 
 class CSignal:
@@ -36,6 +38,25 @@ class CSignal:
         self.score = score  # 模型分(若有)
         self.is_segbsp = is_segbsp
         self.reason = reason
+        self._decision = None
+
+    @property
+    def decision(self):
+        return self._decision
+
+    def freeze_decision(self, *, dedupe=None, features=None, decision_ms=None):
+        bar = bar_snapshot(self.sig_klu)
+        target_ms = int(self.target_klu_time.ts * 1000) if self.target_klu_time is not None else None
+        identity = decision_identity("signal", self.code, self.lv,
+                                     bar["time_ms"] if decision_ms is None else decision_ms, self.is_buy, self.bs_type,
+                                     is_segbsp=self.is_segbsp, anchor_ms=bar["time_ms"], market=bar.get("market"))
+        raw = make_decision(identity, {"bar": bar, "target_klu_ms": target_ms, "score": self.score,
+                                       "open_thred": self.open_thred, "sl_thred": self.sl_thred,
+                                       "reason": self.reason, "features": features or {}, "dedupe": dedupe or {}})
+        if self._decision is not None and self._decision != raw:
+            raise CChanException("信号身份已发布，不能改写 payload", ErrCode.FEATURE_ERROR)
+        self._decision = raw
+        return raw
 
     def __str__(self):
         bs = "buy" if self.is_buy else "sell"

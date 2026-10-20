@@ -45,13 +45,13 @@ def run_signal_monitor(
                 config=CChanConfig(get_statics_chan_config(chan_conf_extra)),
                 autype=AUTYPE.NONE,
             )
+            strategy = chan[trade_lv].cbsp_strategy
+            assert strategy is not None
+            signals = strategy.publish_signals(chan, trade_lv)
         except CChanException as e:
             print(f"[SignalMonitor] {code} 计算失败: {e}")
             stat["failed"] += 1
             continue
-        strategy = chan[trade_lv].cbsp_strategy
-        assert strategy is not None
-        signals = strategy.bsp_signal(chan, trade_lv)
         valid_targets = {str(sig.target_klu_time) for sig in signals}
         for sig in signals:
             try:
