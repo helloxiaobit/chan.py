@@ -165,3 +165,11 @@ C1 收尾清理计划：迁移校验由两份全表内存列表改为有序逐�
 - 每事件保留 execution_price、cash/fee/realized/funding 增量与完整快照；保留历史字节、reject 原子性、exact duplicate 幂等、remaining quantity funding。固定顺序为 mark→旧仓 funding→旧仓 exit→open→新 lot 即时 exit。同 symbol/时刻 funding 唯一，同 lot 同刻退出 sequence 唯一递增。
 - 净值指标以实际有界窗口计算；未平仓保持 mark，不伪造强平/期末成交。软件 cross 保证金状态不是交易所认证，spot 无借贷不能做空，quantity 为币数而非张数。replay reader 核对每事件/指标/代码身份；这是实现内自校验，独立手算夹具才是公式证据。
 - 28 账户契约 + 57 搜索/M4/旧 portfolio 回归为本子边界适用证据；C4 仍剩实际数据/策略/模型/目标/窗口绑定与多周期训练闭环，C5–C7 未完成。旧 portfolio 行为不改，仅删除误导性的完整/唯一记分牌声明。
+
+### C4 第三子边界：实际策略/来源/模型与执行桥接（C4 仍未完成）
+
+- 账户子边界已推送并核验 `1cff2149355b6a87c274473cd4c51f7c35382378`。先观察 crypto_evaluate 缺模块 RED，随后接实际 contract/mark/funding 不可变数据包和原生策略，不用任意闭包声称已执行正确窗口。行情连续性、mark 对齐、资金费独立日程完整性和来源均显式检查。
+- confirmed-decision→next-real-base-open 固定执行口径，一律 taker/不利滑点；不使用同一 K 线内事后才可知的策略参考价倒填成交。保留原策略决策和对应真正执行参考价；固定 USDT 名义，不做隐含仓位参数搜索。结构可预热，账户平仓起步，交易级别在起点前不接受持仓；原生类型/参数和 adapter 代码共同绑定。
+- 模型绑定测试观察到 3 RED（缺 artifact 字段、错交易所、改训练前缀仍接受）；补强验证原始训练 count/SHA、来源、级别、策略参数及标签可用边界，错误在策略执行前拒绝。原始训练前缀应完整出现在同一明确数据包内，不给缺证据旧模型补贴身份。
+- 三级 fixture 发现 trigger API 每批需要包含空根级别键，复用既有 FeatureReconciliation 的空列表约定修正，不改 Chan 调度。原生三级 long/short/exit 的完整早期报告在尚未收盘父 K body 及未来 suffix 变异后相等；末尾未完成 base K 也仅保留真实已观察 open，不能用其后 high/low/close。
+- 适用组合为 15 新桥接 + 28 账户 + 57 AutoML/M4/portfolio = 100 passed（24.09s，1 个小 XGB validation 单类警告）；随后只补数据 manifest 可审查计数并复验 bridge。C4 仍剩明确目标与不重叠多窗口、搜索/验证/部署建议隔离和训练流程；未运行正式参数搜索、冻结绩效或真实网络订单。
