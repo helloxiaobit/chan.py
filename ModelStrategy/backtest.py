@@ -69,15 +69,20 @@ class CBacktestResult:
 
 class _CSampleChan(CChan):
     def __init__(self, *args, **kwargs):
-        self.input_hashes, self.input_counts = {}, {}
+        self.input_hashes, self.input_counts, self.input_sources = {}, {}, {}
         super().__init__(*args, **kwargs)
 
     def load_stock_data(self, stockapi_instance, lv):
         source = super().load_stock_data(stockapi_instance, lv)
         try:
             for klu in source:
+                snapshot = bar_snapshot(klu)
+                source_identity = snapshot.get("market")
+                if lv in self.input_sources and self.input_sources[lv] != source_identity:
+                    raise CChanException("同一输入流的市场来源发生漂移", ErrCode.MODEL_ERROR)
+                self.input_sources[lv] = source_identity
                 digest = self.input_hashes.setdefault(lv, hashlib.sha256())
-                digest.update(canonical_bytes({**bar_snapshot(klu), "trade_info": klu.trade_info.metric}) + b"\n")
+                digest.update(canonical_bytes({**snapshot, "trade_info": klu.trade_info.metric}) + b"\n")
                 self.input_counts[lv] = self.input_counts.get(lv, 0) + 1
                 yield klu
         finally:
@@ -158,6 +163,7 @@ def cal_labels(chan: CChan, cbsp, label_para: Dict, lv_idx: int = 0, *, with_end
 def run_backtest(bt_conf: CBacktestConfig) -> CBacktestResult:
     samples: List[CSample] = []
     input_manifests = {}
+    source_identities = {}
     for code in bt_conf.code_list:
         chan_conf = dict(bt_conf.chan_config)
         if chan_conf.get("cbsp_strategy") is None:
@@ -173,6 +179,7 @@ def run_backtest(bt_conf: CBacktestConfig) -> CBacktestResult:
             autype=bt_conf.autype,
         )
         input_manifests[code] = chan.input_manifest()
+        source_identities[code] = {lv.name: identity for lv, identity in chan.input_sources.items()}
         strategy = chan[bt_conf.lv_idx].cbsp_strategy
         assert strategy is not None
         for cbsp in strategy:
@@ -182,7 +189,8 @@ def run_backtest(bt_conf: CBacktestConfig) -> CBacktestResult:
         label_parameters=bt_conf.label_para, generation_context=freeze_config({
             "chan_config": bt_conf.chan_config, "lv_list": bt_conf.lv_list, "trade_lv_idx": bt_conf.lv_idx,
             "code_list": sorted(bt_conf.code_list), "begin_time": bt_conf.begin_time, "end_time": bt_conf.end_time,
-            "data_src": bt_conf.data_src, "autype": bt_conf.autype, "input_manifests": input_manifests}))
+            "data_src": bt_conf.data_src, "autype": bt_conf.autype, "input_manifests": input_manifests,
+            "source_identities": source_identities}))
     return CBacktestResult(samples, bt_conf.output_dir, feature_meta, unregistered)
 
 

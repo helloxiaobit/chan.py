@@ -6,7 +6,7 @@ from ChanModel.Features import CFeatures
 from Common.ChanException import CChanException, ErrCode
 from KLine.KLine import CKLine
 from KLine.KLine_Unit import CKLine_Unit
-from .Decision import bar_snapshot, canonical_bytes, decision_identity, make_decision, read_decision
+from .Decision import bar_snapshot, bsp_origin_snapshot, canonical_bytes, decision_identity, make_decision, read_decision
 
 
 class CCloseAction:
@@ -97,19 +97,7 @@ class CCustomBSP:
             "high": self.target_klc.high, "low": self.target_klc.low}
         if target is not None and target["last_ms"] > bar["time_ms"]:
             raise CChanException("目标结构超出开仓决策时刻", ErrCode.FEATURE_ERROR)
-        origin = None
-        if self.bsp is not None:
-            line = self.bsp.bi
-            origin = {"anchor_ms": int(self.bsp.klu.time.ts * 1000),
-                      "types": [t.value for t in self.bsp.type], "is_buy": self.bsp.is_buy,
-                      "is_segbsp": self.bsp.is_segbsp,
-                      "line": {"idx": line.idx, "is_sure": line.is_sure,
-                               "used_to_be_sure": line.used_to_be_sure, "direction": line.dir.name,
-                               "begin_ms": int(line.get_begin_klu().time.ts * 1000),
-                               "end_ms": int(line.get_end_klu().time.ts * 1000),
-                               "begin_price": line.get_begin_val(), "end_price": line.get_end_val()}}
-            if max(origin["anchor_ms"], origin["line"]["end_ms"]) > bar["time_ms"]:
-                raise CChanException("来源笔/段结构超出开仓决策时刻", ErrCode.FEATURE_ERROR)
+        origin = bsp_origin_snapshot(self.bsp, bar["time_ms"])
         raw = make_decision(identity, {"bar": bar, "features": dict(self.features.items()), "score": self.score,
                                        "open_price": self.open_price, "sl_price": self.sl_price,
                                        "target_price": self.target_price, "target": target, "origin": origin,

@@ -174,6 +174,7 @@ class CCustomStrategy(CStrategy):
             sl_thred=fx_klc.low if last_bsp.is_buy else fx_klc.high,
             target_klu_time=cur_klu.time,
             is_segbsp=self.use_seg_bsp,
+            bsp=last_bsp, target_klc=fx_klc,
         ))
         return self.signals
 

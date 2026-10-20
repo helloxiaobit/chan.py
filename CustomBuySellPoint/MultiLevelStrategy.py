@@ -747,5 +747,6 @@ class CMultiLevelStrategy(CStrategy):
             if sub_ref is not None and sub_ref.sl_price is not None
             else (fx_klc.low if is_buy else fx_klc.high),
             target_klu_time=cur_klu.time,
+            bsp=last_bsp, target_klc=fx_klc,
         ))
         return self.signals

@@ -112,9 +112,10 @@ def read_model_contract(model_path, meta_path, *, expected_type=None):
                 or min(counts["train"], counts["validation"], counts["holdout"]) == 0
                 or sum(n for k, n in counts.items() if k != "input") != counts["input"]
                 or type(contract["unknown_count"]) is not int or contract["unknown_count"] < 0
-                or set(window) != {"first_decision_ms", "last_decision_ms"}
+                or set(window) != {"first_decision_ms", "last_decision_ms", "last_label_end_ms"}
                 or any(type(n) is not int or n < 0 for n in window.values())
                 or window["first_decision_ms"] > window["last_decision_ms"]
+                or window["last_decision_ms"] > window["last_label_end_ms"]
                 or definition["version"] != "observed-labels-v1" or not isinstance(definition["parameters"], dict)
                 or not isinstance(definition["primary_label"], str) or not definition["primary_label"]
                 or set(contract["sample_files"]) != {"feature.meta", "feature.libsvm", "sample_info.jsonl"}

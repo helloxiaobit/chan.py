@@ -20,6 +20,9 @@ CREATE TABLE IF NOT EXISTS {table_name}(
     unwatch_reason VARCHAR(256),
     signal_last_modify TEXT,
     model_version VARCHAR(256),
+    deployment_id VARCHAR(64),
+    deployment_path TEXT,
+    signal_decision TEXT,
     model_score_before FLOAT,
     snapshot_before VARCHAR(256),
     model_score_after FLOAT,
@@ -70,6 +73,10 @@ CREATE TABLE IF NOT EXISTS {table_name}(
 
 
 MIGRATION_COLUMNS = {
+    "model_version": "VARCHAR(256)",
+    "deployment_id": "VARCHAR(64)",
+    "deployment_path": "TEXT",
+    "signal_decision": "TEXT",
     "open_client_order_id": "VARCHAR(128)",
     "open_requested_qty": "FLOAT DEFAULT 0",
     "open_filled_qty": "FLOAT DEFAULT 0",

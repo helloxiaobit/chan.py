@@ -19,7 +19,7 @@
 | OKX USDT 线性永续 | 同上 | 通用 fake exchange 路径 | 第二目标；交易所参数映射、测试环境未认证 |
 | 现货 | 原有 CCXT/SQLite 路径 | M5/M6 离线回归 | 保留兼容回归；不与永续混库 |
 | XGB | `ModelStrategy/models/Xgboost`、`ChanModel/XGBModel.py` | M3 小样本训练/评分 | C3 meta、时序切分、在线产物契约 |
-| LGBM/MLP | `ModelStrategy/models/lightGBM`、`deepModel`、`ChanModel/GeneratorModel.py` | M3 小样本训练；C3 三类模型存取/手动在线评分 | 已有共用在线适配；统一部署和默认脚本接线仍未完成 |
+| LGBM/MLP | `ModelStrategy/models/lightGBM`、`deepModel`、`ChanModel/GeneratorModel.py` | M3 小样本训练；C3 三类模型存取、统一部署/实际候选和入场评分 | 离线软件路径；非经济采用或实盘认证 |
 | SQLite | `OfflineData/offline_data_util.py`、`Trade/SqliteDB.py` | M5/M6、安全/状态机 | 默认验收后端；来源/迁移/对账继续补齐 |
 | MySQL | `Trade/MysqlDB.py` | 离线 SQL 适配测试 | 可选，真实连接/迁移未验收 |
 | dry-run | `SafetyPolicy.py`、`TradeEngine.py` | safety/state-machine | 默认模式；C5/C6 补账户/E2E |
@@ -34,7 +34,7 @@
 | C0 | 已完成范围冻结 | 本台账、README/DEV_PLAN 与批准计划对齐；远端身份新鲜核验 |
 | C1 | 已完成离线实现与验收 | UTC 日/周/月边界、finality、尾 K 修订、分页/完整性、来源绑定、显式备份迁移、质量状态；见下方记录 |
 | C2 | 已完成离线实现与验收 | 父 K/原始关系发布边界、不可变决策、完整身份对账、真实三层策略 future/prefix 变异；非外部认证 |
-| C3 | 进行中 | 从 unknown 标签、全局 UTC 切分与训练/预测 meta 身份 RED 开始 |
+| C3 | 已完成离线实现与验收 | UTC purge/unknown、三模型身份、write-once 部署、三阶段评分与 SQLite 版本链；非实盘/外部认证 |
 | C4 | 待开发 | 账户评估/AutoML 产物 |
 | C5 | 待开发 | 合约适配/恢复/对账 |
 | C6 | 待开发 | 调度/API/离线 E2E |
@@ -125,3 +125,20 @@ C1 收尾清理计划：迁移校验由两份全表内存列表改为有序逐�
 - 新增已观察的 RED：单类训练集和 NaN 预测原本也会发布 artifact；现在在持久化之前校验二元训练类别、预测行数/有限概率。非法非数字特征整批拒绝，失败前不创建样本文件。新契约当前 30 focused passed（2 个合成 MLP 未收敛警告）；最新完整树提交前串行复验。
 - 执行事件：一次全仓进程尚在运行时误启动了短 focused 进程并修改了测试文件，违反本计划串行排程。短进程结束后只等待原 handle 至完成，原结果为 437 passed/7 skipped/1 deselected（290.33s），明确不作之后新树的完整证明；后续所有测试严格串行，最终以最新完整树的独立运行作为提交依据。
 - 最新完整树独立串行复验：441 passed / 7 expected skipped / 1 network deselected / 4 warnings，292.31s；警告为 libsvm 文本输入弃用、purge 后验证单类的 AUC 未定义、两次小 MLP 未收敛。新契约 30 项、此前样本/三模型回归全部通过；compileall/diff 检查通过。跳过项仍为 6 个需外部研究资产的测试和缺 PyQt6 的股票 GUI，未为消除跳过而启用研究或网络任务。
+
+### C3 第二子边界计划：统一部署与三阶段评分
+
+- 第一子边界已推送并核验 `19ba317e26a95ba44bc028ddfe59d783885f9f35`，本轮起始工作树干净；上一 Goal turn 为有效进展。继续 Inline 串行 TDD，不启动研究、网络下单或子代理。
+- 发布 write-once finite canonical 部署清单，绑定训练生成的实际策略/级别/来源配置、模型 artifact、特征代码与三个评分阈值；模型缺失、来源或配置漂移时 fail closed。它只是软件部署身份，不是 candidate、测试网或实盘授权。
+- 三阶段语义固定：candidate 用已收盘上下文与候选突破阈值作假设入场价；entry 在实际报价突破时重新确认最新已收盘候选上下文，用当时已观察报价作假设入场价，不修改已收盘 OHLC 或添加 provisional bar；post 仅在开仓对应周期完成后用该前缀重算。价格/上下文变化可使分数不同，不能承诺三个阶段同分；同一输入上下文则必须离线/在线一致。
+- 清理/复用：复用 `model_version`、既有订单意图 CAS 与 before/after 快照；只添加确需独立保存的部署/信号证据与时钟字段，不重建订单状态机。替换 CheckOpenScore 取全库最后一行和配置首级别的旧路径。SQLite 采用可重复、非破坏性补列；MySQL 未做真实迁移前继续不声明同级验收。
+- 每一步先用小型真实 SQLite/生产策略 fixture 观察 RED，分别核对清单、信号 DB、意图快照、重启和后验具体 bar；旧无模型 dry-run 用例保留兼容，但不得称为已获部署认证。完成所有 C3 接线和完整回归后才更新阶段状态。
+
+### C3 第二子边界证据与范围
+
+- 统一 write-once 部署绑定真实训练的 source/config/levels/策略、模型 artifact 与阶段阈值，默认 Statics/SignalMonitor/MakeOpenTrade/CheckOpenScore 共用；原始候选字节、版本和路径写入 SQLite，入场评分在既有意图 CAS 前验证。模型或清单缺失、版本/市场/冻结字段漂移拒绝新风险，未改 SafetyPolicy 授权和订单恢复。
+- 已观察清单/字段/入场评分缺失 RED，以及 3 项负时钟/零报价/空 bar 评分上下文拒绝 RED。UTC 周/月/4h 六项先因缺 helper 失败；补 helper 后暴露测试误用仅支持传统格式的 parser，改用标准 ISO parser 后通过。两项后验 RED 证明“缓存只存已收盘行”时旧逻辑提前报错，现先按 UTC 预期周期等待，再查 exact open 行。
+- 三阶段分数可不同；清单不提供策略经济采用/测试网/实盘授权。当前对应周期明确基于 entry 报价观察时间而非交易所成交回报时间；C5 仍须处理真实成交延迟、contractSize、账户和订单对账。后验使用记录原清单，不随全局新模型切换，重复后验不回写证据。
+- 实际三级 CMultiLevelStrategy 合成 fixture：先只写训练前缀、训练模型，再追加未来数据；固定未来首个候选的批量重建与在线输入评分 canonical 字节相等，真实交易级别为中间 1h。XGB/LGBM/MLP 均经真实样本训练/持久化/加载并完成候选和 entry 同 artifact 验证；不是收益筛选。
+- 收尾回归：100 项 workflow/model/M6/state-machine/safety passed；随后 LGBM/MLP 两项部署通过。测试中曾误用不支持 context-manager 的 CChanDB，改为既有 try/finally close；没有为 fixture 改写生产 DB API。最新完整树另行串行验证后再提交。
+- 最新完整树严格串行复验：476 passed / 7 expected skipped / 1 network deselected / 7 warnings，378.81s。警告为小夹具的单类 validation AUC 未定义、三次 MLP 60 步未收敛与既有 libsvm 文本输入弃用；不以这些功能夹具证明模型质量。跳过项仍为六个需外部研究资产的测试及缺 PyQt6 的股票 GUI。C3 离线软件门槛完成；C4–C7 与外部交易所、正式策略研究仍未完成。

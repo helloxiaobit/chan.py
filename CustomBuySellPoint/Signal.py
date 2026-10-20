@@ -2,7 +2,7 @@ from typing import Optional
 
 from Common.CTime import CTime
 from KLine.KLine_Unit import CKLine_Unit
-from .Decision import bar_snapshot, decision_identity, make_decision
+from .Decision import bar_snapshot, bsp_origin_snapshot, decision_identity, make_decision
 from Common.ChanException import CChanException, ErrCode
 
 
@@ -26,6 +26,8 @@ class CSignal:
         score: Optional[float] = None,
         is_segbsp: bool = False,
         reason: str = "",
+        bsp=None,
+        target_klc=None,
     ):
         self.code = code
         self.lv = lv
@@ -38,6 +40,10 @@ class CSignal:
         self.score = score  # 模型分(若有)
         self.is_segbsp = is_segbsp
         self.reason = reason
+        self.bsp, self.target_klc = bsp, target_klc
+        self.assessment = None
+        self.model_artifact_id = self.deployment_id = None
+        self.deployment_path = None
         self._decision = None
 
     @property
@@ -52,7 +58,12 @@ class CSignal:
                                      is_segbsp=self.is_segbsp, anchor_ms=bar["time_ms"], market=bar.get("market"))
         raw = make_decision(identity, {"bar": bar, "target_klu_ms": target_ms, "score": self.score,
                                        "open_thred": self.open_thred, "sl_thred": self.sl_thred,
-                                       "reason": self.reason, "features": features or {}, "dedupe": dedupe or {}})
+                                       "reason": self.reason, "features": features if features is not None else
+                                           (self.assessment["features"] if self.assessment else {}),
+                                       "origin": bsp_origin_snapshot(self.bsp, identity["decision_ms"]),
+                                       "assessment": self.assessment, "model_artifact_id": self.model_artifact_id,
+                                       "deployment_id": self.deployment_id, "deployment_path": self.deployment_path,
+                                       "dedupe": dedupe or {}})
         if self._decision is not None and self._decision != raw:
             raise CChanException("信号身份已发布，不能改写 payload", ErrCode.FEATURE_ERROR)
         self._decision = raw

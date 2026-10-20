@@ -79,3 +79,18 @@ def bar_snapshot(klu):
         raise CChanException("K线在记录时刻尚不可用 available，或收盘时钟不一致", ErrCode.FEATURE_ERROR)
     canonical_bytes(result)
     return result
+
+
+def bsp_origin_snapshot(bsp, decision_ms):
+    if bsp is None:
+        return None
+    line = bsp.bi
+    origin = {"anchor_ms": int(bsp.klu.time.ts * 1000), "types": [t.value for t in bsp.type],
+              "is_buy": bsp.is_buy, "is_segbsp": bsp.is_segbsp,
+              "line": {"idx": line.idx, "is_sure": line.is_sure, "used_to_be_sure": line.used_to_be_sure,
+                       "direction": line.dir.name, "begin_ms": int(line.get_begin_klu().time.ts * 1000),
+                       "end_ms": int(line.get_end_klu().time.ts * 1000),
+                       "begin_price": line.get_begin_val(), "end_price": line.get_end_val()}}
+    if max(origin["anchor_ms"], origin["line"]["end_ms"]) > decision_ms:
+        raise CChanException("来源笔/段结构超出决策时刻", ErrCode.FEATURE_ERROR)
+    return origin

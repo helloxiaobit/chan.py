@@ -9,8 +9,9 @@ from typing import Dict, List, Optional
 if __package__ in (None, ""):
     sys.path.insert(0, os.path.join(os.path.dirname(os.path.realpath(__file__)), "..", ".."))
 
-from Common.ChanException import CChanException
+from Common.ChanException import CChanException, ErrCode
 from Common.send_msg_cmd import send_msg
+from Common.KLineTime import utc_now_ms
 from Trade.db_util import CChanDB
 from Trade.TradeEngine import CTradeEngine
 
@@ -30,10 +31,19 @@ def make_open_trade(
     engine: CTradeEngine,
     open_conf: Optional[COpenConfig] = None,
     price_map: Optional[Dict[str, float]] = None,  # 测试/演练可注入实时价
+    deployment=None,
+    now_ms=None,
 ) -> List[int]:
+    from .Deployment import CDeployment
     open_conf = open_conf or COpenConfig()
     signals = db.get_watching_signals()
     if not signals:
+        return []
+    try:
+        deployment = deployment or CDeployment.configured()
+    except CChanException as error:
+        for rec in signals:
+            db.unwatch(rec["id"], reason=f"deployment_unavailable: {error}")
         return []
     if price_map is None:
         price_map = get_price_map(sorted({rec["stock_code"] for rec in signals}))
@@ -50,16 +60,24 @@ def make_open_trade(
         if not open_conf.pass_bsp_type(rec["bstype"]):
             db.unwatch(rec["id"], reason="bsp_type_filtered")
             continue
-        if not open_conf.pass_score(rec["model_score_before"]):
+        if deployment is None and not rec.get("deployment_id") and not open_conf.pass_score(rec["model_score_before"]):
             db.unwatch(rec["id"], reason=f"score {rec['model_score_before']} < {open_conf.score_thred}")
             continue
         try:
+            if deployment is not None or rec.get("deployment_id") or rec.get("model_version"):
+                if deployment is None or rec.get("deployment_id") != deployment.deployment_id:
+                    raise CChanException("deployment_unavailable_or_changed", ErrCode.MODEL_ERROR)
+                rec["entry_assessment"] = deployment.assess_entry(rec, price, observed_ms=(now_ms or utc_now_ms)())
             if hasattr(engine, "set_sim_price"):  # dry_run 引擎注入市价参考
                 engine.set_sim_price(code, price)
             order = engine.add_trade(rec, price)
             if order.filled > 0:
                 opened.append(rec["id"])
         except CChanException as e:
+            if rec.get("deployment_id") or deployment is not None:
+                current = db.get_record(rec["id"])
+                if current["status"] == "signal":
+                    db.unwatch(rec["id"], reason=f"model_entry_rejected: {e}")
             send_msg("开仓失败", f"{code} id={rec['id']}: {e}", level="ERROR")
     return opened
 

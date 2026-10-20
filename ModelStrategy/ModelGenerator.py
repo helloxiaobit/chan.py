@@ -361,7 +361,8 @@ class CModelGenerator(metaclass=abc.ABCMeta):
                                  "generation_context": manifest.get("generation_context"),
                                  "sample_files": manifest["files"], "unknown_count": manifest["unknown_count"],
                                  "training_window": {"first_decision_ms": min(s["info"]["decision_ms"] for s in samples),
-                                                     "last_decision_ms": max(s["info"]["decision_ms"] for s in samples)}}
+                                                     "last_decision_ms": max(s["info"]["decision_ms"] for s in samples),
+                                                     "last_label_end_ms": max(s["info"]["label_end_ms"] for s in samples)}}
         self._freeze_split_boundaries(samples)  # 先冻结整个样本池的时钟，再按币种/方向等分桶。
         filtered = [s for s in samples if self.filter_sample(s)]
         if len(filtered) < 4:

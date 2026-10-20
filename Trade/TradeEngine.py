@@ -16,6 +16,7 @@ from typing import Dict, List, Optional
 from Common.ChanException import CChanException, ErrCode
 from Common.send_msg_cmd import send_msg
 from Common.TradeUtil import is_market_open
+from Common.KLineTime import utc_now_ms
 
 from .db_util import CChanDB
 from .OpenQuotaGen import CBenchPriceQuotaGen, COpenQuotaGen
@@ -172,6 +173,14 @@ class CTradeEngine(metaclass=abc.ABCMeta):
         record_id = trade_info["id"]
         record = self.chan_db.get_record(record_id)
         code = record["stock_code"]
+        snapshot = {"price": price, "entry_observed_ms": trade_info.get("entry_observed_ms", utc_now_ms())}
+        score_before = record.get("model_score_before")
+        if record.get("deployment_id") or record.get("model_version"):
+            from Trade.Script.Deployment import verify_entry_assessment
+            assessment = verify_entry_assessment(record, trade_info.get("entry_assessment"), price, self)
+            snapshot.update(entry_assessment=assessment, deployment_id=record["deployment_id"],
+                            model_version=record["model_version"], entry_observed_ms=assessment["decision_ms"])
+            score_before = assessment["score"]
         quota = self.quota_gen.get_quota(code, price)
         if quota <= 0:
             raise CChanException(f"仓位计算为0: {code} price={price}", ErrCode.QUOTA_NOT_ENOUGH)
@@ -184,8 +193,8 @@ class CTradeEngine(metaclass=abc.ABCMeta):
             position_side=position_side,
             strategy_version=self._strategy_version(record),
             risk_multiplier=float(record.get("risk_multiplier") or 1.0),
-            score_before=record.get("model_score_before"),
-            snapshot={"price": price},
+            score_before=score_before,
+            snapshot=snapshot,
         )
         if not acquired:
             raise CChanException(

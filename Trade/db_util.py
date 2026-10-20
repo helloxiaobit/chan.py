@@ -12,6 +12,7 @@ from typing import List, Optional
 
 from Common.ChanException import CChanException, ErrCode
 from CustomBuySellPoint.Signal import CSignal
+from CustomBuySellPoint.Decision import read_decision
 
 
 def now_str() -> str:
@@ -53,6 +54,7 @@ class CChanDB:
             from Config.EnvConfig import CEnv
             db_conf = CEnv.get_instance().db_conf
         db_type = db_conf.get("type", "sqlite")
+        self.db_type = db_type
         if db_type == "sqlite":
             from Config.EnvConfig import CEnv
             from .SqliteDB import CSqliteDB
@@ -75,6 +77,26 @@ class CChanDB:
     # ===== 信号 =====
     def add_signal(self, signal: CSignal, stock_name: str = "") -> int:
         """信号入库(同code+级别+方向+目标K线时间的在途信号只保留一条),返回记录id"""
+        version, deployment_id = signal.model_artifact_id, signal.deployment_id
+        if version or deployment_id:
+            from Trade.Script.Deployment import CDeployment, verify_signal_assessment
+            if self.db_type != "sqlite":
+                raise CChanException("模型部署暂仅通过 SQLite 验收，MySQL 迁移未认证", ErrCode.MODEL_ERROR)
+            if not version or not deployment_id or signal.decision is None or not signal.deployment_path:
+                raise CChanException("模型信号缺少冻结部署身份", ErrCode.MODEL_ERROR)
+            decision = read_decision(signal.decision)
+            identity, payload = decision["identity"], decision["payload"]
+            if (identity["code"] != signal.code or identity["level"] != signal.lv.name
+                    or identity["is_buy"] != signal.is_buy or identity["bs_type"] != signal.bs_type
+                    or payload["target_klu_ms"] != (int(signal.target_klu_time.ts*1000) if signal.target_klu_time is not None else None)
+                    or payload["score"] != signal.score or payload["model_artifact_id"] != version
+                    or payload["deployment_id"] != deployment_id or payload["open_thred"] != signal.open_thred
+                    or payload["deployment_path"] != signal.deployment_path
+                    or payload["sl_thred"] != signal.sl_thred):
+                raise CChanException("信号可变字段与已发布字节漂移", ErrCode.MODEL_ERROR)
+            snapshot = verify_signal_assessment(CDeployment(signal.deployment_path), decision)
+            if not snapshot["passed"]:
+                raise CChanException("候选模型分数未达到冻结阈值", ErrCode.MODEL_ERROR)
         exist = self.db.query_one(
             f"SELECT id FROM {self.table} WHERE stock_code=? AND lv=? AND is_buy=? "
             f"AND target_klu_time=? AND watching=1 AND is_open=0",
@@ -82,13 +104,17 @@ class CChanDB:
         )
         if exist is not None:
             raise CChanException(f"信号已存在 id={exist['id']}", ErrCode.SIGNAL_EXISTED)
+        extra_columns = ",model_version,deployment_id,deployment_path,signal_decision" if self.db_type == "sqlite" else ""
+        extra_values = ",?,?,?,?" if self.db_type == "sqlite" else ""
+        extra_args = (version, deployment_id, signal.deployment_path,
+                      signal.decision.decode("utf-8") if signal.decision is not None else None) if self.db_type == "sqlite" else ()
         return self.db.execute(
             f"INSERT INTO {self.table}(add_date, stock_code, stock_name, status, lv, bstype, is_buy,"
-            f" open_thred, sl_thred, target_klu_time, watching, model_score_before)"
-            f" VALUES(?,?,?,?,?,?,?,?,?,?,1,?)",
+            f" open_thred, sl_thred, target_klu_time, watching, model_score_before{extra_columns})"
+            f" VALUES(?,?,?,?,?,?,?,?,?,?,1,?{extra_values})",
             (now_str(), signal.code, stock_name, "signal", signal.lv.name, signal.bs_type,
              int(signal.is_buy), signal.open_thred, signal.sl_thred, str(signal.target_klu_time),
-             signal.score),
+             signal.score) + extra_args,
         )
 
     def get_watching_signals(self, code: Optional[str] = None) -> List[dict]:

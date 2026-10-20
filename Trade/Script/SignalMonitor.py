@@ -14,6 +14,7 @@ from ChanConfig import CChanConfig
 from Common.CEnum import AUTYPE, KL_TYPE
 from Common.ChanException import CChanException, ErrCode
 from Common.send_msg_cmd import send_msg
+from Common.KLineTime import utc_now_ms
 from Trade.db_util import CChanDB
 
 from .StaticsChanConfig import get_statics_chan_config, get_trade_conf
@@ -28,26 +29,36 @@ def run_signal_monitor(
     begin_time: Optional[str] = None,
     chan_conf_extra: Optional[Dict] = None,
     push: bool = True,
+    deployment=None,
+    now_ms=None,
 ) -> Dict[str, int]:
-    trade_conf = get_trade_conf()
+    from .Deployment import CDeployment
+    deployment = deployment or CDeployment.configured()
+    trade_conf = get_trade_conf(deployment=deployment) if deployment is not None else get_trade_conf()
     code_list = code_list or trade_conf["code_list"]
     if lv_list is None:
         lv_list = [lv] if lv is not None else trade_conf["lv_list"]
-    trade_lv = 1 if len(lv_list) >= 2 and trade_conf["strategy"] == "multi_lv" else 0
+    trade_lv = deployment.trade_lv_idx if deployment is not None else (1 if len(lv_list) >= 2 and trade_conf["strategy"] == "multi_lv" else 0)
+    if deployment is not None and (list(code_list) != deployment.code_list or lv_list != deployment.lv_list):
+        raise CChanException("监控范围不能覆盖部署的 symbol/level", ErrCode.MODEL_ERROR)
     stat = {"added": 0, "existed": 0, "unwatched": 0, "failed": 0}
     for code in code_list:
         try:
-            chan = CChan(
-                code=code,
-                begin_time=begin_time,
-                data_src=data_src,
-                lv_list=lv_list,
-                config=CChanConfig(get_statics_chan_config(chan_conf_extra)),
-                autype=AUTYPE.NONE,
-            )
+            if deployment is None:
+                chan = CChan(code=code, begin_time=begin_time, data_src=data_src, lv_list=lv_list,
+                    config=CChanConfig(get_statics_chan_config(chan_conf_extra)), autype=AUTYPE.NONE)
+            else:
+                deployment.check_overrides(chan_conf_extra)
+                at_ms = (now_ms or utc_now_ms)()
+                chan = deployment.build_chan(code, at_ms)
             strategy = chan[trade_lv].cbsp_strategy
             assert strategy is not None
-            signals = strategy.publish_signals(chan, trade_lv)
+            if deployment is None:
+                signals = strategy.publish_signals(chan, trade_lv)
+            else:
+                signals = strategy.bsp_signal(chan, trade_lv)
+                accepted = [sig for sig in signals if deployment.prepare_signal(chan, sig, observed_ms=at_ms)["passed"]]
+                signals = strategy.publish_signals(chan, trade_lv, signals=accepted)
         except CChanException as e:
             print(f"[SignalMonitor] {code} 计算失败: {e}")
             stat["failed"] += 1

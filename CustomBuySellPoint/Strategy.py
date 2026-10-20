@@ -109,15 +109,16 @@ class CStrategy(metaclass=abc.ABCMeta):
                     raise CChanException("退出缺少先前的开仓身份", ErrCode.FEATURE_ERROR)
             known[event_id], last_at = raw, identity["decision_ms"]
 
-    def publish_signals(self, chan, lv):
-        signals = self.bsp_signal(chan, lv)
+    def publish_signals(self, chan, lv, *, signals=None):
+        signals = self.bsp_signal(chan, lv) if signals is None else signals
         at_ms = max(int(chan[i][-1][-1].time.ts * 1000) for i in range(len(chan.lv_list)) if len(chan[i]))
         records = []
         for signal in signals:
             if (signal.code != chan.code or signal.lv != chan.lv_list[lv]
                     or signal.sig_klu.time.ts != chan[lv][-1][-1].time.ts):
                 raise CChanException("信号身份与实际决策的 instrument/level/anchor 不一致", ErrCode.FEATURE_ERROR)
-            records.append(signal.freeze_decision(dedupe=self.decision_state(), decision_ms=at_ms))
+            decision_ms = signal.assessment["decision_ms"] if signal.assessment is not None else at_ms
+            records.append(signal.freeze_decision(dedupe=self.decision_state(), decision_ms=decision_ms))
         self._validate_decision_batch(records)  # 全批通过后才追加，不留下已接受的半批信号
         for raw in records:
             self._record_decision(raw)

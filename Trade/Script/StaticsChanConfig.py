@@ -13,6 +13,11 @@ def get_strategy_cls(name: str):
 
 
 def get_statics_chan_config(extra: Optional[Dict] = None) -> Dict:
+    from .Deployment import CDeployment
+    deployment = CDeployment.configured()
+    if deployment is not None:
+        deployment.check_overrides(extra)
+        return deployment.chan_config
     trade_conf = get_trade_conf()
     conf = {
         "trigger_step": False,
@@ -32,13 +37,17 @@ def get_statics_chan_config(extra: Optional[Dict] = None) -> Dict:
     return conf
 
 
-def get_trade_conf() -> Dict:
+def get_trade_conf(deployment=None) -> Dict:
     # config.yaml trade 段:监控标的/级别(单级别 lv 或多级别 lv_list)/策略/单笔名义金额
-    try:
-        from Config.EnvConfig import CEnv
-        conf = CEnv.get_instance().get_section("trade")
-    except Exception:
-        conf = {}
+    from Config.EnvConfig import CEnv
+    from .Deployment import CDeployment
+    conf = CEnv.get_instance().get_section("trade")
+    deployment = deployment or CDeployment.configured()
+    if deployment is not None:
+        return {"code_list": deployment.code_list, "lv_list": deployment.lv_list,
+                "lv": deployment.lv_list[deployment.trade_lv_idx], "trade_lv_idx": deployment.trade_lv_idx,
+                "strategy": "multi_lv" if deployment._config["cbsp_strategy"].__name__ == "CMultiLevelStrategy" else "custom",
+                "bench_price": float(conf.get("bench_price", 1000.0)), "deployment_id": deployment.deployment_id}
     if "lv_list" in conf:
         lv_list = [KL_TYPE[x] for x in conf["lv_list"]]
     else:

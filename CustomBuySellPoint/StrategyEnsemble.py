@@ -72,8 +72,8 @@ class CStrategyEnsemble(CStrategy):
     def decision_state(self):
         return self.variants[0][1].decision_state()
 
-    def publish_signals(self, chan, lv):
-        return self.variants[0][1].publish_signals(chan, lv)
+    def publish_signals(self, chan, lv, *, signals=None):
+        return self.variants[0][1].publish_signals(chan, lv, signals=signals)
 
     @property
     def cbsp_lst(self):  # type: ignore[override]

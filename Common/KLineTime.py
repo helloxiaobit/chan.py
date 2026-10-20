@@ -26,6 +26,22 @@ def utc_now_ms():
     return time_ns() // 1_000_000
 
 
+def containing_bar_open_ms(at_ms, lv):
+    """按 UTC 半开区间定位观察时刻；不依赖尚未写入的当前 K 线。"""
+    if type(at_ms) is not int or at_ms < 0:
+        raise CChanException("观察时刻必须为非负整数 UTC 毫秒", ErrCode.KL_DATA_INVALID)
+    if isinstance(lv, str):
+        lv = KL_TYPE[lv]
+    if lv in KLTYPE_TO_MS:
+        offset = 3 * KLTYPE_TO_MS[KL_TYPE.K_DAY] if lv == KL_TYPE.K_WEEK else 0
+        duration = KLTYPE_TO_MS[lv]
+        return (at_ms + offset) // duration * duration - offset
+    if lv == KL_TYPE.K_MON:
+        dt = datetime.fromtimestamp(at_ms / 1000, tz=timezone.utc)
+        return int(dt.replace(day=1, hour=0, minute=0, second=0, microsecond=0).timestamp() * 1000)
+    raise CChanException(f"不支持的 UTC K线周期: {lv}", ErrCode.SRC_DATA_TYPE_ERR)
+
+
 def bar_close_ms(open_ms, lv):
     if isinstance(lv, str):
         lv = KL_TYPE[lv]
