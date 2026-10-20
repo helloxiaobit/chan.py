@@ -157,3 +157,11 @@ C1 收尾清理计划：迁移校验由两份全表内存列表改为有序逐�
 - 原有 CParaAutoML 原位修复，未新增第二个搜索器：所有算法 budget 上限、每次 seed/state 重置、有限 trial 与拒绝原因、int 轴上下界/去重、轴构造预算约束、种群兼容别名与准确命名。删除默认覆盖活动配置、无元数据 max 读取、重复不受限循环及直接 JSON Infinity 发布路径。
 - 复用同一个独立 reader 核验 canonical/代码/预算/参数/状态，供建议导出和 legacy verify；write-once 原子发布只写显式新路径。逐笔属性兼容，JSON 明示百分比单位和 undefined ratio。legacy verify 的窗口隔离明确未证明，不能假称完整 C4 闭环。
 - 适用验收：41 新契约 + 8 原 M4 + 8 原 portfolio = 57 passed（17.12s）；C3 及其他未变代码的 476 全仓证据保留为前一树证据，不重标成本次完整树。编译/diff 随 Lore 核验。账户事件、多窗口/目标/数据身份、训练流程整合仍待后续 C4 子边界。
+
+### C4 第二子边界：显式资金账户（C4 仍未完成）
+
+- 第一子边界已推送并核验 `05280e806cab650beeb59a3522d96bbfa15c22d5`。账户模块先观察缺模块 RED，按合成手算逐项实现 spot 自有现金 long、linear swap long/short、费用/不利滑点、partial exit、funding ownership、mark 未平仓、保证金和幂等；不从逐笔百分比反推资金，也没有导入/修改冻结 research 实现。
+- 补强 RED 证实调用方 Decimal 精度会改变快照，现所有计算固定 50 位；补 5 项 RED 定位同刻新 lot 即时退出、换 id 重复资金费、缺现金流明细、非法 mark 字段与空 base symbol，逐项最小修复。补 6 项 reader RED，窗口变异暴露短窗口年化 null 的间接证明不足，增加完整报告摘要。补 2 项同刻退出顺序 RED，使用明确 sequence 而非字典序假装真实顺序。
+- 每事件保留 execution_price、cash/fee/realized/funding 增量与完整快照；保留历史字节、reject 原子性、exact duplicate 幂等、remaining quantity funding。固定顺序为 mark→旧仓 funding→旧仓 exit→open→新 lot 即时 exit。同 symbol/时刻 funding 唯一，同 lot 同刻退出 sequence 唯一递增。
+- 净值指标以实际有界窗口计算；未平仓保持 mark，不伪造强平/期末成交。软件 cross 保证金状态不是交易所认证，spot 无借贷不能做空，quantity 为币数而非张数。replay reader 核对每事件/指标/代码身份；这是实现内自校验，独立手算夹具才是公式证据。
+- 28 账户契约 + 57 搜索/M4/旧 portfolio 回归为本子边界适用证据；C4 仍剩实际数据/策略/模型/目标/窗口绑定与多周期训练闭环，C5–C7 未完成。旧 portfolio 行为不改，仅删除误导性的完整/唯一记分牌声明。

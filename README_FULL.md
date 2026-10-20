@@ -140,6 +140,14 @@ from ModelStrategy.parameterEvaluate.parse_automl_result import parse_automl_res
 
 `eval_strategy` 的总收益是逐笔百分比之和，回撤是这条加法曲线的百分点回撤，不是组合净值/最大权益回撤。兼容数值属性保留，JSON 增加单位；无亏损时的盈亏比以 null 与显式 infinite 标志输出，不写 JSON Infinity。正式策略研究及参数搜索继续保留独立门禁。
 
+`ModelStrategy.parameterEvaluate.crypto_account` 提供单独的 USDT 账户事件入口：`evaluate_crypto_account(events, config, start_ms=..., end_ms=...)`。事件为显式 `open/close/mark/funding`；时间用 UTC 毫秒，quantity 是**币数而不是合约张数**，成交 lot 的 `position_id` 不重复。现货只允许自有现金做多；USDT 线性永续支持 long/short、多 lot 和部分退出。追加成交使用新 lot；同毫秒的多次退出必须给不同且递增的 `sequence`，不能只换 id 重复扣减。
+
+`CCryptoAccountConfig` 显式设初始资金、杠杆、maker/taker 手续费、不利 taker 滑点和软件维持保证金阈值。账户区分 USDT 现金、已实现损益、费用、资金费、未实现损益、总/净敞口及保证金；spot 买入占现金、swap 本金不重复扣款。mark/funding 价格是单独事件，不冒用合约收盘价。每个 symbol/时刻 funding 仅结算一次，收取对象为此前已经持有的剩余币数；同刻软件顺序为 mark→旧仓 funding→旧仓退出→新仓入场→该新 lot 即时退出。
+
+报告保留每条输入、实际执行价、现金/费用/损益增量、完整余额快照、有限字符串 Decimal 指标以及 evaluator/事件/报告 SHA。`verify_crypto_account_report(report)` 从事件重放核对全部内容；它是实现内自校验，不是第二套独立经济公式。未平仓不强制平仓；极短窗口不可表示的年化明确为 null。费后保证金不足拒绝新风险；维持保证金触发仅标记 `liquidation_required`，没有真实成交证据时绝不虚构强平价或抹除亏损，真实减仓仍能记账。该 cross 保证金口径不是 Binance/OKX 强平认证，精确单位转换/交易所参数仍待 C5；行情新鲜度与完整调度门禁待 C6。
+
+旧 `portfolio_eval` 继续保留历史平仓近似接口和回归，不再称“唯一合法记分牌”，也不改变冻结研究的原有核算或证据。
+
 C3 新样本保留 `feature.meta` 的名称→索引格式，新增 `sample_manifest.json` 绑定文件、标签参数、输入 count/SHA、特征代码及配置。`sample_info.jsonl` 记录全部样本的 UTC 决策/特征可用/标签观察结束时刻；未知标签的 `training_row=null`，不作为 0 写入 libsvm。终局结构标签保守依赖窗口末端，未确认段不写负例。因而默认 `label_bsp_hold` 可能在时序 purge 后无训练样本；不能把这些标签回填进验证前的训练段。
 
 三种 generator 都支持显式 `split_boundaries_ms={"train_end_ms": ..., "validation_end_ms": ..., "test_end_ms": ...}`；UTC 边界 end-exclusive，标签观察穿越分段末端会清除。未指定时按全池不同 UTC 时刻冻结 `folder_thred` 训练边界，其余时刻均分 validation/holdout，再按方向/市场分桶；旧 `test_cnt/test_auc` 字段是 validation 的兼容名称，独立 holdout 不传给训练器。
