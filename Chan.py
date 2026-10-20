@@ -73,6 +73,8 @@ class CChan:
         if hasattr(self, 'klu_last_t'):
             obj.klu_last_t = copy.deepcopy(self.klu_last_t, memo)
         obj.pending_kl = copy.deepcopy(self.pending_kl, memo)
+        obj.unparented_kl = copy.deepcopy(self.unparented_kl, memo)
+        obj.strategy_last_idx = copy.deepcopy(self.strategy_last_idx, memo)
         obj.kl_datas = {}
         for kl_type, ckline in self.kl_datas.items():
             obj.kl_datas[kl_type] = copy.deepcopy(ckline, memo)
@@ -87,6 +89,8 @@ class CChan:
 
     def do_init(self):
         self.pending_kl = {}  # 已读到但尚未到发布边界的父 K，不提前改变结构状态
+        self.unparented_kl = defaultdict(list)  # 低级别先到，待真正的包含父 K 到达时补关系
+        self.strategy_last_idx = {}  # 去重属于调度器，不依赖集合/代理策略是否更新基类字段
         self.kl_datas: Dict[KL_TYPE, CKLine_List] = {}
         for idx in range(len(self.lv_list)):
             self.kl_datas[self.lv_list[idx]] = CKLine_List(self.lv_list[idx], conf=self.conf)
@@ -100,11 +104,14 @@ class CChan:
         strategy = self.kl_datas[self.lv_list[lv_idx]].cbsp_strategy
         if strategy is not None and len(self[lv_idx]) > 0:
             cur = self[lv_idx][-1][-1]
-            if strategy.last_judge_klu_idx >= cur.idx:
+            last_idx = self.strategy_last_idx.get(self.lv_list[lv_idx], -1)
+            if max(getattr(strategy, "last_judge_klu_idx", -1), last_idx) >= cur.idx:
                 return
-            if any(len(self[i]) and self[i][-1][-1].time > cur.time for i in range(lv_idx)):
-                raise CChanException("父级别尚未在本次决策时发布，拒绝历史判断", ErrCode.KL_DATA_NOT_ALIGN)
+            if any(i != lv_idx and len(self[i]) and self[i][-1][-1].time > cur.time
+                   for i in range(len(self.lv_list))):
+                raise CChanException("其他级别已超过本次决策时刻，拒绝父级别或子级别未来状态", ErrCode.KL_DATA_NOT_ALIGN)
             strategy.update(self, lv_idx)
+            self.strategy_last_idx[self.lv_list[lv_idx]] = cur.idx
 
     def publish_pending_kl(self, decision_time):
         # 同一时刻大级别先发布；结构计算仍复用既有增量算法。
@@ -118,6 +125,29 @@ class CChan:
         # 从最低级别往最高级别,保证区间套拿到次级别最新状态
         for lv_idx in range(len(self.lv_list) - 1, -1, -1):
             self.update_cbsp_strategy(lv_idx)
+
+    def load_remaining_levels(self, step=False):
+        # 最新 1h/15m 不能因为下一根 4h 尚未收盘而被丢弃。
+        before = [data[-1][-1].idx if len(data) else -1 for data in self.kl_datas.values()]
+        for lv_idx in range(1, len(self.lv_list)):
+            yield from self.load_iterator(lv_idx, parent_klu=None, step=False)
+        after = [data[-1][-1].idx if len(data) else -1 for data in self.kl_datas.values()]
+        if step and before != after:
+            yield self
+
+    def attach_waiting_children(self, parent, lv_idx):
+        child_lv = self.lv_list[lv_idx + 1]
+        remaining = []
+        for child in self.unparented_kl[child_lv]:
+            if hasattr(parent, "open_ms") and hasattr(child, "open_ms"):
+                belongs = parent.open_ms <= child.open_ms < child.close_ms <= parent.close_ms
+            else:
+                belongs = parent.pre is not None and parent.pre.time < child.time <= parent.time
+            if belongs:
+                self.set_klu_parent_relation(parent, child, child_lv, lv_idx + 1)
+            else:
+                remaining.append(child)
+        self.unparented_kl[child_lv] = remaining
 
     def load_stock_data(self, stockapi_instance: CCommonStockApi, lv) -> Iterable[CKLine_Unit]:
         for KLU_IDX, klu in enumerate(stockapi_instance.get_kl_data()):
@@ -177,6 +207,8 @@ class CChan:
             assert isinstance(inp[lv], list)
             self.add_lv_iter(lv, iter(inp[lv]))
         for _ in self.load_iterator(lv_idx=0, parent_klu=None, step=False):
+            ...
+        for _ in self.load_remaining_levels():
             ...
         if not self.conf.trigger_step:  # 非回放模式全部算完之后才算一次中枢和线段
             for lv in self.lv_list:
@@ -259,6 +291,7 @@ class CChan:
             self.klu_last_t = [CTime(1980, 1, 1, 0, 0) for _ in self.lv_list]
 
             yield from self.load_iterator(lv_idx=0, parent_klu=None, step=step)  # 计算入口
+            yield from self.load_remaining_levels(step=step)
             if not step:  # 非回放模式全部算完之后才算一次中枢和线段
                 for lv in self.lv_list:
                     self.kl_datas[lv].cal_seg_and_zs()
@@ -325,8 +358,11 @@ class CChan:
                 self.add_new_kl(cur_lv, kline_unit)
             else:
                 self.pending_kl[cur_lv] = kline_unit
+                self.attach_waiting_children(kline_unit, lv_idx)
             if parent_klu:
                 self.set_klu_parent_relation(parent_klu, kline_unit, cur_lv, lv_idx)
+            elif lv_idx > 0:
+                self.unparented_kl[cur_lv].append(kline_unit)
             if lv_idx != len(self.lv_list)-1:
                 for _ in self.load_iterator(lv_idx+1, kline_unit, step):
                     ...

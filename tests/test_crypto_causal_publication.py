@@ -141,3 +141,119 @@ def test_ensemble_intrabar_override_changes_an_explicit_stop_fixture():
     closed = ensemble.get_variant("intrabar").cbsp_lst[0]
     assert closed.is_cover
     assert closed.close_actions[0].reason == "stop_loss"
+
+
+def test_lower_level_updates_continue_after_the_last_higher_close():
+    chan = run(inputs(hours=4))
+    next_hour = make_crypto_klu([START + 4 * HOUR, 100, 140, 60, 105, 1], KL_TYPE.K_60M)
+    chan.trigger_load({KL_TYPE.K_4H: [], KL_TYPE.K_60M: [next_hour]})
+    assert [k.close_ms for k in chan[1].klu_iter()] == [START + i * HOUR for i in range(1, 6)]
+    record = json.loads(chan[1].cbsp_strategy.records[-1])
+    assert record["time_ms"] == START + 5 * HOUR
+    assert record["features"]["sup_lv_klu_is_up"] is True
+
+
+def test_a_prefix_with_no_future_parent_matches_full_source_child_decisions():
+    short_payload = inputs(hours=8)
+    short_payload[KL_TYPE.K_4H] = short_payload[KL_TYPE.K_4H][:1]
+    short_payload[KL_TYPE.K_60M] = short_payload[KL_TYPE.K_60M][:6]
+    full_payload = inputs(hours=8)
+    full_payload[KL_TYPE.K_60M] = full_payload[KL_TYPE.K_60M][:6]
+    short, full = run(short_payload), run(full_payload)
+    assert len(short[1].cbsp_strategy.records) == 6
+    cutoff = START + 7 * HOUR
+    assert prefix(short[1].cbsp_strategy.records, cutoff) == prefix(full[1].cbsp_strategy.records, cutoff)
+
+
+def test_late_parent_attachment_preserves_bulk_parent_child_relations():
+    bulk = run(inputs(hours=8))
+    stream = run(inputs(hours=4))
+    future = inputs(hours=8)
+    stream.trigger_load({KL_TYPE.K_4H: [], KL_TYPE.K_60M: future[KL_TYPE.K_60M][4:7]})
+    stream.trigger_load({KL_TYPE.K_4H: [future[KL_TYPE.K_4H][1]],
+                         KL_TYPE.K_60M: [future[KL_TYPE.K_60M][7]]})
+    def relation(chan):
+        return [(k.close_ms, k.sup_kl.close_ms if k.sup_kl else None) for k in chan[1].klu_iter()]
+    assert relation(stream) == relation(bulk)
+    assert [len(k.sub_kl_list) for k in stream[0].klu_iter()] == [4, 4]
+    assert stream[1].cbsp_strategy.records == bulk[1].cbsp_strategy.records
+
+
+def test_late_higher_bar_cannot_rejudge_using_future_lower_state():
+    chan = run(inputs(hours=4))
+    new = inputs(hours=12)
+    chan.trigger_load({KL_TYPE.K_4H: [], KL_TYPE.K_60M: new[KL_TYPE.K_60M][4:9]})
+    with pytest.raises(CChanException, match="决策|发布"):
+        chan.trigger_load({KL_TYPE.K_4H: [new[KL_TYPE.K_4H][1]], KL_TYPE.K_60M: []})
+
+
+def test_three_level_quarter_hour_stream_matches_bulk_without_future_parent_inputs():
+    steps = {KL_TYPE.K_4H: 16, KL_TYPE.K_60M: 4, KL_TYPE.K_15M: 1}
+    def payload():
+        return {lv: [make_crypto_klu([START + n * 900_000, 100, 140, 60, 105, 1], lv)
+                     for n in range(0, 32, step)] for lv, step in steps.items()}
+    all_data = payload()
+    bulk = run(all_data)
+    source = payload()
+    stream = run({lv: data[:16 // steps[lv]] for lv, data in source.items()})
+    for n in range(16, 32):
+        stream.trigger_load({
+            KL_TYPE.K_4H: [source[KL_TYPE.K_4H][1]] if n == 31 else [],
+            KL_TYPE.K_60M: [source[KL_TYPE.K_60M][n // 4]] if n % 4 == 3 else [],
+            KL_TYPE.K_15M: [source[KL_TYPE.K_15M][n]],
+        })
+    for lv in range(3):
+        assert stream[lv].cbsp_strategy.records == bulk[lv].cbsp_strategy.records
+        assert [(k.close_ms, k.sup_kl.close_ms if k.sup_kl else None) for k in stream[lv].klu_iter()] == [
+            (k.close_ms, k.sup_kl.close_ms if k.sup_kl else None) for k in bulk[lv].klu_iter()]
+
+
+def test_stock_api_load_and_step_load_do_not_discard_lower_tail(monkeypatch):
+    class CTailAPI:
+        def __init__(self, code, k_type, **kwargs):
+            self.k_type = k_type
+
+        @classmethod
+        def do_init(cls):
+            pass
+
+        @classmethod
+        def do_close(cls):
+            pass
+
+        def get_kl_data(self):
+            data = inputs(hours=8)
+            data[KL_TYPE.K_4H] = data[KL_TYPE.K_4H][:1]
+            data[KL_TYPE.K_60M] = data[KL_TYPE.K_60M][:6]
+            yield from data[self.k_type]
+    monkeypatch.setattr(CChan, "GetStockAPI", lambda self: CTailAPI)
+    conf = {"cbsp_strategy": CPublicationObserver, "kl_data_check": False}
+    loaded = CChan("BTC/USDT", lv_list=LEVELS, config=CChanConfig(conf))
+    assert len(loaded[1].cbsp_strategy.records) == 6
+    stepped = CChan("BTC/USDT", lv_list=LEVELS, config=CChanConfig({**conf, "trigger_step": True}))
+    child_closes = [s[1][-1][-1].close_ms for s in stepped.step_load()]
+    assert child_closes == [START + 4 * HOUR, START + 6 * HOUR]
+
+
+def test_deepcopy_with_orphan_tail_can_resume_equivalently():
+    from copy import deepcopy
+    stream = run(inputs(hours=4))
+    remaining = inputs(hours=8)
+    stream.trigger_load({KL_TYPE.K_4H: [], KL_TYPE.K_60M: remaining[KL_TYPE.K_60M][4:7]})
+    cloned = deepcopy(stream)
+    for chan in (stream, cloned):
+        source = inputs(hours=8)
+        chan.trigger_load({KL_TYPE.K_4H: [source[KL_TYPE.K_4H][1]], KL_TYPE.K_60M: [source[KL_TYPE.K_60M][7]]})
+    assert cloned[1].cbsp_strategy.records == stream[1].cbsp_strategy.records
+    assert [len(k.sub_kl_list) for k in cloned[0].klu_iter()] == [4, 4]
+
+
+def test_ensemble_wrapper_does_not_rejudge_an_old_parent_after_tail_progress():
+    from CustomBuySellPoint.StrategyEnsemble import CStrategyEnsemble
+    payload = inputs(hours=8)
+    payload[KL_TYPE.K_4H] = payload[KL_TYPE.K_4H][:1]
+    chan = run(payload, cbsp_strategy=CStrategyEnsemble,
+               strategy_para={"skip_features": True, "require_sub_confirm": False})
+    assert len(list(chan[1].klu_iter())) == 8
+    chan.trigger_load({lv: [] for lv in LEVELS})
+    assert chan[1].cbsp_strategy.get_variant("base").last_judge_klu_idx == 7

@@ -427,6 +427,8 @@ class CFeatureEngine:
                         pass
         # 父级别
         sup_kl = cbsp.klu.sup_kl
+        if sup_kl is None and lv > 0 and len(chan[lv - 1]):
+            sup_kl = chan[lv - 1][-1][-1]  # 低级别尾部使用最后已发布上下文，不伪造包含关系
         decision_time = chan[lv][-1][-1].time
         while sup_kl is not None and sup_kl.time > decision_time:
             sup_kl = sup_kl.pre  # 包含关系不等于当时可读；仅选择已收盘父 K
