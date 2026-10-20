@@ -106,6 +106,8 @@ CPlotDriver(chan, plot_config={"plot_kline": True, "plot_bi": True, "plot_seg": 
 bash Trade/Script/run_train_pipeline.sh    # Windows: pwsh Trade/Script/run_train_pipeline.ps1
 ```
 
+流水线脚本仍待 C6 完整失败传播验收；不要将当前脚本退出 0 当作模型已可部署。正式参数搜索仍受独立研究门禁约束。
+
 等价的 python 流程:
 
 ```python
@@ -113,7 +115,8 @@ bash Trade/Script/run_train_pipeline.sh    # Windows: pwsh Trade/Script/run_trai
 from ModelStrategy.BacktestChanConfig import CBacktestConfig
 from ModelStrategy.backtest import run_backtest
 res = run_backtest(CBacktestConfig(code_list=["BTC/USDT"], data_src="custom:OfflineDataAPI.CStockFileReader",
-                                   lv_list=[KL_TYPE.K_60M], chan_config={...}, output_dir="./bt_out"))
+                                   lv_list=[KL_TYPE.K_60M], chan_config={...}, output_dir="./bt_out",
+                                   primary_label="label_ret_N"))
 
 # 2) 训练(XGB/LGBM/MLP 三选一,自动打印 AUC)
 from ModelStrategy.models.Xgboost.XGBTrainModelGenerator import CXGBTrainModelGenerator
@@ -130,6 +133,14 @@ from ModelStrategy.parameterEvaluate.eval_strategy import CEvalConfig, eval_stra
 from ModelStrategy.parameterEvaluate.para_automl import CParaAutoML
 from ModelStrategy.parameterEvaluate.parse_automl_result import parse_automl_result
 ```
+
+C3 新样本保留 `feature.meta` 的名称→索引格式，新增 `sample_manifest.json` 绑定文件、标签参数、输入 count/SHA、特征代码及配置。`sample_info.jsonl` 记录全部样本的 UTC 决策/特征可用/标签观察结束时刻；未知标签的 `training_row=null`，不作为 0 写入 libsvm。终局结构标签保守依赖窗口末端，未确认段不写负例。因而默认 `label_bsp_hold` 可能在时序 purge 后无训练样本；不能把这些标签回填进验证前的训练段。
+
+三种 generator 都支持显式 `split_boundaries_ms={"train_end_ms": ..., "validation_end_ms": ..., "test_end_ms": ...}`；UTC 边界 end-exclusive，标签观察穿越分段末端会清除。未指定时按全池不同 UTC 时刻冻结 `folder_thred` 训练边界，其余时刻均分 validation/holdout，再按方向/市场分桶；旧 `test_cnt/test_auc` 字段是 validation 的兼容名称，独立 holdout 不传给训练器。
+
+模型文件旁的同名 `.contract.json` 绑定模型/meta SHA、特征与训练代码、标签定义、样本清单、分段、配置及运行库身份。`CGeneratorModel(path)` 支持 XGB/LGBM/MLP，`CXGBModel(path)` 保留原 XGB 类名；复用 generator 的 estimator 与缺失策略。列按训练名称对齐；必需列缺失、非有限值、错误版本/摘要均拒绝。条件列只有在训练中已观察到缺失时才按冻结缺失策略处理。旧 demo5 的无契约目录不自动升级为在线部署模型，须用新样本重建。
+
+这些本地完整性摘要不是制品发布者签名；只加载可信来源的本地模型，尤其不要加载不可信 pickle。模型功能测试不代表收益或实盘授权，信号/订单/后验统一部署清单仍按 C3 台账继续接通。
 
 ### 4. 可复现策略基线（仅样本内）
 
@@ -280,7 +291,7 @@ trades = list(chan[1].cbsp_strategy)   # 交易发生在中间的交易级别(lv
 |---|---|
 | `Config/` | config.yaml 全局配置体系(CEnv) |
 | `CustomBuySellPoint/` | CStrategy 抽象 + CCustomStrategy/CSegBspStrategy/CExamStrategy + CCustomBSP/CSignal;区间套(use_qjt) |
-| `ChanModel/` | FeatureDesc 注册表、FeatureEngine 11特征族(540+,含SMC族)、CCommModel/CXGBModel |
+| `ChanModel/` | FeatureDesc 注册表、FeatureEngine 11特征族(540+,含SMC族)、CCommModel、XGB/LGBM/MLP 共用在线适配与版本化模型契约 |
 | `Math/SmartMoney.py` | SMC检测器:FVG/订单块(笔结构定位)/流动性池+sweep/Premium-Discount位置 |
 | `ModelStrategy/` | backtest 样本落地(五种标签)、CModelGenerator(XGB/LGBM/MLP)、eval_strategy、para_automl、FeatureReconciliation；`research/` 提供版本化规范、OOS 边界、输入清单和冻结基线复现 |
 | `DataAPI/` | ccxt 重构(分页/volume/代理)、OfflineDataAPI、SnapshotAPI(sina/pytdx/ak/futu/ccxt)、ETFStockAPI、MarketValueFilter |

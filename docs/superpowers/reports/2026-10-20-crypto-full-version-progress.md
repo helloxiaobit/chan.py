@@ -19,7 +19,7 @@
 | OKX USDT 线性永续 | 同上 | 通用 fake exchange 路径 | 第二目标；交易所参数映射、测试环境未认证 |
 | 现货 | 原有 CCXT/SQLite 路径 | M5/M6 离线回归 | 保留兼容回归；不与永续混库 |
 | XGB | `ModelStrategy/models/Xgboost`、`ChanModel/XGBModel.py` | M3 小样本训练/评分 | C3 meta、时序切分、在线产物契约 |
-| LGBM/MLP | `ModelStrategy/models/lightGBM`、`deepModel` | M3 小样本训练 | 现阶段仅离线，不声明默认在线部署 |
+| LGBM/MLP | `ModelStrategy/models/lightGBM`、`deepModel`、`ChanModel/GeneratorModel.py` | M3 小样本训练；C3 三类模型存取/手动在线评分 | 已有共用在线适配；统一部署和默认脚本接线仍未完成 |
 | SQLite | `OfflineData/offline_data_util.py`、`Trade/SqliteDB.py` | M5/M6、安全/状态机 | 默认验收后端；来源/迁移/对账继续补齐 |
 | MySQL | `Trade/MysqlDB.py` | 离线 SQL 适配测试 | 可选，真实连接/迁移未验收 |
 | dry-run | `SafetyPolicy.py`、`TradeEngine.py` | safety/state-machine | 默认模式；C5/C6 补账户/E2E |
@@ -34,7 +34,7 @@
 | C0 | 已完成范围冻结 | 本台账、README/DEV_PLAN 与批准计划对齐；远端身份新鲜核验 |
 | C1 | 已完成离线实现与验收 | UTC 日/周/月边界、finality、尾 K 修订、分页/完整性、来源绑定、显式备份迁移、质量状态；见下方记录 |
 | C2 | 已完成离线实现与验收 | 父 K/原始关系发布边界、不可变决策、完整身份对账、真实三层策略 future/prefix 变异；非外部认证 |
-| C3 | 待开发 | 时序切分/标签/meta/部署 |
+| C3 | 进行中 | 从 unknown 标签、全局 UTC 切分与训练/预测 meta 身份 RED 开始 |
 | C4 | 待开发 | 账户评估/AutoML 产物 |
 | C5 | 待开发 | 合约适配/恢复/对账 |
 | C6 | 待开发 | 调度/API/离线 E2E |
@@ -103,3 +103,25 @@ C1 收尾清理计划：迁移校验由两份全表内存列表改为有序逐�
 - 验证：原有整合 100 passed；新增真实策略/驱动/单变异组合 31 passed；审查补强前全仓 410 passed / 7 expected skipped / 1 network deselected / 1 既有 XGBoost warning（300.84s）。随后新增临时结构副作用的 RED，最小修复后 49 focused passed；提交前再次复验最新完整工作树。
 - 复核按 requesting-code-review 的质量/架构/边界清单串行进行，未启动子代理，不能冒称独立审计。诊断会做三次读取与完整结构承诺，当前三层 80×4h 小夹具约 75s（控制路径补强前），不宣称已完成大规模性能优化或交易所认证。
 - 审查补强后的最新完整树：411 passed / 7 expected skipped / 1 network deselected / 1 既有 XGBoost 文本输入弃用 warning，350.80s；三层实际策略诊断 109.70s。compileall 与 diff 检查随 Lore 提交核验。上述证据完成 C2 的离线软件门槛；C3–C7、任何真实交易所认证和策略经济采用仍未完成。
+
+## C3 实施与清理计划（2026-10-21）
+
+- C2 已推送并核验 `7c2d9eaea42a1ed5788111da4bb68cb893241cc6`。只使用小合成 fixture、既有离线回归与模型库，不读取冻结绩效/运行正式研究，不新增依赖。
+- 先写 unknown→0、多币种数组切分、预测 meta 乱序三类 RED。样本特征和身份复用 C2 已接受的开仓字节；记录 decision_ms、feature_available_at_ms、每标签 label_end_ms、primary label 与已知/未知训练行映射。unknown 保留并统计，不能训练成负例。
+- 既有终局结构标签不假造更早确认时刻：`bsp_hold` 是输入窗口终局状态，`next_bsp`/`seg_confirm` 若只由终局结构观察，结束时刻保守取窗口末端；不确定的 segment/未触达 barrier/未完成 ret_N 保留 unknown。不得把端点时刻冒充确认时刻。以终局标签跨入验证段时必须 purge，可能导致无可训练样本并明确失败。
+- 清理旧的特征遍历编号和按数组切分路径，复用现有 libsvm + feature.meta 格式并增加版本化时序 manifest；按全局 UTC train/validation/test 边界分组，边界前后同刻多币种不能拆开，label_end 穿越边界清除。缺时序证据的旧样本不能伪称新契约训练通过。
+- 模型 meta 与模型 SHA/特征名称顺序/缺失策略/标签定义/窗口/代码配置摘要绑定；预测先加载训练 meta，再按输入 meta 名称映射，不能让同维乱序静默换列。随后接通 XGB/LGBM/MLP 在线适配和同一部署清单；阶段完成仍需真实脚本/失效门禁及完整回归。
+
+### C3 第一子边界：样本、切分与共用评分（尚未完成 C3）
+
+- RED：首组 8 failed，实际列乱序模型返回 23 而不是 32；随后观察到未连接真实 split、标签依赖可变开仓对象、缺少三种模型 artifact/在线入口、旧样本公式重标与缺来源字段、源输入摘要缺失等失败。未靠只比较最终维度或打印告警放行。
+- 样本从 C2 的已接受开仓字节取特征/初始价格/方向，按 UTC、instrument、event_id 稳定排序；全量说明与已知训练行一一映射。未知主标签保留并计数，终局结构使用保守的实际窗口结束时间，ret_N/barrier 用实际观察 bar，穿越分段末端即 purge。
+- 删除按币种数组位置切分、样本 meta 覆盖模型 meta 的路径。全池边界先冻结，再分桶；三种模型均分 train/validation/holdout，训练只接收前两段。默认 folder_thred 仍为训练比例，其余时刻均分验证/最终留出；支持显式 UTC 边界。终局标签导致空分段时明确拒绝，不偷填。
+- 新的 `.contract.json` 绑定模型/meta/样本文件/标签参数/源输入 count+SHA、特征与训练代码、配置、运行库、窗口、必需/条件列；三种在线模型复用原 generator 的 estimator/缺失策略，XGB 删去重复评分实现。无新契约的旧模型不自动获准在线使用。
+- 兼容回归揭示 feature engine 会省略尚无历史的条件列。以 train 段始终存在的列作为必需列并写入清单，其余按原缺失策略处理；没有把全部缺列默认放行。实际 Chan+XGB 路径再次通过。模型错误还暴露 CSV 迭代器未关闭；增加确定性 RED，finally 显式关闭活动 source 后不再占用测试文件。
+- 43 focused（之后补源输入摘要的第 26 个新契约测试，最新合计见提交前验证）；已知警告：合成 MLP 60 步未收敛、既有 XGB libsvm 弃用、因真实 purge 后验证标签单类而 AUC 未定义。测试只证明功能，不宣称统计或经济有效性。
+- 仍待：统一部署清单、signal/intent/后验记录的版本贯通、候选与实际突破评分语义、CheckOpenScore 正确周期及非最新行；未把本子边界或三种模型测试称作 C3 全部完成。
+- 补强：unknown 的完整 features 保留在样本说明供推理；仅训练读取排除 unknown，predictAll 不丢掉未标注样本。确定夹具 50 known + 1 unknown 验证训练输入 50、推理输出 51；通用合成夹具并不保证其最后一次交易落在标签未完成窗口，未用错误的“所有合成数据必含 unknown”假设替代确定夹具。
+- 新增已观察的 RED：单类训练集和 NaN 预测原本也会发布 artifact；现在在持久化之前校验二元训练类别、预测行数/有限概率。非法非数字特征整批拒绝，失败前不创建样本文件。新契约当前 30 focused passed（2 个合成 MLP 未收敛警告）；最新完整树提交前串行复验。
+- 执行事件：一次全仓进程尚在运行时误启动了短 focused 进程并修改了测试文件，违反本计划串行排程。短进程结束后只等待原 handle 至完成，原结果为 437 passed/7 skipped/1 deselected（290.33s），明确不作之后新树的完整证明；后续所有测试严格串行，最终以最新完整树的独立运行作为提交依据。
+- 最新完整树独立串行复验：441 passed / 7 expected skipped / 1 network deselected / 4 warnings，292.31s；警告为 libsvm 文本输入弃用、purge 后验证单类的 AUC 未定义、两次小 MLP 未收敛。新契约 30 项、此前样本/三模型回归全部通过；compileall/diff 检查通过。跳过项仍为 6 个需外部研究资产的测试和缺 PyQt6 的股票 GUI，未为消除跳过而启用研究或网络任务。

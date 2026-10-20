@@ -34,10 +34,11 @@ class CLGBM_DataSet(CDataSet):
 
 class CLGBMModelGenerator(CModelGenerator):
     def __init__(self, model_tag="demo", is_buy=None, market=None, bsp_type=None,
-                 folder_thred=None, lgbm_params=None, num_boost_round=50, model_dir=None):
+                 folder_thred=None, lgbm_params=None, num_boost_round=50, model_dir=None, split_boundaries_ms=None):
         super(CLGBMModelGenerator, self).__init__(
             model_type='lgbm', model_tag=model_tag, is_buy=is_buy, market=market,
             bsp_type=bsp_type, folder_thred=folder_thred, model_dir=model_dir,
+            split_boundaries_ms=split_boundaries_ms,
         )
         self.lgbm_params = lgbm_params or dict(DEFAULT_LGBM_PARAMS)
         self.num_boost_round = num_boost_round
@@ -69,6 +70,7 @@ class CLGBMModelGenerator(CModelGenerator):
 
     def load_model(self) -> int:
         import lightgbm as lgb
+        self.load_meta()
         booster = lgb.Booster(model_file=self.GetModelPath())
         self.model_info.model = booster
         self.model_info.feature_dim = booster.num_feature()

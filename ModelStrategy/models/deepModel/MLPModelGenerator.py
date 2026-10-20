@@ -33,10 +33,11 @@ class CMLPModelGenerator(CModelGenerator):
     """MLP 用 sklearn.MLPClassifier 实现(torch 可选,自行替换 train/predict 即可)"""
 
     def __init__(self, model_tag="demo", is_buy=None, market=None, bsp_type=None,
-                 folder_thred=None, mlp_params=None, model_dir=None):
+                 folder_thred=None, mlp_params=None, model_dir=None, split_boundaries_ms=None):
         super(CMLPModelGenerator, self).__init__(
             model_type='mlp', model_tag=model_tag, is_buy=is_buy, market=market,
             bsp_type=bsp_type, folder_thred=folder_thred, model_dir=model_dir,
+            split_boundaries_ms=split_boundaries_ms,
         )
         self.mlp_params = mlp_params or dict(DEFAULT_MLP_PARAMS)
 
@@ -65,6 +66,7 @@ class CMLPModelGenerator(CModelGenerator):
             pickle.dump(self.model_info.model, f)
 
     def load_model(self) -> int:
+        self.load_meta()
         with open(self.GetModelPath(), "rb") as f:
             self.model_info.model = pickle.load(f)
         self.model_info.feature_dim = self.model_info.model["scaler"].n_features_in_

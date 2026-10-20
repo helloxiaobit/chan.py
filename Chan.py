@@ -152,10 +152,15 @@ class CChan:
         self.unparented_kl[child_lv] = remaining
 
     def load_stock_data(self, stockapi_instance: CCommonStockApi, lv) -> Iterable[CKLine_Unit]:
-        for KLU_IDX, klu in enumerate(stockapi_instance.get_kl_data()):
-            klu.set_idx(KLU_IDX)
-            klu.kl_type = lv
-            yield klu
+        source_iter = iter(stockapi_instance.get_kl_data())
+        try:
+            for KLU_IDX, klu in enumerate(source_iter):
+                klu.set_idx(KLU_IDX)
+                klu.kl_type = lv
+                yield klu
+        finally:
+            if close := getattr(source_iter, "close", None):
+                close()
 
     def get_load_stock_iter(self, stockapi_cls, lv):
         stockapi_instance = stockapi_cls(code=self.code, k_type=lv, begin_date=self.begin_time, end_date=self.end_time, autype=self.autype)
@@ -302,7 +307,13 @@ class CChan:
         except Exception:
             raise
         finally:
-            stockapi_cls.do_close()
+            try:
+                for streams in self.g_kl_iter.values():
+                    for stream in streams:
+                        if close := getattr(stream, "close", None):
+                            close()
+            finally:
+                stockapi_cls.do_close()
         if len(self[0]) == 0:
             raise CChanException("最高级别没有获得任何数据", ErrCode.NO_DATA)
 

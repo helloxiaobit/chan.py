@@ -34,6 +34,7 @@ class CXGBTrainModelGenerator(CModelGenerator):
         xgb_params=None,
         num_boost_round=DEFAULT_NUM_BOOST_ROUND,
         model_dir=None,
+        split_boundaries_ms=None,
     ):
         super(CXGBTrainModelGenerator, self).__init__(
             model_type='xgb',
@@ -43,6 +44,7 @@ class CXGBTrainModelGenerator(CModelGenerator):
             bsp_type=bsp_type,
             folder_thred=folder_thred,
             model_dir=model_dir,
+            split_boundaries_ms=split_boundaries_ms,
         )
         self.xgb_params = xgb_params or dict(DEFAULT_XGB_PARAMS)
         self.num_boost_round = num_boost_round
@@ -74,6 +76,7 @@ class CXGBTrainModelGenerator(CModelGenerator):
 
     def load_model(self) -> int:
         import xgboost as xgb
+        self.load_meta()
         bst = xgb.Booster(model_file=self.GetModelPath())
         self.model_info.model = bst
         self.model_info.feature_dim = bst.num_features()

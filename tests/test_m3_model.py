@@ -100,9 +100,11 @@ def test_xgb_predict_all_process(xgb_result, sample_dir):
     assert os.path.exists(out)
     with open(out, encoding="utf-8") as f:
         rows = [json.loads(line) for line in f]
-    _, samples = load_sample_dir(sample_dir)
+    _, samples = load_sample_dir(sample_dir, include_unknown=True)
     assert len(rows) == len(samples)
     assert all("score" in r and "label" in r for r in rows)
+    assert [r["label"] for r in rows] == [s["label"] for s in samples]
+    assert all(r["model_artifact_id"] == gen.artifact_id for r in rows)
 
 
 def test_lgbm_generator(sample_dir, model_dir):
