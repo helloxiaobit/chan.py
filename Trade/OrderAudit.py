@@ -237,3 +237,29 @@ def read_history(db, table, record):
             _fail()
     return {"schema": "chan-order-history-v1", "coverage": "intents_and_applied_reports_only",
             "economics_complete": False, "attempts": attempts, "gaps": gaps}
+
+
+def verify_history_prefix(db, histories):
+    """Verify an old check's snapshot against immutable attempts/events only.
+
+    The mutable projection may legitimately advance, or be inside a winning CAS
+    before its event is appended. It is not the historical snapshot's source.
+    """
+    validate_schema(db.conn)
+    try:
+        for history in histories:
+            if (set(history) != {"schema", "coverage", "economics_complete", "attempts", "gaps"}
+                    or history["schema"] != "chan-order-history-v1"
+                    or history["coverage"] != "intents_and_applied_reports_only" or history["economics_complete"] is not False):
+                _fail()
+            for saved in history["attempts"]:
+                row = db.query_one(f"SELECT * FROM {ATTEMPTS} WHERE trade_table=? AND record_id=? AND phase=? AND attempt=?", _key(saved["identity"]))
+                if row is None:
+                    _fail()
+                actual = _read_attempt(db, row)
+                head = lambda a: {k: v for k, v in a.items() if k != "events"}
+                if (_encode(head(saved)) != _encode(head(actual)) or not saved["events"]
+                        or _encode(saved["events"]) != _encode(actual["events"][:len(saved["events"])])):
+                    _fail()
+    except (ValueError, TypeError, KeyError, AttributeError):
+        _fail()

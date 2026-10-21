@@ -161,7 +161,13 @@ class CChanDB:
             read_history(self.db, self.table, before)
             changed = self.db.execute(sql, args)
             if changed == 1:
-                record_transition(self.db, self.table, before, self.get_record(record_id), prefix, kind)
+                after = self.get_record(record_id)
+                if prefix == "open" and kind in {"intent", "claim"} and after.get("open_order_contract") is not None:
+                    from .AccountRiskStore import assert_new_risk_allowed
+                    contract = json.loads(after["open_order_contract"])
+                    if contract.get("schema") == "chan-ccxt-order-v3":
+                        assert_new_risk_allowed(self.db, contract["account_context"])
+                record_transition(self.db, self.table, before, after, prefix, kind)
         return changed
 
     def get_order_history(self, record_id):
@@ -231,6 +237,35 @@ class CChanDB:
         from .AccountStore import read_evidence
         with self.db.transaction():
             return read_evidence(self.db, evidence_id)
+
+    def reconcile_account(self, *, account_context, before_id, after_id, wallet_ids, execution_scan_ids):
+        self._require_execution_sqlite()
+        from .AccountRiskStore import reconcile
+        snapshot = json.loads(canonical_bytes({"context": account_context, "request": {
+            "before": before_id, "after": after_id, "wallets": wallet_ids, "executions": execution_scan_ids}}))
+        try:
+            with self.db.transaction():
+                return reconcile(self, snapshot["context"], snapshot["request"])
+        except sqlite3.DatabaseError:
+            raise CChanException("账户对账/冻结发布失败，禁止新增风险", ErrCode.TRADE_UNLOCK_FAIL) from None
+
+    def get_account_check(self, check_id):
+        self._require_execution_sqlite()
+        from .AccountRiskStore import read_check
+        with self.db.transaction():
+            return read_check(self.db, check_id)
+
+    def get_account_risk_state(self, account_context):
+        self._require_execution_sqlite()
+        from .AccountRiskStore import risk_state
+        with self.db.transaction():
+            return risk_state(self.db, account_context)
+
+    def assert_account_new_risk_allowed(self, account_context):
+        self._require_execution_sqlite()
+        from .AccountRiskStore import assert_new_risk_allowed
+        with self.db.transaction():
+            assert_new_risk_allowed(self.db, account_context)
 
     def _write_fill(self, record, prefix, assignments, values):
         # Compare the complete read/write ledger snapshot, including both

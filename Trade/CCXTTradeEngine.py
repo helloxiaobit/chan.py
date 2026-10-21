@@ -428,6 +428,8 @@ class CCCXTTradeEngine(CTradeEngine):
             definition, market = self._market_contract(code)
             execution = self._execution_settings(code, record, reduce_only=reduce_only)
             account = None if self.market_type == "spot" else observe_account_context(self.get_exchange(), self.mode)
+            if account is not None and not reduce_only:
+                self.chan_db.assert_account_new_risk_allowed(account)
             if opened is not None and opened.get("account_context") != account:
                 raise CChanException("降风险意图不得切换原账户/环境", ErrCode.TRADE_UNLOCK_FAIL)
             observation = self._observe_account(code, execution, reduce_only=reduce_only)
@@ -573,6 +575,8 @@ class CCCXTTradeEngine(CTradeEngine):
             exchange_amount = _float_exact(_quantity(contract["exchange_amount"], positive=True))
             order_type = "market" if price is None else "limit"
             self.safety_policy.assert_order_allowed()
+            if not reduce_only and contract.get("schema") == "chan-ccxt-order-v3":
+                self.chan_db.assert_account_new_risk_allowed(contract["account_context"])
             order = exchange.create_order(
                 code,
                 order_type,
@@ -801,6 +805,20 @@ class CCCXTTradeEngine(CTradeEngine):
         from .AccountSources import collect_account_snapshot
         document = collect_account_snapshot(self.get_exchange(), [self._market_contract(code)[0] for code in codes], mode=self.mode)
         self.chan_db.store_account_evidence(document)
+        return document
+
+    def reconcile_account_interval(self, *, before_id, after_id, wallet_ids, execution_scan_ids):
+        """Explicit observed-interval check; failures freeze, success cannot thaw.
+
+        The caller supplies persisted source IDs, never a passed flag or account
+        label. Native identity GETs stay outside the SQLite writer transaction.
+        """
+        self._assert_native_source_session()
+        account = observe_account_context(self.get_exchange(), self.mode)
+        document = self.chan_db.reconcile_account(account_context=account, before_id=before_id, after_id=after_id,
+            wallet_ids=wallet_ids, execution_scan_ids=execution_scan_ids)
+        if observe_account_context(self.get_exchange(), self.mode) != account:
+            raise CChanException("对账期间原生账户/环境变化，不得用于放行", ErrCode.TRADE_UNLOCK_FAIL)
         return document
 
     def get_position(self, code: str) -> float:

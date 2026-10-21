@@ -333,8 +333,8 @@ SQLite 只做非破坏性补列，不为旧记录虚构单位或 UTC 意图时�
 自动取消另一账户可能同号的订单，须先显式核验归属，当前没有自动补证放行入口。
 MySQL 新订单契约写入在真实迁移/事务验收前 disabled，旧接口不自动升级。
 
-C5 仍在开发：订单恢复的离线边界见下；逐腿持仓/余额对账与冻结新风险、
-含费用和资金费的模拟账户尚未完成；mock/SQLite 验收不替代
+C5 仍在开发：订单恢复及观察区间核对/持久冻结的离线边界见下；
+完整鲜活准入链、隔离资金通道和含费用/资金费的模拟账户尚未完成；mock/SQLite 验收不替代
 C7 真实环境授权与认证。
 
 #### C5 平台参数与执行规格 v2
@@ -379,7 +379,7 @@ v1 单位规格仍可只读兼容查单，v2 的执行设置读取也保留；�
 
 这是请求前后的客户端/原生身份观察，不是服务器签名、对并发修改客户端的全局锁或 C7 外部认证；
 标准路由能否连接当前测试网也未实际验证。逐笔来源的 `account_scope_verified=false`、
-`economics_complete=false` 不会因此升级。逐腿钱包/持仓对账、持久风险冻结与含费模拟仍未完成。
+`economics_complete=false` 不会因此升级。区间核对/持久冻结见下文，不等于完整鲜活准入或含费模拟验收。
 
 #### C5 ACK 与有界历史恢复（离线协议验收）
 
@@ -426,7 +426,7 @@ leg；v2/v3 还核对原生 post-only、one-way reduce-only，以及 OKX 的 tdM
 尚未写入 DB 的订单号只是查询提示，仍须通过 client echo 与 UTC 创建时间发现校验；有完整证据的提示号可正常恢复。
 
 提交权的双进程争抢、成交的双 SQLite 连接确定性交错及原生 CCXT/fake I/O 验证均为离线证明，
-不是完整交易所认证。逐腿余额/现金流对账、持久化风险冻结和含费用的模拟账户仍待完成；C6/C7 也未完成。
+不是完整交易所认证。区间核对/持久冻结见下文；完整准入与含费用的模拟账户、C6/C7 仍待完成。
 
 #### C5 追加式尝试历史（SQLite 离线子边界）
 
@@ -451,7 +451,7 @@ SQLite 增加 `chanpy_order_attempts` / `chanpy_order_events`，当前订单行�
 
 这只是意图和已应用回报的历史，始终 `coverage=intents_and_applied_reports_only`、
 `economics_complete=false`；订单均价不能代替逐笔实际 trade/fee/funding，缺费用不当 0。
-逐腿现金流对账、持续风险冻结及完整模拟账户仍为后续 C5，真实测试网/实盘仍锁定。
+观察区间现金流核对与持久冻结见下文；完整逐腿资金通道和模拟账户仍为后续 C5，真实测试网/实盘仍锁定。
 
 #### C5 原生逐笔经济来源（离线子边界）
 
@@ -538,7 +538,45 @@ SQLite 增加独立只追加 `chanpy_account_evidence`，`store_account_evidence
 原生流水同 context/ID 变值拒绝，重复文档幂等；单表首次升级和发布失败均回滚，旧订单不补资产。
 取得写锁前冻结输入，不在 DB 写锁内发网络请求。当前跨历史钱包文档校验成本、存储体积及限频延时
 尚未做实际容量认证，C6/C7 需验证增量运行预算。MySQL disabled，dry-run 不创建真实会话。
-钱包闭合、逐腿 mark/余额对账、持久新风险冻结和含费模拟仍未完成；本文接口不能用作放行证明。
+来源接口本身不能用作放行证明；观察区间核对与冻结见下文，完整准入与含费模拟仍未完成。
+
+#### C5 观察区间对账与持久新风险冻结（SQLite/fake 离线验收）
+
+显式 `engine.reconcile_account_interval(before_id=..., after_id=..., wallet_ids=[...], execution_scan_ids=[...])`
+使用原始持久来源 ID。引擎在 DB 写锁外先后核验当前原生账户/环境；
+`CChanDB.reconcile_account(account_context=..., ...)` 在同一 SQLite 快照读取两端资产/持仓、
+全类型钱包、已关联 scans、全部 trade-shaped 表的原 attempt 历史和当前数量，不能传入 passed 布尔值。
+
+- 两个账户快照必须是无重叠观察区间。钱包及每个显式 market 的 execution windows 必须覆盖
+  从第一观察开始到第二观察结束的完整整数毫秒窗口。覆盖仅指提供的来源窗口，不认证交易所无漏报。
+  在任一快照区间内发生现金流/成交、缺窗口、缺资产、时钟不明/倒退、迟到来源、未终结订单、
+  外部或 legacy 成交、unsupported position 等均不能匹配。不能用一个最终余额或净仓位放行。
+- 逐币 `before cash + account_cash_delta = after cash`，不再次加 fee/pnl，也不将 position_cash_delta
+  摊给多空腿；重叠来源按原生 ID 精确去重。原生 trade/funding 分量独立交叉检查，不能用调整最终余额掩盖分量冲突。
+- 逐腿重建原生成交的 pooled basis、真实数量、已实现损益及 mark 未实现损益，核对 DB 两端和每 attempt 的增量；
+  部分平仓不错误采用单条策略记录成本。`Fraction` 保留精确有理均价，输出 numerator/denominator 字符串，
+  不继承调用者 Decimal context，不发明 epsilon 或交易所舍入公式；原生舍入差异明确报告，不能自动接受。
+  Binance 独立 account/positionRisk、USDT 总值/资产明细也相互核对。
+- [OKX positions 文档](https://my.okx.com/docs-v5/en/#trading-account-rest-api-get-positions) 的 position IMR/MMR
+  及 notional 是 USD 口径，不当 USDT PnL 相加；USD 总值仅保留，不隐式换汇。
+  非零 isolated-position 现金/余额通道、借贷/利息等尚未证明闭合时明确 incomplete。
+  无原生 leg 的 funding 仍是 account-only；`mark_ms` 仍未知。原 source flags=false 不升级。
+
+返回 `chan-account-check-v1`，文档 SHA 可供 `get_account_check(check_id)` 重新读取。
+只追加 `chanpy_account_checks` 保存原始来源 ID、当时的已核历史/数量快照及确定性计算结果；旧快照要与
+不可变 journal 前缀匹配，不随后来合法平仓被重写。缺文件/来源或历史损坏保存脱敏 incomplete，不默默消失；
+发布失败整笔回滚并抛错。UPDATE/DELETE/REPLACE、缺 guard、损坏字节/列或关闭完整性 PRAGMA 均拒绝。
+
+差异/incomplete 对 venue+mode+原生 typed identifier 形成**持久冻结**，跨连接、重启和自定义 trade table 生效；
+不能靠 account_scope、路由 context id 或后续一次匹配清除。没有自动解冻/接受调用者“已修复”标志的接口。
+新 swap v3 开仓的 prepare、intent/claim 同事务及最终 HTTP 前检查冻结；原账户可证明的取消/查单/降风险
+仍保留既有候选/kill/账户门禁。claim 后出现冻结不会重置为 created 或重下；不能承诺撤回已经发送的网络请求。
+
+`matched_observations` 只核对给定来源区间，**不是完整账户 PASS/准入**。
+`get_account_risk_state(context)` 的 `admission_verified=false` 恒为 false；没有历史冻结也不等于通过鲜活对账。
+调度仍需在 C6 串起强制的新鲜来源/失败阻断，不能把此 guard 当作跳过对账的通行证。
+全历史检查重验的时延/存储容量、原生舍入与 isolated 通道、全账户 funding 分腿和完整含费模拟、C6/C7 尚未完成。
+摘要仅用于本地完整性检查，不是交易所签名或抗整库伪造证明；实际交易所/测试网/实盘未认证、未授权。
 
 当前只完成了离线可证明的安全边界，尚未完成交易所逐一测试网认证。待验证项包括：
 沙盒支持与市场映射、客户端订单号历史查询窗口/分页、post-only/reduce-only/
