@@ -474,7 +474,8 @@ SQLite 核心导入不需要 CCXT；显式真实来源采集仍需该既有可�
 不组合非法 fromId+time；单毫秒仍饱和即 unknown。OKX 近 3 日用 fills，较早用 fills-history，
 分别以 billId 排他 after 分页；`ts` 是数据生成时间，不能代替 `fillTime`，缺成交时间保留 null。
 资金费保留原生 cash_delta；OKX 的 fee/wallet/position channels 独立保留，缺腿身份不猜分配。
-每次最多 128 个 GET、90 日传输上界，超界/游标停滞/来源冲突都失败；这些不是策略搜索参数，
+每次来源扫描最多 128 个 GET、90 日传输上界，另有扫描前后两次账户身份 GET；
+超界/游标停滞/来源冲突都失败；这些不是策略搜索参数，
 也不保证交易所 3 个月保留期之外的数据可取。空页、导入成功均不证明资金费为零或账户完整。
 
 `get_execution_facts(account_scope, code, venue=..., mode=...)` 读取已验证的去重事实，
@@ -483,10 +484,29 @@ SQLite 核心导入不需要 CCXT；显式真实来源采集仍需该既有可�
 只追加触发器与原子升级同前；取得写锁前冻结有限输入快照，调用者不能在校验后改写被发布内容。
 扫描仅存摘要清单，避免每次重复存整批事实，失败不留半次导入。
 不改当前订单/仓位，收据始终 `coverage=observed_execution_facts`、`economics_complete=false`。
-SHA 不是服务器签名。下一步还需服务器账户/环境绑定、每次历史 attempt 的归属核验、
-逐腿持仓/mark/钱包闭合、持久化新风险冻结和完整模拟账户；现有净仓位接口不能替代双腿对账。
+SHA 不是服务器签名。新扫描的账户关联与历史 attempt 归属检查见下；
+逐腿持仓/mark/钱包闭合、持久化新风险冻结和完整模拟账户仍待，现有净仓位接口不能替代双腿对账。
 这两个来源流也不涵盖所有转账、转换、利息或强平附加费用；完整钱包对账必须另有流水证据，
 不能把余额差猜成交易收益，或将 funding-only 列表当作全钱包现金流。
+
+#### C5 扫描账户关联与历史尝试归属（离线子边界）
+
+新 `sync_execution_facts` 在来源 GET 前后只读核对相同原生账户/环境；scan manifest v2 额外保存
+这个观察及 UTC 边界，原 `chan-execution-scan-v1` 的内容、SHA 和 flags=false 不变。
+复用现有只追加 scans 表，无新数据库表/迁移；facts 与关联在同一 SQLite 事务中首次发布。
+相同 scope+venue+mode 已绑定后不能静默换账户/环境或新增无关联来源。
+相同 scan/context 重复导入保留首次观察；旧 manifest v1 不允许事后补证，也不因同名 namespace 被新扫描认证。
+
+- `db.get_execution_scan_account(scan_id)`：重新核验 source/fact/manifest 和 namespace，返回该扫描的原始关联，旧扫描返回 null；未知或损坏证据拒绝。
+- `db.get_execution_ownership(scan_id)`：在同一 SQLite 快照读取关联和该标的完整历史 attempts，
+  返回 `chan-execution-ownership-v1`，包含 source SHA、account context id、history SHA 和逐笔 records。
+  按原账户/环境/market、服务器及已回显的客户端 id、历史 attempt、方向/leg、真实成交时间及精确数量匹配，
+  不只看当前最后一个 close 槽。旧/外部订单、缺 ACK/成交时间、歧义、单位/指纹冲突或超请求量均明确 unowned，不能择优选一条。
+- 缺 ACK 时不会从成交记录猜补 ACK/记账；仍须经过原来的查单恢复。资金费没有原生 leg 时明确 unallocated，不按净量摊给多空腿。
+
+该报告只声明 `coverage=observed_scan_facts_only`、`economics_complete=false`。匹配到全部已观察成交、
+空扫描或零条异常，都不证明未漏成交、钱包现金流完整、余额/mark/双腿闭合，不能释放新风险。
+它不更新订单数量/PnL，也不是服务器签名、真实交易所认证或真实账户运行授权。
 
 当前只完成了离线可证明的安全边界，尚未完成交易所逐一测试网认证。待验证项包括：
 沙盒支持与市场映射、客户端订单号历史查询窗口/分页、post-only/reduce-only/

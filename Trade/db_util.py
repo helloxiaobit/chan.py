@@ -171,15 +171,34 @@ class CChanDB:
         with self.db.transaction():
             return read_history(self.db, self.table, self.get_record(record_id))
 
-    def store_execution_scan(self, receipt):
+    def store_execution_scan(self, receipt, *, account_observation=None):
         self._require_execution_sqlite()
         from .ExecutionStore import store_scan
-        receipt = json.loads(canonical_bytes(receipt))  # Own one finite snapshot before taking the writer lock.
+        snapshot = json.loads(canonical_bytes({"receipt": receipt, "account": account_observation}))
         try:
             with self.db.transaction():
-                return store_scan(self.db, receipt)
+                return store_scan(self.db, snapshot["receipt"], snapshot["account"])
         except sqlite3.DatabaseError:
             raise CChanException("逐笔来源存储冲突/失败，整组回滚且禁止重下", ErrCode.LIST_ORDER_FAIL) from None
+
+    def get_execution_scan_account(self, scan_id):
+        self._require_execution_sqlite()
+        from .ExecutionStore import read_scan_account
+        with self.db.transaction():
+            return read_scan_account(self.db, scan_id)
+
+    def get_execution_ownership(self, scan_id):
+        self._require_execution_sqlite()
+        from .ExecutionStore import read_scan_with_account
+        from .ExecutionReconcile import build_execution_ownership
+        from .OrderAudit import read_history
+        with self.db.transaction():
+            receipt, linked = read_scan_with_account(self.db, scan_id)
+            if linked is None:
+                raise CChanException("旧扫描缺少本次原生账户观察，不能回填归属", ErrCode.LIST_ORDER_FAIL)
+            records = self.db.query(f"SELECT * FROM {self.table} WHERE stock_code=? ORDER BY id", (receipt["payload"]["market"]["symbol"],))
+            histories = [read_history(self.db, self.table, row) for row in records]
+            return build_execution_ownership(receipt, linked["observation"]["account_context"], histories)
 
     def get_execution_scans(self, account_scope, instrument):
         self._require_execution_sqlite()

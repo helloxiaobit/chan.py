@@ -36,7 +36,7 @@
 | C2 | 已完成离线实现与验收 | 父 K/原始关系发布边界、不可变决策、完整身份对账、真实三层策略 future/prefix 变异；非外部认证 |
 | C3 | 已完成离线实现与验收 | UTC purge/unknown、三模型身份、write-once 部署、三阶段评分与 SQLite 版本链；非实盘/外部认证 |
 | C4 | 已完成离线实现与验收 | 有界实际样本→三模型→搜索/独立验证→部署→全 trial 重放；93 项组合、608 项全仓离线通过，非经济采用 |
-| C5 | 进行中 | 单位/原生参数/ACK/历史分页/尝试历史/逐笔来源/新意图账户绑定离线通过；逐腿对账与模拟账户仍待 |
+| C5 | 进行中 | 单位/原生参数/恢复/历史/来源/账户绑定/扫描内历史归属离线通过；钱包与逐腿对账、持久冻结、模拟账户仍待 |
 | C6 | 待开发 | 调度/API/离线 E2E |
 | C7 | 待前置验收 | 公共行情与有准入后的外部认证；代码发布按阶段进行 |
 
@@ -335,3 +335,24 @@ C1 收尾清理计划：迁移校验由两份全表内存列表改为有序逐�
 - 完整串行离线命令 `python -m pytest tests -m 'not network' --basetemp <new-temp-directory> -q --tb=short -p no:cacheprovider`：990 passed / 7 expected skipped / 1 network deselected / 14 existing model warnings，553.29s。前一 pytest 明确 exit 0 后才补本节；compileall/diff 已通过，提交前再核 staged diff。按主代理串行自审，不冒称独立审计。
 - 文件范围：新增 `Trade/AccountIdentity.py`、`tests/test_account_identity.py`、`tests/test_crypto_account_binding.py`；修改 `Trade/CCXTTradeEngine.py`、`Trade/OrderAudit.py`、`tests/test_crypto_order_contract.py`、`tests/test_crypto_venue_parameters.py`、`tests/test_trade_safety.py`、`README_FULL.md` 与本台账。fake 私有 I/O 和真实本地 request builder 不变，没有依赖/配置/权限/冻结研究改动。
 - 范围与下一步：观察到客户端上下文不是服务器签名/全局客户端锁，未真实验证测试网路由、区域 endpoint 或频率/延时预算。后续先把新扫描的前后原生上下文与原 scan hash 独立关联，再用历史 attempt/client/server id/单位/时钟核实逐笔归属，不能仅凭 identifier_sha256 忽略 venue+mode，也不能给旧扫描补造身份或提升 `account_scope_verified=false` / `economics_complete=false`。钱包转账/转换/利息/强平等流水、逐腿 mark/余额重建、持久风险冻结、含费模拟与 C6/C7 仍待，Goal active，所有研究/真实订单/外部认证门禁保留。
+
+### C5 第八子边界实施与清理计划：扫描身份关联及历史尝试归属
+
+- 起始 clean、已推送 `9a914c2aac6ed53bb232c8de20f924a59083cad3`；上一轮完整离线 990、提交后 67 项通过为有效进展。继续复用 executing-plans/TDD/verification，主代理串行，不连接真实账户，不触碰冻结研究。
+- 不新增一套 publisher/订单逻辑或补造旧身份。复用 execution_scans 的不可变 manifest，增加明确 v2 形状：原 source receipt/hash 不变，额外关联本次扫描前后的相同原生 account_context 与观察时间。只有新扫描首次原子导入能绑定；已持久化的 v1 无关联扫描不允许事后补证。原 source reader 仍返回原 bytes/flags=false。
+- 相同 account_scope+venue+mode 已有关联时，后续扫描不能静默切换 account_context；同 namespace 的旧未关联来源保留未关联，不能因名称相同获得当前身份。重复相同 source/context 幂等保留首次观察；冲突、扫描中换账户、关联发布失败均整组不写 facts/scan，不影响订单状态。
+- 增加独立逐笔归属观察入口，在同一 SQLite 快照读取 source、关联与完整历史 attempts；按原账户/venue/mode/market、实际 server/client id、attempt、方向/leg、真实成交时钟和精确数量检查，不从当前最后一个 close 槽、名称标签或净持仓猜来源。无 id、缺时钟、外部/遗留来源、歧义和超请求量须显式 records，不排名选择。
+- 归属仅覆盖该已关联扫描内实际观察的 trade，不证明无遗漏/完整现金流；缺资金费 leg 时明确 unallocated，不按净量分配，不以零条记录放行新风险。本边界不更新 qty/PnL、不解除冻结、不把 coverage 写成完整账户 PASS。独立钱包来源与逐腿余额/mark 对账、持久冻结、含费模拟继续属于必须完成的后续 C5。
+- 先 manifest/绑定失败 RED→GREEN、native engine 前后观察与 SQLite rollback/重复/重启；再真实历史多次 partial-close attempt 夹具及单变异归属 TDD。最后适用前序交易/源/部署回归、完整离线、核心可选依赖 smoke、compileall/diff/Lore 与已授权的快进推送；Goal 保持 active。
+
+### C5 第八子边界证据：有原生观察的扫描与完整历史尝试（C5 未完成）
+
+- 17 项初始 RED：缺 account_observation 写入/读取接口，以及扫描中切换账户仍会写入。最小实现保留 source v1 的原始有限字节/SHA/flags=false，既有 scans manifest v2 只额外记录相同前后 account_context 与 UTC 观察边界，不新增 SQL 表/迁移或 publisher。首次 facts/manifest 同事务发布，输入 receipt+observation 在写锁前一次自有快照；profile 读取发生在 DB 锁外。
+- account_scope+venue+mode 已有 native context 后拒绝静默换上下文或新增 unbound 来源；已有 v1 不允许事后关联，重复 v2 保留首次观察，不剥离关联。不同仪器的同一命名空间仍约束原账户，已有未关联扫描不会因后来同名绑定而改 flags。scope 仍不是服务器认证。两只原有表的 append-only/foreign schema/原子失败语义不变。
+- ExecutionReconcile 先观察缺模块 RED；数据库入口在同一 SQLite 快照核验来源、关联及该标的全部已验证历史 attempts。原生交易按完整账户/venue/mode/market、已记录 server id、回显 client id、phase/attempt、方向/leg、真实 fill 时钟和精确数量归属；不用当前最后一个 close 槽，也不从 native fill 猜补 ACK。输出绑定 source/account/history SHA，仅为 observed_scan_facts_only，economics_complete=false。
+- 两平台真实 SQLite 夹具执行 open→partial-close-canceled→second-close，覆盖 long/short 与 one-way/hedged，三笔分别引用 open1/close1/close2，重启逐字相同且不改 qty/PnL。错 order/client/side/leg/time/account/单位、legacy、歧义及逐笔或合计超请求量均给出 unowned records；另一账户同号的 server id 不混淆。缺 ACK 先 unrecorded，只有原状态机查单恢复取得原 id 后才 owned，仍只有一次下单。
+- 提交前自审的 RED：9 种重算 SHA 后的 manifest/fact 缺字段或错误对象曾泄漏 KeyError/TypeError；在解析入口先验证形状，统一 CChan 失败，不隐藏或修复损坏源。另两项冻结 contract_id/contract SHA RED 后，损坏指纹不能授权 owned；一个 Decimal Emax/Emin/Subnormal trap RED 后，数量核算使用固定 50 位有界精确 Context，不继承调用者 traps，不用容差擦小仓。
+- 适用源/归属/历史/事务最终组合 187 passed（21.54s）；更早交易/恢复/部署组合 559 passed / 6 existing model warnings（96.31s）是补指纹/固定 Decimal 前的树，没有当作最终树证据。完整命令 `python -m pytest tests -m 'not network' --basetemp <new-temp-directory> -q --tb=short -p no:cacheprovider`：1061 passed / 7 expected skipped / 1 network deselected / 14 existing model warnings，538.99s。每个先前 pytest 均在明确 exit 后才编辑；未同时启动第二套长任务。
+- 新解释器屏蔽 ccxt，ownership/store/交易核心导入与 SQLite/dry-run 构造 smoke PASS；compileall/diff 已通过，提交前再核 staged diff。主代理按串行约束自审，不声称独立审计；没有真实账户 I/O、正式研究/绩效、依赖/配置/权限修改。
+- 文件范围：新增 `Trade/ExecutionReconcile.py`、`tests/test_execution_account_binding.py`、`tests/test_execution_ownership.py`；修改 `Trade/ExecutionStore.py`、`Trade/CCXTTradeEngine.py`、`Trade/db_util.py`、`README_FULL.md` 和本台账。复用原 manifest、事务、source normalization、history verifier 和 canonical helper，删除旧重复的 manifest 发布/字段检查分支；没有第二套订单生命周期。
+- 下一步仍为 C5 必需工作：独立 account-wide 钱包流水（含非 funding 的转账/转换/利息/强平等，不与 trade fee/PnL 双记）、带原生来源/时钟的逐腿持仓与 mark/余额观察、对账差异和持久化新风险冻结，保留已证明的取消/降风险，及完整含费模拟账户。当前 funding 缺 native leg 明确 unallocated；扫描局部/空页/零异常不能证明无遗漏或完整现金流。全账户现金流与逐腿资金费分配是不同证据，不能为凑 PASS 猜分配；实际限频/锁时延预算和外部平台仍未认证。C6/C7、Goal 与所有交易/研究门禁保持原状态。

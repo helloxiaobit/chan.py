@@ -773,9 +773,13 @@ class CCCXTTradeEngine(CTradeEngine):
             raise CChanException("真实来源导入仅用于显式 SQLite 线性永续会话；模拟不可创建真实会话", ErrCode.LIST_ORDER_FAIL)
         from .ExecutionFacts import collect_execution_scan
         definition, _ = self._market_contract(code)
+        started = utc_now_ms()
+        before = observe_account_context(self.get_exchange(), self.mode)
         receipt = collect_execution_scan(self.get_exchange(), definition, account_scope=account_scope,
                                          mode=self.mode, start_ms=start_ms, end_ms=end_ms)
-        self.chan_db.store_execution_scan(receipt)
+        after = observe_account_context(self.get_exchange(), self.mode)
+        self.chan_db.store_execution_scan(receipt, account_observation={"before": before, "after": after,
+            "started_ms": started, "finished_ms": utc_now_ms()})
         return receipt
 
     def get_position(self, code: str) -> float:

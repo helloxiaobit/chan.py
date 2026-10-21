@@ -7,6 +7,7 @@ from Common.KLineTime import utc_now_ms
 from CustomBuySellPoint.Decision import canonical_bytes
 from .ExecutionFacts import SCHEMA as RECEIPT_SCHEMA, verify_execution_fact, verify_execution_scan
 from .OrderAudit import validate_schema
+from .AccountIdentity import verify_account_context
 
 
 FACTS = "chanpy_execution_facts"
@@ -69,20 +70,108 @@ def _row_context(row):
 
 def _read_fact(row):
     value = _load(row)
+    if not isinstance(value, dict) or set(value) != {"account_scope", "venue", "mode", "market", "fact"}:
+        _fail()
     fact = value["fact"]
     verify_execution_fact(fact, value["market"], value["venue"])
-    if (set(value) != {"account_scope", "venue", "mode", "market", "fact"}
-            or _context(value) != _row_context(row) or fact["source_id"] != row["source_id"]
+    if (_context(value) != _row_context(row) or fact["source_id"] != row["source_id"]
             or fact["kind"] != row["kind"] or fact["source_ms"] != row["source_ms"]):
         _fail()
     return value
 
 
-def store_scan(db, receipt):
+def _verify_observation(observation, payload):
+    try:
+        if (set(observation) != {"schema", "account_context", "started_ms", "finished_ms", "coverage"}
+                or observation["schema"] != "chan-execution-account-observation-v1"
+                or observation["coverage"] != "native_context_observed_around_scan"
+                or any(type(observation[k]) is not int for k in ("started_ms", "finished_ms"))
+                or not 0 <= observation["started_ms"] <= observation["finished_ms"] <= utc_now_ms()
+                or payload["end_ms"] > observation["finished_ms"]):
+            _fail()
+        account = observation["account_context"]
+        verify_account_context(account)
+        if account["venue"] != payload["venue"] or account["mode"] != payload["mode"]:
+            _fail()
+        return observation
+    except (TypeError, ValueError, KeyError, AttributeError):
+        _fail()
+
+
+def _prepare_observation(observed, payload):
+    if observed is None:
+        return None
+    try:
+        if set(observed) != {"before", "after", "started_ms", "finished_ms"}:
+            _fail()
+        verify_account_context(observed["before"])
+        verify_account_context(observed["after"])
+        if canonical_bytes(observed["before"]) != canonical_bytes(observed["after"]):
+            _fail()
+        return _verify_observation({"schema": "chan-execution-account-observation-v1",
+            "account_context": observed["before"], "started_ms": observed["started_ms"],
+            "finished_ms": observed["finished_ms"], "coverage": "native_context_observed_around_scan"}, payload)
+    except (TypeError, ValueError, KeyError, AttributeError):
+        _fail()
+
+
+def _read_manifest(row):
+    manifest = _load(row)
+    expected = {"schema", "context", "facts", "receipt_sha256"}
+    if not isinstance(manifest, dict) or not expected <= set(manifest):
+        _fail()
+    context = manifest["context"]
+    try:
+        stored_context = _context(context)
+    except (KeyError, TypeError, AttributeError):
+        _fail()
+    if (not isinstance(manifest["facts"], list)
+            or any(not isinstance(ref, dict) or set(ref) != {"kind", "source_id", "payload_sha256"} for ref in manifest["facts"])):
+        _fail()
+    if manifest["schema"] == "chan-execution-manifest-v2":
+        expected.add("native_account")
+        _verify_observation(manifest.get("native_account"), context)
+    elif manifest["schema"] != "chan-execution-manifest-v1":
+        _fail()
+    if (set(manifest) != expected or stored_context != _row_context(row)
+            or manifest["receipt_sha256"] != row["scan_id"]):
+        _fail()
+    return manifest
+
+
+def _namespace_account(db, context):
+    # Header/account proof is independent of potentially large fact sets. Full
+    # source/fact verification remains mandatory when reading a selected scan.
+    account = None
+    for row in db.query(f"SELECT * FROM {SCANS} WHERE account_scope=? AND venue=? AND mode=?", context[:3]):
+        manifest = _read_manifest(row)
+        native = manifest.get("native_account")
+        if native is not None:
+            candidate = canonical_bytes(native["account_context"])
+            if account is not None and account != candidate:
+                _fail()
+            account = candidate
+    return account
+
+
+def store_scan(db, receipt, account_observation=None):
     verify_execution_scan(receipt)
     validate_schema(db.conn, SCHEMA)
     payload = receipt["payload"]
     context, observed, manifest = _context(payload), utc_now_ms(), []
+    observation = _prepare_observation(account_observation, payload)
+    bound = _namespace_account(db, context)
+    existing = db.query_one(f"SELECT * FROM {SCANS} WHERE scan_id=?", (receipt["payload_sha256"],))
+    if bound is not None and ((observation is None and existing is None)
+            or (observation is not None and canonical_bytes(observation["account_context"]) != bound)):
+        _fail()
+    if existing:
+        _read_scan(db, existing)
+        previous = _read_manifest(existing).get("native_account")
+        if ((previous is None) != (observation is None)
+                or (previous is not None and canonical_bytes(previous["account_context"]) != canonical_bytes(observation["account_context"]))):
+            _fail()  # Never backfill or strip the first import's native context.
+        return receipt["payload_sha256"]
     for fact in payload["facts"]:
         document = {key: payload[key] for key in ("account_scope", "venue", "mode", "market")}
         raw, digest = _dump({**document, "fact": fact})
@@ -97,25 +186,17 @@ def store_scan(db, receipt):
         manifest.append({"kind": fact["kind"], "source_id": fact["source_id"], "payload_sha256": digest})
     document = {"schema": "chan-execution-manifest-v1", "context": {key: value for key, value in payload.items() if key != "facts"},
                 "facts": manifest, "receipt_sha256": receipt["payload_sha256"]}
+    if observation is not None:
+        document.update(schema="chan-execution-manifest-v2", native_account=observation)
     raw, digest = _dump(document)
-    existing = db.query_one(f"SELECT * FROM {SCANS} WHERE scan_id=?", (receipt["payload_sha256"],))
-    if existing:
-        _read_scan(db, existing)
-        if (existing["payload"], existing["payload_sha256"]) != (raw, digest):
-            _fail()
-    else:
-        db.execute(f"INSERT INTO {SCANS}(scan_id,account_scope,venue,mode,instrument,observed_ms,payload,payload_sha256) VALUES(?,?,?,?,?,?,?,?)",
-                   (receipt["payload_sha256"], *context, observed, raw, digest))
+    db.execute(f"INSERT INTO {SCANS}(scan_id,account_scope,venue,mode,instrument,observed_ms,payload,payload_sha256) VALUES(?,?,?,?,?,?,?,?)",
+               (receipt["payload_sha256"], *context, observed, raw, digest))
     return receipt["payload_sha256"]
 
 
 def _read_scan(db, row):
-    manifest = _load(row)
+    manifest = _read_manifest(row)
     context = manifest["context"]
-    if (set(manifest) != {"schema", "context", "facts", "receipt_sha256"}
-            or manifest["schema"] != "chan-execution-manifest-v1"
-            or _context(context) != _row_context(row) or manifest["receipt_sha256"] != row["scan_id"]):
-        _fail()
     facts = []
     for reference in manifest["facts"]:
         stored = db.query_one(f"SELECT * FROM {FACTS} WHERE account_scope=? AND venue=? AND mode=? AND instrument=? AND kind=? AND source_id=?",
@@ -127,6 +208,23 @@ def _read_scan(db, row):
             _fail()
         facts.append(fact["fact"])
     return verify_execution_scan({"schema": RECEIPT_SCHEMA, "payload_sha256": row["scan_id"], "payload": {**context, "facts": facts}})
+
+
+def read_scan_with_account(db, scan_id):
+    validate_schema(db.conn, SCHEMA)
+    row = db.query_one(f"SELECT * FROM {SCANS} WHERE scan_id=?", (scan_id,))
+    if row is None:
+        _fail()
+    receipt = _read_scan(db, row)
+    manifest = _read_manifest(row)
+    _namespace_account(db, _context(manifest["context"]))
+    native = manifest.get("native_account")
+    account = None if native is None else {"scan_id": scan_id, "manifest_sha256": row["payload_sha256"], "observation": native}
+    return receipt, account
+
+
+def read_scan_account(db, scan_id):
+    return read_scan_with_account(db, scan_id)[1]
 
 
 def read_scans(db, account_scope, instrument):
