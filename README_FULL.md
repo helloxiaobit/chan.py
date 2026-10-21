@@ -254,7 +254,8 @@ python -m ModelStrategy.research.cli certify-v5-btc-is --spec ModelStrategy/rese
 密钥本身永远不会打开测试网或实盘，`dry_run=False` 也不能绕过该配置。
 dry-run 不创建 CCXT 会话；默认即时成交，测试时还可注入零成交/部分成交序列，
 验证订单状态恢复而不连接交易所。这条旧模拟路径尚未完成 C5 的费用/funding/mark
-账户与真实合约规格撮合验收，不能作为真实账户认证。
+账户与真实合约规格撮合验收，不能作为真实账户认证。需要经济核算时显式选择下文的
+`CLinearPaperAccount`；现有配置默认值不改变。
 
 ```yaml
 ccxt:
@@ -575,8 +576,60 @@ SQLite 增加独立只追加 `chanpy_account_evidence`，`store_account_evidence
 `matched_observations` 只核对给定来源区间，**不是完整账户 PASS/准入**。
 `get_account_risk_state(context)` 的 `admission_verified=false` 恒为 false；没有历史冻结也不等于通过鲜活对账。
 调度仍需在 C6 串起强制的新鲜来源/失败阻断，不能把此 guard 当作跳过对账的通行证。
-全历史检查重验的时延/存储容量、原生舍入与 isolated 通道、全账户 funding 分腿和完整含费模拟、C6/C7 尚未完成。
+全历史检查重验的时延/存储容量、原生舍入与 isolated 通道、全账户 funding 分腿及 C6/C7 尚未完成。
 摘要仅用于本地完整性检查，不是交易所签名或抗整库伪造证明；实际交易所/测试网/实盘未认证、未授权。
+
+#### C5 显式经济核算 paper（软件 cross/lot，不是交易所等价撮合）
+
+`Trade/LinearPaperAccount.py` 复用 C4 `CCryptoAccount`，而非另写手续费/权益公式。
+仅在 dry-run 中显式提供 `CSimExchangeState(paper_account=...)` 启用；旧简化状态不能补造来源后升级。
+只支持同一 venue 的 USDT linear swap，可有多个 symbol，`one_way/hedged` 明确指定；
+不能跨 Binance/OKX 钱包共享 cross 保证金，也不猜未知 contractSize、步长或最小金额。
+
+```python
+from ModelStrategy.parameterEvaluate.crypto_account import CCryptoAccountConfig
+from Trade.LinearPaperAccount import CLinearPaperAccount, verify_linear_paper_report
+from Trade.CCXTTradeEngine import CCCXTTradeEngine, CSimExchangeState
+
+# 仅为合成示例，不是 TESTUSDT 实际市场 metadata 或交易授权；db 是调用方的 SQLite CChanDB。
+market = dict(exchange="binance", id="TESTUSDT", symbol="TEST/USDT:USDT", type="swap",
+              base="TEST", quote="USDT", settle="USDT", contractSize="0.01",
+              amount_step="1", price_tick="0.1", min_notional="1")
+paper = CLinearPaperAccount(
+    CCryptoAccountConfig(initial_equity="1000", leverage="3", taker_fee="0.001",
+                        maker_fee="0.0002", taker_slippage="0.001"),
+    markets=[market], position_mode="hedged", start_ms=1000)
+state = CSimExchangeState(paper_account=paper)
+engine = CCCXTTradeEngine(db, sim_state=state, ccxt_conf={"mode": "dry_run", "default_type": "swap"},
+                         trade_conf={}, environ={}, push_msg=False)
+engine.set_sim_quote(market["symbol"], at_ms=1001, bid="99.9", ask="100", mark_price="100")
+# 继续使用 add_trade/cover_trade/restore，不直接改 DB 数量。
+report = verify_linear_paper_report(engine.get_sim_account_report())
+```
+
+- 参数/市场/起始时钟/账户 seed、C4 evaluator、账户和撮合代码均冻结进身份；默认 seed 是新 UUID，
+  可复现任务可显式传 `identity_seed`。seed 相同不等于原服务器状态存在；既有 DB 数量/在途订单不能
+  与真实 fill lots 核对时拒绝新增风险，不据空内存重建一个“新有钱账户”。已知其他账户不能冒领原意图。
+- `amount_step` 单位是张数，内部与 DB 始终币数。prepare 先向下精度化并检验 fee-after-margin；
+  claim、ACK、累计报告、丢 ACK 的 client 查询、部分退出→撤单确认→剩余量新单，复用原状态机和 SQLite。
+  不合法或非步长 fill plan 在 claim 前拒绝，不能把输入错误伪装成交易所拒单。
+- `set_sim_quote` 必须带明确 UTC、bid/ask/mark；bid/ask 满足 tick，mark 独立。市价和每次新增 partial fill
+  使用当时 quote 的不利侧、显式滑点与不利 tick 舍入，不沿用创建订单时的旧价。软件最小价格梯为一个正 tick，
+  不产生零价退出；limit 不越限。resting/post-only 仅采用触价模型，post-only 即刻跨价拒绝，**不模拟 queue priority**。
+- 费用立即入账，滑点只在实际成交价体现一次。`apply_sim_funding(code, at_ms=..., rate=..., mark_price=..., event_id=...)`
+  需要同刻明确 quote/mark；只结算该时点之前的 lots，同 symbol/时点换 ID 不能重复收费。
+  双腿 gross exposure、margin、mark UPnL 保留，不以净仓位为零抹除风险。
+- 经济口径是 **C4 per-fill lot + record FIFO + software cross**：部分退出只能消耗原 record 的真实 lots，
+  不吃掉另一策略/leg。它不是原生 pooled basis。COrderResult/旧 DB 均价仍是 binary64 API 编码，
+  完整实际 fill 价格/费用/PnL 留在 Decimal50 账本；不得把舍入均价当原生精度证明。
+- quote loss/funding 压力可进入 `liquidation_required`；不造强平价，不抹亏损，新风险拒绝，原记录真实减仓仍可入账。
+  软件 reduce-only 可低于 min_notional，但仍必须符合币数/张数步长，不能用 epsilon 抹除小仓。非 Native 场景规则不冒称平台豁免。
+- 报告保留有序 input effects、实际 C4 事件、现金流和完整快照；reader 按原 effect 顺序重放核验，不读取年度绩效，
+  也不是独立经济公式或抗整份来源伪造证明。重复查询/恢复/资金费不重复记账，返回对象不回写原账本。
+
+当前只验收单执行者、保留同一 `CSimExchangeState` 服务器状态的引擎重建/SQLite 恢复。
+并发撮合、进程级服务器持久恢复、queue/流动性与挂单初始保证金预占、原生 pooled/isolated/保险/强平和真实限频仍未认证；
+新模型不作为 real/testnet 的通过收据，也不会触发策略经济采用。C6 仍须串起配置驱动、强制鲜活准入和完整 E2E；Goal 未完成。
 
 当前只完成了离线可证明的安全边界，尚未完成交易所逐一测试网认证。待验证项包括：
 沙盒支持与市场映射、客户端订单号历史查询窗口/分页、post-only/reduce-only/

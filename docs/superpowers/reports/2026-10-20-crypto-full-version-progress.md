@@ -36,7 +36,7 @@
 | C2 | 已完成离线实现与验收 | 父 K/原始关系发布边界、不可变决策、完整身份对账、真实三层策略 future/prefix 变异；非外部认证 |
 | C3 | 已完成离线实现与验收 | UTC purge/unknown、三模型身份、write-once 部署、三阶段评分与 SQLite 版本链；非实盘/外部认证 |
 | C4 | 已完成离线实现与验收 | 有界实际样本→三模型→搜索/独立验证→部署→全 trial 重放；93 项组合、608 项全仓离线通过，非经济采用 |
-| C5 | 进行中 | 订单/原生恢复/历史/账户绑定/逐笔归属及全类型钱包/逐腿来源离线通过；钱包与逐腿闭合、持久冻结、模拟账户仍待 |
+| C5 | 进行中 | 单位/原生恢复/历史/来源、区间核对与持久冻结已离线验收；显式 cross/lot paper 接入原状态机，鲜活准入链、原生同义模型及进程级 E2E 仍待 |
 | C6 | 待开发 | 调度/API/离线 E2E |
 | C7 | 待前置验收 | 公共行情与有准入后的外部认证；代码发布按阶段进行 |
 
@@ -402,3 +402,23 @@ C1 收尾清理计划：迁移校验由两份全表内存列表改为有序逐�
 - compileall/diff 已通过；新解释器屏蔽 ccxt 的账户模块/SQLite schema/不建会话 dry-run smoke 验收。提交前核 staged diff，Lore 后在精确提交复验再快进推送；无新依赖、真实私有 I/O、用户配置/权限/规则或冻结研究变更。
 - 文件范围：新增 Trade/AccountReconcile.py、Trade/AccountRiskStore.py、tests/test_account_reconciliation.py、tests/test_account_risk_freeze.py；接入 Trade/CCXTTradeEngine.py、Trade/db_util.py、Trade/SqliteDB.py、Trade/OrderAudit.py；更新 README_FULL.md 与本台账。复用既有 native normalization、scan manifest、history reader、canonical/schema/事务与 CAS；冻结由检查历史的失败 OR 计算，不维护第二份可变状态，也没有第二套订单引擎。
 - 仍未完成：matched_observations 仅是给定来源区间的精确数学检查，economics_complete=false；admission_verified 恒为 false。缺检查/未冻结不是准入，强制鲜活来源与失败阻断必须继续接入 C6，不得用本 guard 绕过对账。实际 REST 跨响应漂移/mark 时钟/原生舍入、isolated/借贷/资金费分腿与全部资产通道、完整含费/资金费不利模拟、历史检查重验容量/锁时延和 C6/C7 均有真实缺口。C5 与 Goal 继续 active；候选/测试网/实盘及正式研究门禁不变，不宣称生产就绪或关闭 Goal。
+
+### C5 第十一子边界实施与清理计划：显式 paper 账户进入原订单恢复路径
+
+- 前轮是有效进展：19b81a172a32efbd8d27e72f5b13fd485bb72d59 已推送，1223 全离线与精确提交后 178 项通过；本轮起始 clean。继续主代理串行、TDD/fake、既有门禁，不修改默认配置/依赖/冻结研究，也不建立真实会话。
+- 复用 C4 CCryptoAccount 的有限 Decimal、手续费、mark、exact-ms funding、费后保证金与 liquidation_required 口径；不另写一套经济公式。完整 paper 是显式选择的新适配，旧 spot/简化模拟保留兼容但不用于完整验收；paper 身份不伪装原生账户，也不生成 candidate。
+- paper 交易所状态继续使用 CSimExchangeState/既有 orders、fill plan、COrderResult 和 DB intent→claim→report/恢复，不增加第二套订单生命周期。冻结显式市场单位/步长/tick、软件 cross/leverage/费用参数、账户身份和行情时钟。无 metadata/quote/mark/持久意图、数量不合法或费后保证金不足时拒绝，不从 symbol 或密钥猜模式。
+- 当前 C4 是明确的 per-fill lot 账户，paper 同样保留 lot，不把它冒称交易所 pooled 原生账户；record 的部分退出按固定 FIFO 分配到其真实已成交 lots。原生 pooled 逐腿核对继续由上一边界独立负责。C6 比较实际相同 execution events，不拿模型不同的中间 PnL 硬称相等；原生 cash/PnL 模拟若未达到同一模型，必须保留未验收项。
+- 新 quote 明确 bid/ask/mark/UTC；taker 走不利侧与显式滑点，limit 不得越限，resting/post-only 的触价模型明确非 queue/交易所撮合认证。按当前真实 quote 推进 partial fills，累计价/量单调；query/cancel/restart 不能重复扣费用或 funding；hedged 两腿不净额抹除。资金费只收时点之前的旧 lots，明确同刻处理与重复身份。
+- 首先真实 RED→GREEN 验证共享账户核算/单位；随后接入引擎并以 SQLite 路径覆盖 lost ACK、partial/cancel/retry、双腿、费后拒绝、mark loss/liquidation_required 可降风险、幂等/restart 和时间/身份错误。适用旧交易/评估组合、核心无 ccxt、完整离线、compileall/diff/Lore 与快进推送后继续 C5/C6，不因模拟 PASS 关闭 Goal。
+
+### C5 第十一子边界证据：显式含费 paper 账户与原订单恢复路径，C5 未完成
+
+- 新增 Trade/LinearPaperAccount.py 与两个测试文件；接入 Trade/CCXTTradeEngine.py，OrderAudit 仅扩展 paper_account 身份白名单，更新 README_FULL.md 与本台账。默认简化模拟、Spot 与非 dry-run 路径不改配置；完整模型须显式 CSimExchangeState(paper_account=...)，只接受同一 venue 的 USDT linear swap、明确 contracts/base 步长、tick、费用、软件 cross/leverage 和 UTC quote。没有原生账户会话、candidate、真实私有 I/O 或研究运行。
+- 复用未修改的 C4 CCryptoAccount 核算与原有 SQLite intent/CAS/ACK/restore 状态机，不维护第二套经济公式或订单生命周期。输入实际不利成交价后底层 slippage 固定为零，避免双扣；record 按真实 fill lots FIFO 退出，明确不是交易所 pooled basis。单次事件先在候选状态完整计算/校验，成功才原子替换内存账户，返回值不共享可变内部对象。
+- 真实 RED 包括缺适配模块/引擎参数、原生 wire parser 与 Python float 的边界、重封契约的单位/腿/margin/未知字段、费后保证金、非法 bool/funding 数字/quote tick、低价退出与 dust reduce、累计 fill plan、跨 venue/重用账户身份、代码指纹重封、共享状态丢失和 DB 数量漂移。只修 paper 边界，不放宽 native reader；两处错误手算 fixture 按已有真实成交与事件数修正，不把夹具错误当生产 RED。各阶段均等 pytest 明确退出后再编辑。
+- 当前 bid/ask 与显式滑点/tick 形成不利 taker 成交，limit 不越限；resting/post-only 只做明确的触价模型。每个 partial 使用当时 quote 与费后保证金，费用/funding 不重复；旧 lots 才拥有同刻 funding。hedged gross/margin 保留两腿，不用净量归零掩盖暴露。压力状态可按实际持仓减仓，不捏造零价/自动原生强平；软件 min_notional 不阻止合法步长的 dust reduction，不声称平台有同样豁免。
+- 冻结账户、市场、C4 evaluator、paper 适配与撮合源码身份，fresh reader 重算代码指纹，单纯重封 manifest 不能冒称另一执行实现。累计订单平均价是现有 binary64 API 字段，原始逐笔/费用保留 Decimal50。new-risk 在创建意图前核对同账户 DB/历史、实际 lot 与待处理服务器单，丢失同名服务器状态或数量漂移时闭锁，不猜测恢复。已有持久意图与原 server 的 lost ACK/query/cancel/retry 仍由旧恢复流程处理。
+- 最终短组合 356 passed（47.69s）取得于最后模块说明/type annotation/清理 unused test import 与文档修改前，不冒称该结果覆盖后续字节。随后完整串行离线命令 python -m pytest tests -m 'not network' --basetemp <new-temp-directory> -q --tb=short -p no:cacheprovider：1283 passed / 8 expected skipped / 1 network deselected / 14 existing model warnings，570.06s。完整运行期间未编辑源代码、测试或文档。
+- compileall 与 git diff --check 通过。完整测试明确 exit=0 后，独立新解释器用 import finder 屏蔽 ccxt，实际临时 SQLite signal→intent→不利 fill→含费账本→重放 reader PASS；engine.exchange 为 None，ccxt 未导入，数据库随 TemporaryDirectory 回收。按串行约束由主代理自审，非独立审计。提交后须在精确提交复验短组合，通过才快进推送。
+- 剩余边界不隐藏：目前仅单 executor、保留同一 CSimExchangeState 的引擎重建；不是进程级服务器状态持久恢复或多进程 matcher 认证。pending orders 保证金预留、队列/深度/延迟、原生 pooled/isolated/保险/强平规则与实际费率均未认证；费用/成交拒绝不等于真实成交保证。C5 尚有 native 精度/所有账户通道与准入边界，C6 鲜活强制准入/配置/端到端与 C7 仍未完成，Goal 保持 active，不升级实盘/外部认证或触碰冻结研究绩效。

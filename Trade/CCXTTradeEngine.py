@@ -1,15 +1,17 @@
 """ccxt 下单引擎:显式订单意图、撮合、持仓查询和离线演练。
 
-dry_run 模式绝不创建交易所会话。默认立即成交，也可按客户端订单号注入
-单调累计成交计划，用于验证零成交、部分成交和重启恢复逻辑。
+dry_run 模式绝不创建交易所会话。旧兼容路径保留立即/累计计划成交；显式
+paper_account 使用共享 C4 费用/mark/funding/cross 账本和原订单恢复路径。
 """
 import itertools
+import copy
 import hashlib
 import json
 import math
 import re
 from dataclasses import dataclass, field
-from decimal import Decimal, InvalidOperation, localcontext
+from decimal import Context, Decimal, DecimalException, InvalidOperation, ROUND_CEILING, ROUND_FLOOR, localcontext
+from fractions import Fraction
 from typing import Dict, List, Optional
 
 from Common.ChanException import CChanException, ErrCode
@@ -25,6 +27,7 @@ from .TradeEngine import COrderResult, CTradeEngine
 
 _CONTRACT_TYPES = {"swap", "future"}
 _POSITION_SIDES = {"BOTH", "LONG", "SHORT"}
+_PAPER_CONTEXT = Context(prec=50, Emax=100, Emin=-100)
 # Transport bounds, not strategy/search parameters. Exhaustion means unknown,
 # never proof that an accepted order did not exist. Native-id queries run first.
 _HISTORY_MAX_PAGES = 32
@@ -67,11 +70,15 @@ def _float_exact(value):
 class _SimOrder:
     code: str
     is_buy: bool
-    price: float
+    price: Optional[float]
     reduce_only: bool
     result: COrderResult
     fill_plan: List[float]
     next_fill: int = 0
+    paper_contract: Optional[dict] = None
+    paper_position_id: Optional[str] = None
+    paper_role: str = "taker"
+    paper_reason: Optional[str] = None
 
 
 @dataclass
@@ -88,6 +95,7 @@ class CSimExchangeState:
         default_factory=lambda: {"USDT": 100000.0}
     )
     last_price: Dict[str, float] = field(default_factory=dict)
+    paper_account: object = None  # 显式完整 paper；None 保留旧兼容撮合，不能冒称完整账户。
 
 
 def _normalize_order_status(value) -> str:
@@ -159,6 +167,17 @@ class CCCXTTradeEngine(CTradeEngine):
                 "sim_state 只能用于 dry_run", ErrCode.PARA_ERROR
             )
         self.sim_state = sim_state or CSimExchangeState()
+        if self.sim_state.paper_account is not None:
+            from .LinearPaperAccount import CLinearPaperAccount
+            if not isinstance(self.sim_state.paper_account, CLinearPaperAccount) or self.market_type != "swap" or chan_db.db_type != "sqlite":
+                raise CChanException("完整 paper 仅用于显式 SQLite USDT 线性永续", ErrCode.PARA_ERROR)
+            if (any(order.paper_contract is None for order in self.sim_state.order_state.values())
+                    or any(self.sim_state.positions.values())
+                    or set(self.sim_state.orders) != set(self.sim_state.order_state)
+                    or set(self.sim_state.orders) != set(self.sim_state.client_order_ids.values())
+                    or any(key != order.result.order_id or self.sim_state.orders[key] is not order.result
+                        for key, order in self.sim_state.order_state.items())):
+                raise CChanException("旧简化模拟不能补造完整 paper 账户来源", ErrCode.PARA_ERROR)
         self._order_id_gen = self.sim_state.order_id_gen
         self._sim_orders = self.sim_state.orders
         self._sim_order_state = self.sim_state.order_state
@@ -180,7 +199,25 @@ class CCCXTTradeEngine(CTradeEngine):
 
     def set_sim_price(self, code: str, price: float):
         # dry_run:注入市价单参考价(测试/演练用)
+        if self.sim_state.paper_account is not None:
+            raise CChanException("完整 paper 必须 set_sim_quote 显式提供 UTC/bid/ask/mark", ErrCode.PARA_ERROR)
         self._sim_last_price[code] = price
+
+    def _paper(self):
+        account = self.sim_state.paper_account
+        if not self.dry_run or account is None:
+            raise CChanException("需要显式完整 paper，不能建立真实会话或用旧撮合补证", ErrCode.PARA_ERROR)
+        account.assert_identity()
+        return account
+
+    def set_sim_quote(self, code, *, at_ms, bid, ask, mark_price):
+        return self._paper().set_quote(code, at_ms=at_ms, bid=bid, ask=ask, mark_price=mark_price)
+
+    def apply_sim_funding(self, code, *, at_ms, rate, mark_price, event_id):
+        return self._paper().apply_funding(code, at_ms=at_ms, rate=rate, mark_price=mark_price, event_id=event_id)
+
+    def get_sim_account_report(self):
+        return self._paper().to_dict()
 
     def make_client_order_id(self, record, phase):
         # 只生成新 id；查询/恢复始终使用已持久化原 id，不裁剪或改写旧号。
@@ -222,6 +259,10 @@ class CCCXTTradeEngine(CTradeEngine):
 
     def _position_side(self, record):
         if self.dry_run:
+            if self.sim_state.paper_account is not None:
+                paper = self._paper()
+                if record.get("status") == "signal":
+                    return "BOTH" if paper.position_mode == "one_way" else "LONG" if record["is_buy"] else "SHORT"
             return super()._position_side(record)
         return self._execution_settings(record["stock_code"], record,
             reduce_only=record.get("status") != "signal")["position_side"]
@@ -316,6 +357,8 @@ class CCCXTTradeEngine(CTradeEngine):
         """为下一张指定客户端订单设置累计成交序列。"""
         if not client_order_id or not cumulative_fills:
             raise CChanException("dry_run 成交计划不能为空", ErrCode.PARA_ERROR)
+        if self.sim_state.paper_account is not None and any(type(v) is bool for v in cumulative_fills):
+            raise CChanException("paper 累计量不能使用 bool", ErrCode.PARA_ERROR)
         fills = [float(value) for value in cumulative_fills]
         if any(not math.isfinite(value) or value < 0 for value in fills):
             raise CChanException("dry_run 成交计划包含无效数量", ErrCode.PARA_ERROR)
@@ -413,6 +456,8 @@ class CCCXTTradeEngine(CTradeEngine):
 
     def prepare_order(self, code, amount, price, *, reduce_only=False, record=None, post_only=False):
         if self.dry_run:
+            if self.sim_state.paper_account is not None:
+                return self._prepare_paper_order(code, amount, price, reduce_only=reduce_only, record=record, post_only=post_only)
             return super().prepare_order(code, amount, price, reduce_only=reduce_only, record=record, post_only=post_only)
         if type(post_only) is not bool or (post_only and price is None):
             raise CChanException("post-only 必须为明确 bool 且有价格", ErrCode.PARA_ERROR)
@@ -547,6 +592,8 @@ class CCCXTTradeEngine(CTradeEngine):
             )
         side = self._resolve_position_side(position_side)
         if self.dry_run:
+            if self.sim_state.paper_account is not None:
+                return self._place_paper_order(code, is_buy, amount, price, client_order_id, reduce_only, post_only, side)
             return self._sim_place_order(
                 code,
                 is_buy,
@@ -603,6 +650,11 @@ class CCCXTTradeEngine(CTradeEngine):
 
     def cancel_order(self, code: str, order_id: str) -> bool:
         if self.dry_run:
+            if self.sim_state.paper_account is not None:
+                state = self._paper_state(code, order_id, None)
+                if state.result.status == "open":
+                    state.result.status = "canceled"
+                return True
             if order_id in self._sim_orders:
                 self._sim_orders[order_id].status = "canceled"
             return True
@@ -628,6 +680,11 @@ class CCCXTTradeEngine(CTradeEngine):
         client_order_id: Optional[str] = None,
     ) -> COrderResult:
         if self.dry_run:
+            if self.sim_state.paper_account is not None:
+                state = self._paper_state(code, order_id, client_order_id)
+                if state.result.status == "open":
+                    self._advance_paper_order(state)
+                return copy.copy(state.result)
             if order_id is None and client_order_id:
                 order_id = self._sim_client_order_ids.get(client_order_id)
             if order_id not in self._sim_orders:
@@ -763,6 +820,8 @@ class CCCXTTradeEngine(CTradeEngine):
 
     def get_balance(self) -> Dict[str, float]:
         if self.dry_run:
+            if self.sim_state.paper_account is not None:
+                return {"USDT": float(self._paper().snapshot()["cash"])}
             return dict(self._sim_balance)
         import ccxt
         try:
@@ -823,6 +882,12 @@ class CCCXTTradeEngine(CTradeEngine):
 
     def get_position(self, code: str) -> float:
         if self.dry_run:
+            if self.sim_state.paper_account is not None:
+                with localcontext(_PAPER_CONTEXT):
+                    paper = self._paper()
+                    value = sum((paper.position_quantity(key)*(1 if r["is_buy"] else -1)
+                        for key, r in paper.records.items() if r["code"] == code), Decimal(0))
+                    return _float_exact(value) if value >= 0 else -_float_exact(-value)
             return self._sim_positions.get(code, 0.0)
         if self.market_type in _CONTRACT_TYPES:
             import ccxt
@@ -853,6 +918,236 @@ class CCCXTTradeEngine(CTradeEngine):
         return self.get_balance().get(base, 0.0)
 
     # ===== dry_run 模拟撮合 =====
+    def _paper_market_definition(self, code):
+        market = self._paper().markets[code]
+        definition = {k: market[k] for k in ("exchange", "id", "symbol", "type", "base", "quote", "settle", "contractSize")}
+        definition.update(precision_mode="paper_tick_size_v1", precision={"amount": market["amount_step"], "price": market["price_tick"]},
+            limits={"amount": {"min": market["amount_step"]}, "price": {"min": market["price_tick"]}, "cost": {"min": market["min_notional"]}})
+        return definition
+
+    def _paper_execution_price(self, code, limit, buy, role):
+        paper = self._paper()
+        best = Decimal(paper.quotes[code]["ask" if buy else "bid"])
+        if role == "maker":
+            return limit
+        executed = best*(1+paper.config.taker_slippage*(1 if buy else -1))
+        tick = Decimal(paper.markets[code]["price_tick"])
+        executed = (executed/tick).to_integral_value(rounding=ROUND_CEILING if buy else ROUND_FLOOR)*tick
+        executed = max(tick, executed)  # 软件价格梯最小正 tick；不虚构零价强平/退出。
+        return executed if limit is None else min(executed, limit) if buy else max(executed, limit)
+
+    def _prepare_paper_order(self, code, amount, price, *, reduce_only, record, post_only):
+        from .ExecutionFacts import _number
+        self.safety_policy.assert_order_allowed()
+        paper = self._paper()
+        if record is None or type(post_only) is not bool or (post_only and price is None) or code not in paper.markets or code not in paper.quotes:
+            raise CChanException("paper 需要真实信号记录、显式行情/单位与有效订单类型", ErrCode.PARA_ERROR)
+        if not reduce_only:
+            self._assert_paper_db_state()
+        with localcontext(_PAPER_CONTEXT):
+            market, quote = paper.markets[code], paper.quotes[code]
+            size, step = (_number(market[k], positive=True) for k in ("contractSize", "amount_step"))
+            desired = _number(str(_quantity(amount, positive=True)), positive=True)
+            contracts = Decimal((Fraction(desired)/Fraction(size*step)).__floor__())*step
+            quantity = contracts*size
+            tick = _number(market["price_tick"], positive=True)
+            limit = None if price is None else _number(str(_quantity(price, positive=True)), positive=True)
+            if quantity <= 0 or (limit is not None and Fraction(limit)/Fraction(tick) % 1):
+                raise CChanException("paper 数量舍入为零或限价不符合显式 tick", ErrCode.PARA_ERROR)
+            buy = bool(record["is_buy"]) != bool(reduce_only)
+            reference = _number(quote["ask" if buy else "bid"], positive=True) if limit is None else limit
+            if not reduce_only and quantity*reference < _number(market["min_notional"], positive=True):
+                raise CChanException("paper 精度化后低于最小名义金额", ErrCode.QUOTA_NOT_ENOUGH)
+            side = self._position_side(record)
+            if reduce_only:
+                self._read_paper_contract({"phase": "open", "record": record})
+                if quantity > paper.position_quantity(f"{self.chan_db.table}:{record['id']}"):
+                    raise CChanException("paper 降风险超过原记录实际 fill lots", ErrCode.PARA_ERROR)
+            elif paper.snapshot()["status"] != "ready":
+                raise CChanException("paper 账户不可增加风险", ErrCode.TRADE_UNLOCK_FAIL)
+            if not reduce_only:
+                crossing = limit is None or (limit >= Decimal(quote["ask"]) if buy else limit <= Decimal(quote["bid"]))
+                role = "taker" if crossing else "maker"
+                preview = copy.deepcopy(paper)
+                preview.execute_fill(execution_id=f"preview:{self.chan_db.table}:{record['id']}", position_id=f"{self.chan_db.table}:{record['id']}",
+                    code=code, is_buy=buy, quantity=str(quantity), execution_price=str(self._paper_execution_price(code, limit, buy, role)),
+                    position_side=side, reduce_only=False, role=role, at_ms=quote["at_ms"])
+            definition = self._paper_market_definition(code)
+            contract = {"schema": "chan-paper-order-v1", "market": definition, "quantity_unit": "base_currency",
+                "exchange_amount_unit": "contracts", "quantity": str(quantity), "exchange_amount": str(contracts),
+                "price": None if limit is None else str(limit), "reference_price": str(reference), "notional": str(quantity*reference),
+                "reduce_only": bool(reduce_only), "post_only": post_only,
+                "execution": {"venue": "paper", "position_mode": paper.position_mode, "position_side": side,
+                    "margin_mode": "software_cross", "leverage": str(paper.config.leverage)},
+                "account_observation": None, "paper_account": paper.identity_reference}
+            contract["contract_id"] = _contract_id(contract)
+            return _float_exact(quantity), None if limit is None else _float_exact(limit), contract
+
+    def _read_paper_contract(self, intent):
+        try:
+            phase, record = intent["phase"], intent["record"]
+            raw = record["open_order_contract" if phase == "open" else "cover_order_contract"]
+            contract = json.loads(raw)
+            requested = record["open_requested_qty" if phase == "open" else "cover_requested_qty"]
+            with localcontext(_PAPER_CONTEXT):
+                paper = self._paper()
+                expected = {"schema", "market", "quantity_unit", "exchange_amount_unit", "quantity", "exchange_amount",
+                    "price", "reference_price", "notional", "reduce_only", "post_only", "execution", "account_observation", "paper_account", "contract_id"}
+                definition = self._paper_market_definition(record["stock_code"])
+                q, amount, ref = (_quantity(contract[k], positive=True) for k in ("quantity", "exchange_amount", "reference_price"))
+                limit = None if contract["price"] is None else _quantity(contract["price"], positive=True)
+                side = record["position_side"]
+                execution = {"venue": "paper", "position_mode": paper.position_mode, "position_side": side,
+                    "margin_mode": "software_cross", "leverage": str(paper.config.leverage)}
+                if (set(contract) != expected or contract["schema"] != "chan-paper-order-v1" or contract["contract_id"] != _contract_id(contract)
+                        or contract["paper_account"] != paper.identity_reference or contract["market"] != definition
+                        or q != _quantity(requested, positive=True) or q != amount*Decimal(definition["contractSize"])
+                        or Fraction(amount)/Fraction(Decimal(definition["precision"]["amount"])) % 1
+                        or (limit is not None and Fraction(limit)/Fraction(Decimal(definition["precision"]["price"])) % 1)
+                        or _quantity(contract["notional"]) != q*ref or contract["execution"] != execution
+                        or (limit is not None and ref != limit)
+                        or (phase == "open" and q*ref < Decimal(definition["limits"]["cost"]["min"]))
+                        or side != ("BOTH" if paper.position_mode == "one_way" else "LONG" if record["is_buy"] else "SHORT")
+                        or contract["quantity_unit"] != "base_currency" or contract["exchange_amount_unit"] != "contracts"
+                        or contract["account_observation"] is not None or type(contract["post_only"]) is not bool
+                        or (contract["post_only"] and limit is None) or contract["reduce_only"] is not (phase == "close")
+                        or canonical_bytes(contract).decode() != raw):
+                    raise ValueError("paper contract drift")
+            history = self.chan_db.get_order_history(record["id"])
+            if history["gaps"] or any(a["origin"] != "new_intent" or a["identity"]["contract_complete"] is not True for a in history["attempts"]):
+                raise ValueError("paper history is incomplete")
+            return contract
+        except (ValueError, KeyError, TypeError, DecimalException):
+            raise CChanException("原 paper 账户/意图/单位不匹配，禁止重新提交", ErrCode.TRADE_UNLOCK_FAIL) from None
+
+    def _assert_paper_db_state(self):
+        """同一 paper 身份不是恢复证明；已知记录必须与原服务器账本一致。"""
+        paper, seen = self._paper(), set()
+        try:
+            for row in self.chan_db.db.query(f"SELECT * FROM {self.chan_db.table} WHERE open_order_contract IS NOT NULL ORDER BY id"):
+                contract = json.loads(row["open_order_contract"])
+                if contract.get("schema") != "chan-paper-order-v1" or contract.get("paper_account") != paper.identity_reference:
+                    continue
+                self._read_paper_contract({"phase": "open", "record": row})
+                key = f"{self.chan_db.table}:{row['id']}"
+                seen.add(key)
+                if Decimal(str(row["current_qty"] or 0)) != paper.position_quantity(key):
+                    raise ValueError("paper DB/fill lots differ")
+                for prefix in ("open", "cover"):
+                    if row.get(f"{prefix}_order_status") in {"submitting", "open"}:
+                        self._paper_state(row["stock_code"], row.get(f"{prefix}_order_id"), row.get(f"{prefix}_client_order_id"))
+            if any(key.startswith(self.chan_db.table+":") and key not in seen and paper.position_quantity(key) for key in paper.records):
+                raise ValueError("paper record missing from DB")
+        except (ValueError, KeyError, TypeError, AttributeError):
+            raise CChanException("paper 原 DB/订单/fill 账本不一致，先恢复核验再增风险", ErrCode.TRADE_UNLOCK_FAIL) from None
+
+    def _paper_state(self, code, order_id, client_id):
+        if order_id is None:
+            order_id = self._sim_client_order_ids.get(client_id)
+        state = self._sim_order_state.get(order_id)
+        if state is None or state.paper_contract is None or state.code != code or (client_id is not None and state.result.client_order_id != client_id):
+            raise CChanException("paper 交易所没有可证明的原订单；未知不能重下", ErrCode.LIST_ORDER_FAIL)
+        intent = self.chan_db.get_order_intent(state.result.client_order_id)
+        if intent is None or self._read_paper_contract(intent) != state.paper_contract:
+            raise CChanException("paper 查询不属于原持久意图", ErrCode.LIST_ORDER_FAIL)
+        with localcontext(_PAPER_CONTEXT):
+            contract = state.paper_contract
+            fills = [effect["request"] for effect in self._paper().to_dict()["effects"]
+                if effect["request"]["kind"] == "fill" and effect["request"]["id"].startswith(f"fill:{state.result.order_id}:")]
+            filled = sum((Decimal(f["quantity"]) for f in fills), Decimal(0))
+            notional = sum((Decimal(f["quantity"])*Decimal(f["execution_price"]) for f in fills), Decimal(0))
+            expected_average = float(notional/filled) if filled else None
+            if (_quantity(state.result.requested) != _quantity(contract["quantity"])
+                    or filled != _quantity(state.result.filled) or state.result.avg_price != expected_average
+                    or state.result.status not in COrderResult.VALID_STATUSES
+                    or (filled == _quantity(contract["quantity"])) != (state.result.status == "closed")
+                    or state.reduce_only is not contract["reduce_only"] or state.paper_role not in {"maker", "taker"}):
+                raise CChanException("paper 累计回报与实际 fill 账本不一致", ErrCode.LIST_ORDER_FAIL)
+        return state
+
+    def _place_paper_order(self, code, is_buy, amount, price, client_id, reduce_only, post_only, side):
+        self.safety_policy.assert_order_allowed()
+        if client_id in self._sim_client_order_ids:
+            state = self._paper_state(code, None, client_id)
+            if (state.is_buy != is_buy or state.reduce_only != reduce_only or state.result.requested != amount or state.price != price
+                    or state.paper_contract["post_only"] is not post_only or state.paper_contract["execution"]["position_side"] != side):
+                raise CChanException("paper 客户端号不能用于另一请求", ErrCode.PARA_ERROR)
+            return copy.copy(state.result)
+        intent = self._validated_persisted_intent(code, is_buy, amount, client_id, reduce_only, side)
+        contract = self._read_paper_contract(intent)
+        if (_quantity(amount) != _quantity(contract["quantity"]) or contract["post_only"] is not post_only
+                or (None if price is None else _quantity(price)) != (None if contract["price"] is None else _quantity(contract["price"]))):
+            raise CChanException("paper 提交必须使用冻结数量/限价/类型", ErrCode.PARA_ERROR)
+        plan = self._sim_fill_plans.get(client_id, [amount])
+        if plan[-1] > amount:
+            raise CChanException("paper 累计计划超过请求量", ErrCode.PARA_ERROR)
+        with localcontext(_PAPER_CONTEXT):
+            base_step = Decimal(contract["market"]["contractSize"])*Decimal(contract["market"]["precision"]["amount"])
+            if any(Fraction(Decimal(str(value)))/Fraction(base_step) % 1 for value in plan):
+                raise CChanException("paper 累计计划不符合冻结合约步长", ErrCode.PARA_ERROR)
+        if not self.chan_db.claim_order_submission(intent["record"]["id"], intent["phase"]):
+            raise CChanException("paper 意图已由其他进程提交", ErrCode.TRADE_UNLOCK_FAIL)
+        sequence = next(self._order_id_gen)
+        result = COrderResult(order_id=f"sim_{sequence}", requested=amount, filled=0, avg_price=None, status="open", client_order_id=client_id)
+        quote = self._paper().quotes[code]
+        crossing = price is None or (Decimal(str(price)) >= Decimal(quote["ask"]) if is_buy else Decimal(str(price)) <= Decimal(quote["bid"]))
+        state = _SimOrder(code, is_buy, price, reduce_only, result, list(plan), paper_contract=contract,
+            paper_position_id=f"{self.chan_db.table}:{intent['record']['id']}", paper_role="taker" if crossing else "maker")
+        if post_only and crossing:
+            state.result.status, state.paper_reason = "rejected", "post_only_would_cross"
+        self._sim_orders[result.order_id] = result
+        self._sim_order_state[result.order_id] = state
+        self._sim_client_order_ids[client_id] = result.order_id
+        self._sim_fill_plans.pop(client_id, None)
+        if result.status == "open":
+            self._advance_paper_order(state)
+        self.chan_db.record_order_ack(intent["record"]["id"], intent["phase"], result.order_id, client_order_id=client_id,
+            expected_attempt=intent["record"]["open_attempt" if intent["phase"] == "open" else "cover_attempt"])
+        return copy.copy(state.result)
+
+    def _advance_paper_order(self, state):
+        if state.result.status != "open" or state.next_fill >= len(state.fill_plan):
+            return
+        with localcontext(_PAPER_CONTEXT):
+            paper, contract = self._paper(), state.paper_contract
+            quote = paper.quotes[state.code]
+            cumulative = Decimal(str(state.fill_plan[state.next_fill]))
+            delta = cumulative-Decimal(str(state.result.filled))
+            if delta < 0:
+                raise CChanException("paper 累计成交不能回绕", ErrCode.LIST_ORDER_FAIL)
+            if not delta:
+                state.next_fill += 1
+                return
+            limit = None if state.price is None else Decimal(str(state.price))
+            best = Decimal(quote["ask" if state.is_buy else "bid"])
+            if limit is not None and (best > limit if state.is_buy else best < limit):
+                return
+            if state.paper_role == "maker":
+                executed = limit
+            else:
+                executed = self._paper_execution_price(state.code, limit, state.is_buy, state.paper_role)
+            candidate = copy.deepcopy(paper)
+            event_id = f"{state.result.order_id}:{state.next_fill}"
+            try:
+                candidate.execute_fill(execution_id=event_id, position_id=state.paper_position_id, code=state.code,
+                    is_buy=state.is_buy, quantity=str(delta), execution_price=str(executed),
+                    position_side=contract["execution"]["position_side"], reduce_only=state.reduce_only,
+                    role=state.paper_role, at_ms=quote["at_ms"])
+            except CChanException:
+                state.result.status, state.paper_reason = "rejected", "paper_account_constraints"
+                return
+            old_notional = sum((Decimal(effect["request"]["quantity"])*Decimal(effect["request"]["execution_price"])
+                for effect in paper.to_dict()["effects"] if effect["request"]["kind"] == "fill"
+                and effect["request"]["id"].startswith(f"fill:{state.result.order_id}:")), Decimal(0))
+            average = float((old_notional+delta*executed)/cumulative)  # API binary64; source fills retain exact Decimal prices.
+            if not math.isfinite(average) or average <= 0:
+                raise CChanException("paper 均价无法经过旧 API 数值边界", ErrCode.PARA_ERROR)
+            filled = _float_exact(cumulative)
+            paper.__dict__ = candidate.__dict__  # 保留共享服务器账户句柄，原子采用已完整校验的候选账本。
+            state.result.filled, state.result.avg_price = filled, average
+            state.result.status = "closed" if filled == state.result.requested else "open"
+            state.next_fill += 1
+
     def _resolve_position_side(self, value: Optional[str]) -> str:
         side = self.position_side if value is None else str(value).upper()
         if side not in _POSITION_SIDES:
