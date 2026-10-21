@@ -36,7 +36,7 @@
 | C2 | 已完成离线实现与验收 | 父 K/原始关系发布边界、不可变决策、完整身份对账、真实三层策略 future/prefix 变异；非外部认证 |
 | C3 | 已完成离线实现与验收 | UTC purge/unknown、三模型身份、write-once 部署、三阶段评分与 SQLite 版本链；非实盘/外部认证 |
 | C4 | 已完成离线实现与验收 | 有界实际样本→三模型→搜索/独立验证→部署→全 trial 重放；93 项组合、608 项全仓离线通过，非经济采用 |
-| C5 | 进行中 | 先接单位/精度/持久化意图一致性；参数适配、分页对账和模拟账户仍待 |
+| C5 | 进行中 | 单位契约与原生请求参数离线通过；ACK/历史分页、逐腿账户对账和模拟账户仍待 |
 | C6 | 待开发 | 调度/API/离线 E2E |
 | C7 | 待前置验收 | 公共行情与有准入后的外部认证；代码发布按阶段进行 |
 
@@ -219,3 +219,21 @@ C1 收尾清理计划：迁移校验由两份全表内存列表改为有序逐�
 - 原安全夹具的手动合约 close intent 缺单位证据；改为显式 prepare+持久化实际 spec，保留原参数、模式与 CAS 断言，而不是放宽运行时 guard。旧无 metadata dry-run 与股票默认 hook 保持兼容，未知真实合约记录不自动迁移；取消接口未移除。
 - 运行时代码组合：104 passed / 3 expected small-model warnings（39.83s），含所有新增单位测试、trade safety/state-machine/M6、C3 真实部署/评分/intent 版本链。之后仅补 long/short/flat、SQLite 重开和 migration null、MySQL disabled 结构/回归测试，最新适用集合 73 passed（10.05s，无警告）。C4 的 608 全仓证据仅复用于未变区域，未重标成本次完整树证明；整个 C5 完成时再完整验收。编译/diff 与 Lore 提交单独核验。
 - C5 仍未完成：当前尚不是交易所参数/模式认证；客户端号分页、逐腿对账/持久化冻结、完整模拟账户和在线额度部署接线继续按原计划推进。C6/C7、真实测试网及实盘仍保持各自门禁，Goal active。
+
+### C5 第二子边界实施与清理计划：显式 venue 参数与只读账户核验
+
+- 起始 clean `149f20e8c4f54383cacb4b7a50b009f43f8b7e70`，上一轮为有效进展。按本机 CCXT 4.5.43 原生 request builder 与 [Binance 新订单](https://developers.binance.com/docs/derivatives/usds-margined-futures/trade/rest-api/New-Order)、[OKX 官方订单说明](https://www.okx.com/docs-v5/trick_en/) 核验，不实际调用账户/订单 API。
+- 删除混用所有平台的 positionSide/reduceOnly/set_leverage 路径。Binance hedge 用明确 LONG/SHORT + 相反 side 平仓，不发送禁止的 reduceOnly；OKX 用 cash/cross/isolated tdMode、net/long/short posSide，net 退出才带 reduceOnly；post-only 使用原生 CCXT builder 映射，spot market 显式保持 base quantity。非法方向/不支持组合在 CAS/提交前拒绝。
+- 非 dry-run swap 必须显式声明 position_mode=one_way/hedged、margin_mode=cross/isolated；leverage 是正整数且不容 bool/截断。只读 fetch_position_mode/fetch_leverage 核对真实账户/标的/腿，不在每张订单前隐式改全账户 mode、margin 或 leverage。设置不匹配拒绝新风险；有单位和执行证据的旧仓平仓按原 leg/margin 管理，不因后来全局配置或仅 leverage 漂移而阻断降风险。
+- 新规格 v2 冻结 execution 设置和读到账户观测；v1 保留只读恢复、不允许以缺执行证据的旧意图重新提交。复用现有 JSON 字段，不加第二套状态机/后端。客户端号复用原 deterministic seed，生成 <=32 位字母数字，满足 OKX 和 Binance 的共同约束；拒绝手工非法号，不裁剪旧 id 导致恢复错配。
+- 文件范围：CCXTTradeEngine、TradeEngine 的现有预处理/客户端号 hook，相关 native-builder/fake I/O tests 和文档；不改用户 Config/config.yaml 或默认 dry-run。用实际 ccxt.binance/okx 的 create_order_request 验证线缆字段，fake 仅截断 I/O；再回归 C5 单位、状态机、安全与模型 entry 版本链。这里只验软件协议，不称测试网认证，分页/账户对账/模拟账户仍需继续。
+
+### C5 第二子边界证据：平台请求参数与执行规格 v2（C5 未完成）
+
+- Native-builder 夹具首轮缺 Binance info.orderTypes，补全真实 metadata 后重新观察 26 项有效 RED：所有模式共用 positionSide/set_leverage、hedged 信号仍落 BOTH、账户 mode/margin/leverage 不核验、OKX 客户端号含不合法连字符。按既有状态机补最小 venue 映射，没有另建订单器。
+- 覆盖 Binance/OKX × one_way/hedged × cross/isolated × long/short 的实际 open/close 请求体；hedge 只保留原 leg+相反 side，不发送非法 reduceOnly，one-way 退出明确带 reduceOnly。spot 市价 base 数量与 post-only native 字段也由真实 CCXT 4.5.43 builder 验证，不只断言 fake 收到参数。
+- 执行前只读 fetch_position_mode/fetch_leverage，移除每单隐式 set_leverage。swap 要求显式模式/保证金和整数杠杆；相应账户证据缺失/冲突/读取异常时不取得新风险意图或提交权。有执行证据的旧仓按原设置降风险，不因后续全局配置或仅 leverage 变化切换 leg/margin。
+- v2 在原 JSON 列冻结 execution、account observation、post_only。6 项 RED 证实只核 SHA 会放过缺 leg/bool leverage/未知模式/错观测/v1 自动补设置；现在只读恢复也检完整语义，v1 仅保留读单位、不自动提交。post-only 变更的独立 RED 后纳入 spec；客户端号复用原确定性身份生成共同支持的短字母数字 id，查询不改旧号。
+- 新增只读核验后再观察 6 项权限时序 RED：准备、只读核验或 claim 期间 kill-switch/解锁撤销原本仍会占用意图或发送。现准备结束、claim 前及实际发送前重新复查原 SafetyPolicy；未改权限规则本身，也不因读取账户成功绕过撤销。
+- 最新适用组合：155 passed / 3 expected small-model warnings，40.94s；包括 47 venue、36 unit、全部 trade safety/state-machine/M6 与 35 C3 deployment 工作流。三警告仅两个小 XGB validation 单类 AUC 与一个小 MLP 60 步未收敛。compileall/diff/Lore 另行核验；不把 C4 的 608 旧树证据重标为本次全仓。
+- 剩余 C5：真实 ACK 后补查、按 client-id 的原生查询及历史分页、服务端 leg/成交回报和逐腿持仓/余额对账、持久化冻结新风险但保留可证降风险、完整费用/funding/mark 模拟账本与在线额度绑定。当前只证明离线请求/拒绝协议，不是完整服务器生命周期或交易所认证；Goal 仍 active。

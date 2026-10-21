@@ -405,6 +405,12 @@ class FakeContractExchange:
     def load_markets(self):
         return {"BTC/USDT:USDT": self.market("BTC/USDT:USDT")}
 
+    def fetch_position_mode(self, symbol=None, params=None):
+        return {"hedged": True, "info": {}}
+
+    def fetch_leverage(self, symbol, params=None):
+        return {"symbol": symbol, "marginMode": "cross", "longLeverage": 3, "shortLeverage": 3, "info": {}}
+
     def market(self, code):
         return {"id": "BTCUSDT", "symbol": code, "base": "BTC", "quote": "USDT", "settle": "USDT",
                 "spot": False, "swap": True, "contract": True, "linear": True, "inverse": False,
@@ -459,6 +465,8 @@ def test_contract_order_passes_explicit_intent_and_queries_positions(
             "default_type": "swap",
             "leverage": 3,
             "position_side": "LONG",
+            "position_mode": "hedged",
+            "margin_mode": "cross",
         },
         trade_conf=enabled_trade_conf(receipt),
         environ={"CHANPY_ENABLE_TESTNET": "YES"},
@@ -471,15 +479,17 @@ def test_contract_order_passes_explicit_intent_and_queries_positions(
     )
 
     record_id = trade_db.add_signal(make_signal(code="BTC/USDT:USDT"))
+    _, _, opening_contract = engine.prepare_order("BTC/USDT:USDT", 2.0, 100.0)
     assert trade_db.acquire_open_intent(
         record_id,
         2.0,
         "open-contract-1",
         position_side="LONG",
+        order_contract=opening_contract,
     )
     trade_db.record_open_submission(record_id, "old-open", "closed")
     trade_db.apply_open_fill(record_id, 2.0, 100.0, "closed")
-    quantity, price, order_contract = engine.prepare_order("BTC/USDT:USDT", 2.0, 101.0, reduce_only=True)
+    quantity, price, order_contract = engine.prepare_order("BTC/USDT:USDT", 2.0, 101.0, reduce_only=True, post_only=True)
     assert trade_db.acquire_close_intent(
         record_id, quantity, "close-42", "test", order_contract=order_contract
     )
@@ -499,9 +509,7 @@ def test_contract_order_passes_explicit_intent_and_queries_positions(
     assert result.filled == 0.75
     assert result.status == "open"
     assert result.client_order_id == "close-42"
-    assert exchange.leverage_calls == [
-        (3, "BTC/USDT:USDT", {"positionSide": "LONG"})
-    ]
+    assert exchange.leverage_calls == []
     assert exchange.created == [
         (
             "BTC/USDT:USDT",
@@ -511,7 +519,6 @@ def test_contract_order_passes_explicit_intent_and_queries_positions(
             101.0,
             {
                 "clientOrderId": "close-42",
-                "reduceOnly": True,
                 "postOnly": True,
                 "positionSide": "LONG",
             },

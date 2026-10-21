@@ -42,6 +42,12 @@ class COfflineExchange(ccxt.Exchange):
     def set_leverage(self, leverage, code, params=None):
         self.leverage_calls.append((leverage, code, params))
 
+    def fetch_position_mode(self, symbol=None, params=None):
+        return {"hedged": False, "info": {}}
+
+    def fetch_leverage(self, symbol, params=None):
+        return {"symbol": symbol, "marginMode": "cross", "longLeverage": 1, "shortLeverage": 1, "info": {}}
+
     def create_order(self, code, order_type, side, amount, price=None, params=None):
         self.created.append((code, order_type, side, amount, price, copy.deepcopy(params)))
         row = {"id": str(len(self.created)), "symbol": code, "clientOrderId": params["clientOrderId"],
@@ -79,7 +85,7 @@ def engine(db, tmp_path, exchange=None, *, spot=False):
     receipt = write_candidate_receipt(tmp_path)
     result = CCCXTTradeEngine(db, quota_gen=CBenchPriceQuotaGen(3.7),
         ccxt_conf={"exchange": "binance", "mode": "testnet", "testnet": True, "api_key": "key", "secret": "secret",
-                   "default_type": "spot" if spot else "swap"},
+                   "default_type": "spot" if spot else "swap", "position_mode": "one_way", "margin_mode": "cross"},
         trade_conf=enabled_trade_conf(receipt), environ={"CHANPY_ENABLE_TESTNET": "YES"}, push_msg=False)
     result.exchange = exchange or COfflineExchange(market(spot=spot))
     result.api_interval = 0
@@ -97,7 +103,7 @@ def test_contract_size_and_precision_are_frozen_before_the_real_db_intent(order_
     request = trade.exchange.created[0]
     assert request[3:5] == (3, 100.1)
     contract = json.loads(stored["open_order_contract"])
-    assert contract["schema"] == "chan-ccxt-order-v1"
+    assert contract["schema"] == "chan-ccxt-order-v2"
     assert contract["quantity_unit"] == "base_currency" and contract["exchange_amount_unit"] == "contracts"
     assert float(contract["quantity"]) == pytest.approx(0.03)
     assert float(contract["exchange_amount"]) == 3

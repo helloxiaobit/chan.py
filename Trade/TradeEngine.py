@@ -110,7 +110,7 @@ class CTradeEngine(metaclass=abc.ABCMeta):
         ...
 
     # ===== 通用逻辑 =====
-    def prepare_order(self, code, amount, price, *, reduce_only=False, record=None):
+    def prepare_order(self, code, amount, price, *, reduce_only=False, record=None, post_only=False):
         """提交意图前的单位/精度 hook；股票及旧离线撮合保留原行为。"""
         return amount, price, None
 
@@ -188,7 +188,7 @@ class CTradeEngine(metaclass=abc.ABCMeta):
         quota = self.quota_gen.get_quota(code, price)
         if quota <= 0:
             raise CChanException(f"仓位计算为0: {code} price={price}", ErrCode.QUOTA_NOT_ENOUGH)
-        quota, order_price, order_contract = self.prepare_order(code, quota, price)
+        quota, order_price, order_contract = self.prepare_order(code, quota, price, record=record)
         client_id = self.make_client_order_id(record, "open")
         position_side = self._position_side(record)
         acquired = self.chan_db.acquire_open_intent(

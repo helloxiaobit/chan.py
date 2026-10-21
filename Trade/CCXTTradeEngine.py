@@ -7,6 +7,7 @@ import itertools
 import hashlib
 import json
 import math
+import re
 from dataclasses import dataclass, field
 from decimal import Decimal, InvalidOperation, localcontext
 from typing import Dict, List, Optional
@@ -134,8 +135,8 @@ class CCCXTTradeEngine(CTradeEngine):
                 "ccxt.default_type 必须是 spot、swap 或 future",
                 ErrCode.PARA_ERROR,
             )
-        self.leverage = int(ccxt_conf.get("leverage", 1))
-        if self.leverage <= 0:
+        self.leverage = ccxt_conf.get("leverage", 1)
+        if type(self.leverage) is not int or not 1 <= self.leverage <= 125:
             raise CChanException("ccxt.leverage 必须大于 0", ErrCode.PARA_ERROR)
         default_side = str(ccxt_conf.get("position_side", "BOTH")).upper()
         if default_side not in _POSITION_SIDES:
@@ -173,6 +174,134 @@ class CCCXTTradeEngine(CTradeEngine):
     def set_sim_price(self, code: str, price: float):
         # dry_run:注入市价单参考价(测试/演练用)
         self._sim_last_price[code] = price
+
+    def make_client_order_id(self, record, phase):
+        # 只生成新 id；查询/恢复始终使用已持久化原 id，不裁剪或改写旧号。
+        original = super().make_client_order_id(record, phase)
+        return "cp" + phase[0] + hashlib.sha256(original.encode()).hexdigest()[:28]
+
+    def _execution_settings(self, code, record=None, *, reduce_only=False):
+        exchange_id = self.get_exchange().id
+        venue = "binance" if exchange_id in {"binance", "binanceusdm"} else exchange_id
+        if venue not in {"binance", "okx"}:
+            raise CChanException("当前交易参数仅适配 Binance/OKX", ErrCode.PARA_ERROR)
+        if reduce_only and record is not None:
+            opened = self._read_order_contract(code, {"phase": "open", "record": record})
+            if opened["schema"] == "chan-ccxt-order-v2":
+                return dict(opened["execution"])
+            raise CChanException("v1 只读恢复：自动提交前须显式补足执行设置证据", ErrCode.TRADE_UNLOCK_FAIL)
+        if self.market_type == "spot":
+            return {"venue": venue, "position_mode": "one_way", "position_side": "BOTH",
+                    "margin_mode": "cash", "leverage": 1}
+        mode, margin = (self.ccxt_conf.get(k) for k in ("position_mode", "margin_mode"))
+        leverage = self.ccxt_conf.get("leverage", 1)
+        if (mode not in {"one_way", "hedged"} or margin not in {"cross", "isolated"}
+                or type(leverage) is not int or not 1 <= leverage <= 125):
+            raise CChanException("swap 必须显式指定 position_mode/margin_mode 和整数 leverage", ErrCode.PARA_ERROR)
+        side = record.get("position_side") if record is not None else self.position_side
+        if mode == "one_way":
+            if side not in {None, "", "BOTH"} or self.position_side != "BOTH":
+                raise CChanException("one_way 不能使用 LONG/SHORT leg", ErrCode.PARA_ERROR)
+            side = "BOTH"
+        elif record is not None and record.get("status") == "signal":
+            derived = "LONG" if record["is_buy"] else "SHORT"
+            if side not in {None, "", "BOTH", derived} or self.position_side not in {"BOTH", derived}:
+                raise CChanException("hedged 新风险方向与信号 leg 不一致", ErrCode.PARA_ERROR)
+            side = derived
+        elif side not in {"LONG", "SHORT"}:
+            raise CChanException("hedged 缺少明确 LONG/SHORT leg", ErrCode.PARA_ERROR)
+        return {"venue": venue, "position_mode": mode, "position_side": side,
+                "margin_mode": margin, "leverage": leverage}
+
+    def _position_side(self, record):
+        if self.dry_run:
+            return super()._position_side(record)
+        return self._execution_settings(record["stock_code"], record,
+            reduce_only=record.get("status") != "signal")["position_side"]
+
+    def _observe_account(self, code, execution, *, reduce_only):
+        if self.market_type == "spot":
+            return None
+        import ccxt
+        exchange = self.get_exchange()
+        args = {"marginMode": execution["margin_mode"]} if execution["venue"] == "okx" else {}
+        try:
+            mode = exchange.fetch_position_mode(code)
+            leverage = exchange.fetch_leverage(code, args)
+        except ccxt.BaseError as error:
+            raise CChanException("账户设置只读核验失败，未取得提交权", ErrCode.TRADE_UNLOCK_FAIL) from error
+        if not isinstance(mode, dict) or not isinstance(leverage, dict):
+            raise CChanException("账户设置只读核验缺少结构化证据", ErrCode.TRADE_UNLOCK_FAIL)
+        hedged = mode.get("hedged")
+        keys = ["longLeverage", "shortLeverage"] if execution["position_side"] == "BOTH" else [
+            "longLeverage" if execution["position_side"] == "LONG" else "shortLeverage"]
+        if (type(hedged) is not bool or hedged != (execution["position_mode"] == "hedged")
+                or leverage.get("symbol") != code or leverage.get("marginMode") != execution["margin_mode"]
+                or (not reduce_only and any(type(leverage.get(k)) is not int or leverage[k] != execution["leverage"] for k in keys))):
+            raise CChanException("实际账户 mode/margin/leverage 与订单设置不一致", ErrCode.TRADE_UNLOCK_FAIL)
+        return {"hedged": hedged, "margin_mode": leverage["marginMode"],
+                "long_leverage": leverage.get("longLeverage"), "short_leverage": leverage.get("shortLeverage")}
+
+    @staticmethod
+    def _venue_params(contract, client_id, *, is_buy, reduce_only, post_only, side):
+        execution = contract["execution"]
+        venue, mode = execution["venue"], execution["position_mode"]
+        if type(post_only) is not bool or post_only != contract["post_only"]:
+            raise CChanException("post-only 与持久化订单意图不一致", ErrCode.PARA_ERROR)
+        pattern = r"[A-Za-z0-9]{1,32}" if venue == "okx" else r"[.A-Za-z0-9_:/-]{1,36}"
+        if not re.fullmatch(pattern, client_id or ""):
+            raise CChanException("客户端订单号不符合交易所格式", ErrCode.PARA_ERROR)
+        if side != execution["position_side"] or (mode == "hedged" and (side == "LONG") != (is_buy != reduce_only)):
+            raise CChanException("订单方向/降风险语义与冻结 leg 不一致", ErrCode.PARA_ERROR)
+        params = {"clientOrderId": client_id} if venue == "binance" else {"clOrdId": client_id}
+        if execution["margin_mode"] == "cash":
+            if venue == "okx":
+                params.update(tdMode="cash", tgtCcy="base_ccy")
+                if contract["price"] is None:
+                    params["banAmend"] = True
+        else:
+            if venue == "binance":
+                params["positionSide"] = side
+            else:
+                params.update(tdMode=execution["margin_mode"], posSide="net" if mode == "one_way" else side.lower())
+            if mode == "one_way" and reduce_only:
+                params["reduceOnly"] = True
+        if post_only:
+            params["postOnly"] = True
+        return params
+
+    @staticmethod
+    def _check_execution_evidence(contract, record, phase):
+        execution, observation = contract["execution"], contract["account_observation"]
+        keys = {"venue", "position_mode", "position_side", "margin_mode", "leverage"}
+        if type(contract["post_only"]) is not bool or (contract["post_only"] and contract["price"] is None):
+            raise ValueError("invalid post-only evidence")
+        venue = contract["market"]["exchange"]
+        venue = "binance" if venue in {"binance", "binanceusdm"} else venue
+        if (set(execution) != keys or execution["venue"] != venue or venue not in {"binance", "okx"}
+                or execution["position_mode"] not in {"one_way", "hedged"}
+                or execution["position_side"] != record["position_side"]
+                or type(execution["leverage"]) is not int or not 1 <= execution["leverage"] <= 125):
+            raise ValueError("incomplete execution evidence")
+        hedge = execution["position_mode"] == "hedged"
+        side = execution["position_side"]
+        if ((hedge and (side not in {"LONG", "SHORT"} or (side == "LONG") != bool(record["is_buy"])))
+                or (not hedge and side != "BOTH")):
+            raise ValueError("execution leg mismatch")
+        if contract["market"]["type"] == "spot":
+            if hedge or execution["margin_mode"] != "cash" or execution["leverage"] != 1 or observation is not None:
+                raise ValueError("unsupported cash execution")
+            return
+        if (execution["margin_mode"] not in {"cross", "isolated"} or not isinstance(observation, dict)
+                or set(observation) != {"hedged", "margin_mode", "long_leverage", "short_leverage"}
+                or observation["hedged"] is not hedge or observation["margin_mode"] != execution["margin_mode"]
+                or any(value is not None and (type(value) is not int or not 1 <= value <= 125)
+                    for value in (observation["long_leverage"], observation["short_leverage"]))):
+            raise ValueError("incomplete account observation")
+        observed = [observation["long_leverage"], observation["short_leverage"]] if side == "BOTH" else [
+            observation["long_leverage"] if side == "LONG" else observation["short_leverage"]]
+        if phase == "open" and any(value != execution["leverage"] for value in observed):
+            raise ValueError("opening leverage mismatch")
 
     def set_sim_fill_plan(
         self, client_order_id: str, cumulative_fills: List[float]
@@ -275,9 +404,11 @@ class CCCXTTradeEngine(CTradeEngine):
                 if limit is not None and test(value, _quantity(limit)):
                     raise CChanException(f"精度化后订单违反 market {key}.{bound}", ErrCode.QUOTA_NOT_ENOUGH)
 
-    def prepare_order(self, code, amount, price, *, reduce_only=False, record=None):
+    def prepare_order(self, code, amount, price, *, reduce_only=False, record=None, post_only=False):
         if self.dry_run:
-            return super().prepare_order(code, amount, price, reduce_only=reduce_only, record=record)
+            return super().prepare_order(code, amount, price, reduce_only=reduce_only, record=record, post_only=post_only)
+        if type(post_only) is not bool or (post_only and price is None):
+            raise CChanException("post-only 必须为明确 bool 且有价格", ErrCode.PARA_ERROR)
         self.safety_policy.assert_order_allowed()
         if self.chan_db.db_type != "sqlite":
             raise CChanException("MySQL 单位契约迁移/事务尚未验收", ErrCode.TRADE_UNLOCK_FAIL)
@@ -287,6 +418,8 @@ class CCCXTTradeEngine(CTradeEngine):
         import ccxt
         try:
             definition, market = self._market_contract(code)
+            execution = self._execution_settings(code, record, reduce_only=reduce_only)
+            observation = self._observe_account(code, execution, reduce_only=reduce_only)
             if not reduce_only and market.get("active") is not True:
                 raise CChanException("market 非明确 active，禁止新风险", ErrCode.TRADE_UNLOCK_FAIL)
             with localcontext() as context:
@@ -300,13 +433,15 @@ class CCCXTTradeEngine(CTradeEngine):
                 price = None if price is None else _quantity(self.get_exchange().price_to_precision(code, price), positive=True)
                 reference = price if price is not None else _quantity(self.get_exchange().fetch_ticker(code).get("last"), positive=True)
                 self._check_limits(definition, amount, reference, quantity*reference)
-                contract = {"schema": "chan-ccxt-order-v1", "market": definition, "quantity_unit": "base_currency",
+                contract = {"schema": "chan-ccxt-order-v2", "market": definition, "quantity_unit": "base_currency",
                     "exchange_amount_unit": "base_currency" if self.market_type == "spot" else "contracts",
                     "quantity": str(quantity), "exchange_amount": str(amount),
                     "price": None if price is None else str(price), "reference_price": str(reference),
-                    "notional": str(quantity*reference), "reduce_only": bool(reduce_only)}
+                    "notional": str(quantity*reference), "reduce_only": bool(reduce_only),
+                    "execution": execution, "account_observation": observation, "post_only": post_only}
                 contract["contract_id"] = _contract_id(contract)
                 _float_exact(amount)  # 下单 API 的张数也不能被 float 静默改写。
+                self.safety_policy.assert_order_allowed()
                 return _float_exact(quantity), None if price is None else _float_exact(price), contract
         except ccxt.BaseError as error:
             raise CChanException("market metadata/精度校验失败，未取得订单意图", ErrCode.PARA_ERROR) from error
@@ -319,6 +454,9 @@ class CCCXTTradeEngine(CTradeEngine):
             contract = json.loads(raw)
             expected_keys = {"schema", "market", "quantity_unit", "exchange_amount_unit", "quantity", "exchange_amount",
                              "price", "reference_price", "notional", "reduce_only", "contract_id"}
+            v2 = contract.get("schema") == "chan-ccxt-order-v2"
+            if v2:
+                expected_keys |= {"execution", "account_observation", "post_only"}
             definition, market = self._market_contract(code)
             with localcontext() as context:
                 context.prec = 50
@@ -330,7 +468,8 @@ class CCCXTTradeEngine(CTradeEngine):
                 same_units = all(frozen.get(key) == definition[key] for key in unit_keys)
                 requested = record["open_requested_qty" if phase == "open" else "cover_requested_qty"]
                 if (set(contract) != expected_keys or canonical_bytes(contract).decode() != raw
-                        or contract["schema"] != "chan-ccxt-order-v1" or contract["contract_id"] != _contract_id(contract)
+                        or contract["schema"] not in {"chan-ccxt-order-v1", "chan-ccxt-order-v2"}
+                        or contract["contract_id"] != _contract_id(contract)
                         or not same_units or (submitting and (frozen != definition or
                             (phase == "open" and market.get("active") is not True)))
                         or contract["quantity_unit"] != "base_currency"
@@ -343,6 +482,12 @@ class CCCXTTradeEngine(CTradeEngine):
                                (None if contract["price"] is None else _quantity(contract["price"], positive=True))))):
                     raise ValueError("order contract drift")
                 self._check_limits(frozen, exchange_amount, reference, quantity*reference)
+                if v2:
+                    self._check_execution_evidence(contract, record, phase)
+                if submitting:
+                    if not v2 or contract["execution"] != self._execution_settings(code, record, reduce_only=phase == "close"):
+                        raise ValueError("execution settings drift")
+                    self._observe_account(code, contract["execution"], reduce_only=phase == "close")
                 return contract
         except (TypeError, ValueError, KeyError, AttributeError) as error:
             raise CChanException("缺少完整订单单位契约或 market 漂移，禁止猜测重下/记账", ErrCode.TRADE_UNLOCK_FAIL) from error
@@ -389,27 +534,14 @@ class CCCXTTradeEngine(CTradeEngine):
         import ccxt  # 懒加载
         exchange = self.get_exchange()
         contract = self._read_order_contract(code, intent, amount=amount, price=price, submitting=True)
+        params = self._venue_params(contract, client_order_id, is_buy=is_buy, reduce_only=reduce_only, post_only=post_only, side=side)
+        self.safety_policy.assert_order_allowed()
         if not self.chan_db.claim_order_submission(intent["record"]["id"], intent["phase"]):
             raise CChanException("持久化意图已提交或被其他进程获取", ErrCode.TRADE_UNLOCK_FAIL)
         try:
             exchange_amount = _float_exact(_quantity(contract["exchange_amount"], positive=True))
             order_type = "market" if price is None else "limit"
-            params = {}
-            if client_order_id:
-                params["clientOrderId"] = client_order_id
-            if self.market_type in _CONTRACT_TYPES:
-                params.update(
-                    {
-                        "reduceOnly": bool(reduce_only),
-                        "postOnly": bool(post_only),
-                        "positionSide": side,
-                    }
-                )
-                exchange.set_leverage(
-                    self.leverage, code, {"positionSide": side}
-                )
-            elif post_only:
-                params["postOnly"] = True
+            self.safety_policy.assert_order_allowed()
             order = exchange.create_order(
                 code,
                 order_type,

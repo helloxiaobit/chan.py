@@ -331,9 +331,33 @@ SQLite 自动只补两列，不为旧记录虚构单位。缺单位规格的旧�
 单位未知的已有仓位也不能自动平仓；须先显式核验来源/单位，当前没有自动迁移放行入口。
 取消原订单仍保留。MySQL 新订单契约写入在真实迁移/事务验收前 disabled，旧接口不自动升级。
 
-C5 仍在开发：Binance/OKX 具体 position/margin/reduce/post/client-id 适配、完整分页查询、
-逐腿持仓/余额对账与冻结新风险、含费用和资金费的模拟账户尚未完成；上述 mock/SQLite
-验收不替代 C7 真实环境授权与认证。
+C5 仍在开发：完整服务器订单生命周期、分页查询、逐腿持仓/余额对账与冻结新风险、
+含费用和资金费的模拟账户尚未完成；请求参数的离线适配见下，mock/SQLite 验收不替代
+C7 真实环境授权与认证。
+
+#### C5 平台参数与执行规格 v2
+
+Binance/OKX 的原生 request builder 已分别做离线验证。授权的非 dry-run swap 还必须
+显式给 `ccxt.position_mode: one_way` 或 `hedged`、`ccxt.margin_mode: cross` 或 `isolated`，
+以及 1–125 范围的整数 `leverage`（实际可用上限仍由市场/账户决定）。默认 dry-run 与用户配置文件不变。
+下单前只读核对真实账户的 position mode、margin mode 和相应 leg 的 leverage，
+设置不一致就拒绝新风险；普通下单不再自动调用 set_leverage/set_margin_mode/set_position_mode。
+账户设置应在独立授权的准备流程中完成，不由订单代码悄悄切换。
+
+- `one_way` 使用 `BOTH`，`hedged` 新信号从方向确定 `LONG/SHORT`，并冻结到 intent。
+- Binance hedge 不发送被禁止的 reduceOnly，退出用相反 side 和原 positionSide；one-way 退出才带 reduceOnly。
+- OKX 使用自己的 tdMode/posSide；hedge 退出也不带 reduceOnly。现货显式 cash，市价数量使用 base_ccy，禁止服务端自动改量。
+- post-only 使用实际 CCXT 映射到 Binance GTX/现货 maker 或 OKX post_only；该 bool 也写入规格，不允许提交时临时改变。
+- 新客户端号是确定性、最多 32 位字母数字；旧 id 不截断、不重写，恢复继续使用 DB 原号。
+
+`chan-ccxt-order-v2` 同时绑定单位、execution 设置、只读账户观测和 post-only，读取时
+验证完整字段/类型/关联关系，不只检查 SHA。原有已知 leg/margin 的降风险订单继续使用
+开仓时的设置；后来全局配置切换或仅 leverage 漂移不应把它切成另一条腿。
+v1 单位规格仍可只读查单，但不能据缺失的执行设置自动新提交或平仓，需要显式补足证据。
+在准备结束、提交权 CAS 前和实际发送前均复查既有 kill-switch/解锁条件。
+
+此处仅证明请求体、冻结设置和拒绝边界。真实 ACK 后完整状态补查、历史分页、
+逐腿成交/余额对账、带费用和资金费的模拟账户仍在 C5 后续工作；C6/C7 也未完成。
 
 当前只完成了离线可证明的安全边界，尚未完成交易所逐一测试网认证。待验证项包括：
 沙盒支持与市场映射、客户端订单号历史查询窗口/分页、post-only/reduce-only/
