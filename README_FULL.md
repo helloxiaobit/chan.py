@@ -345,7 +345,8 @@ SignalMonitor 仅在重复信号的完整 frozen bytes 相等时记录为 existe
 报告失败并保留原记录，不忽略时间/评分字段来制造一致。重复观察产生新候选时钟等内容时仍会闭锁，
 后续显式信号换代/失效工作流尚待验收。此输入版本检查会全量重读相关已收盘历史与文件身份，容量未认证；
 行情库、交易库和网络没有全局原子事务，检查后的外部变异/in-flight 不能声称已被消除。
-上述 ticker 来源/年龄检查不是完整原生账户或 mark/book 时钟证明；原生账户鲜活准入、进程级 paper 与 C6 其余要求仍待。
+上述 ticker 来源/年龄检查不是完整原生账户或 mark/book 时钟证明；原生账户鲜活准入与 C6 其余要求仍待。
+显式单写入器 paper 的进程级演练入口见下文，不自动接管默认运行壳或真实交易。
 
 同一交易 SQLite 路径使用 OS 单实例锁，换报告名不能绕过；句柄退出即释放，残留 lock 文件不是运行证明。
 此锁尚不覆盖直接运行旧单脚本、跨主机或物理库的硬链接别名。JSONL 逐阶段写唯一运行 ID、
@@ -356,8 +357,9 @@ SignalMonitor 仅在重复信号的完整 frozen bytes 相等时记录为 existe
 
 当前运行壳对非 dry-run 新风险明确返回 `native_fresh_admission_not_integrated`，
 `native_admission_verified` 恒为 false；历史上没有冻结并不等于鲜活账户准入。
-已有仓位管理仍可按原门禁尝试。完整经济 paper 的进程级状态绑定、强制鲜活账户及独立 mark/book 来源准入、
-通知失败观测、逐事件 E2E 和安装矩阵仍待 C6；版本化 API 见下文，本入口的命令完成状态不是完整验收或生产授权。
+已有仓位管理仍可按原门禁尝试。独立 paper 入口已接进程级状态绑定与固定合成单路径逐事件演练；
+默认运行壳接入、强制鲜活账户及独立 mark/book 来源准入、通知失败观测、更广 E2E 和安装矩阵仍待 C6。
+版本化 API 见下文，本入口的命令完成状态不是完整验收或生产授权。
 
 非 dry-run 还必须同时满足以下门禁：
 
@@ -703,9 +705,55 @@ report = verify_linear_paper_report(engine.get_sim_account_report())
 - 报告保留有序 input effects、实际 C4 事件、现金流和完整快照；reader 按原 effect 顺序重放核验，不读取年度绩效，
   也不是独立经济公式或抗整份来源伪造证明。重复查询/恢复/资金费不重复记账，返回对象不回写原账本。
 
-当前只验收单执行者、保留同一 `CSimExchangeState` 服务器状态的引擎重建/SQLite 恢复。
-并发撮合、进程级服务器持久恢复、queue/流动性与挂单初始保证金预占、原生 pooled/isolated/保险/强平和真实限频仍未认证；
-新模型不作为 real/testnet 的通过收据，也不会触发策略经济采用。C6 仍须串起配置驱动、强制鲜活准入和完整 E2E；Goal 未完成。
+旧 `CSimExchangeState` 内存路径仍需原句柄，不能据此声称退出进程后可恢复。显式持久路径如下。
+
+#### C6 单写入器持久 paper 与无需密钥的演练
+
+```bash
+python -m Trade.Script.PaperRehearsal --output <尚不存在的演示目录>
+```
+
+使用已有完整依赖，不下载行情，不读用户的交易配置/密钥，不连接交易所。
+固定 seed 生成 1000 根 `DEMO/USDT:USDT` 合成小时 K，前 600 根通过真实策略/特征/样本 reader
+训练 2 轮小 XGB；阈值为演示常量而非搜索结果。首个训练窗口后候选的前缀重建与在线喂入
+完整评分证据逐字节一致后，才交给原 COpeningInputs 报价 v2 和 SQLite 意图/CAS。
+三个串行新进程完成部分入场、恢复后 funding/部分退出、再次恢复完全退出；保存每阶段
+`entry.json`、`exit.json`、`verify.json` 的原 effects/history，核验账户逐事件重放和重复恢复不重记费用。
+盘口、mark、资金费和退出均是明确的合成事件，不冒称从 OHLCV 还原了真实盘口或成交概率。
+只有全部通过才写有限 canonical `rehearsal.json`，其中 `candidate_authorized=false`、`exchange_certified=false`。
+坏模型、配置变化、子进程失败或已有目录均拒绝；失败产物保留排查，不覆盖重试或清理用户文件。
+这不是所有策略/周期、OKX、通知或默认调度壳的完整 E2E，更不是经济采用、测试网或实盘授权。
+
+程序库可显式使用 `Trade.PaperState.CPersistentPaperState`：
+
+```python
+from Trade.PaperState import CPersistentPaperState
+
+# db 已是实际 SQLite CChanDB；paper 由上方显式参数构造，且尚无 effects。
+with CPersistentPaperState.create(server_path, account=paper, database=sqlite_path) as server:
+    engine = CCCXTTradeEngine(db, sim_state=server.state,
+        ccxt_conf={"mode": "dry_run", "default_type": "swap"}, trade_conf={}, environ={}, push_msg=False)
+    # 使用原 set_sim_quote/add_trade/restore/cover_trade；返回前持久化。
+
+# 之后在新进程打开原文件、原 SQLite 和相同代码/运行时，不重新 create。
+with CPersistentPaperState.open(server_path, database=sqlite_path) as server:
+    engine = CCCXTTradeEngine(db, sim_state=server.state,
+        ccxt_conf={"mode": "dry_run", "default_type": "swap"}, trade_conf={}, environ={}, push_msg=False)
+    engine.restore()  # 查原单/应用累计回报；未知订单不猜测重下。
+```
+
+检查点绑定实际服务器路径、store UUID、SQLite 文件身份、经济/撮合/codec/锁代码与 Python 版本；
+原始订单、计划游标和账户 effects 经同一经济 restorer 复算，拒绝游标回退、无订单归属成交、
+损坏/缺失文件、改内存以及落后于 DB 已确认记录的旧快照。v2 paper 意图保留原 store；
+v1 内存历史不自动升级。代码/运行时变化须保留旧产物并评估迁移，不能重封摘要来冒称原服务器。
+已有账户 effects 不允许当新服务器创建材料，关闭句柄不替未提交变异补保存。
+
+服务器文件持 OS 生命周期锁；写操作及 close 共用互斥，另进程不能认领活动 writer。
+临时兄弟文件 flush/fsync 后原子替换，接单必须在本地 ACK 前保存；保存失败令当前句柄闭锁，
+重开原文件后再查原意图。真实子进程退出测试覆盖意图前后、接单未 ACK、部分成交、撤单未确认。
+这只是同机、合作式单写入器的软件恢复，文件与 SQLite **没有全局原子事务**；不抗两个文件一起回滚/伪造，
+不认证物理掉电、跨主机或恶意文件系统写入。全账本重验的容量/时延尚未认证。
+并发撮合、queue/流动性、挂单保证金预占、原生 pooled/isolated/保险/强平与真实限频仍未认证；Goal 未完成。
 
 当前只完成了离线可证明的安全边界，尚未完成交易所逐一测试网认证。待验证项包括：
 沙盒支持与市场映射、客户端订单号历史查询窗口/分页、post-only/reduce-only/

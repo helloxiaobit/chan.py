@@ -76,6 +76,7 @@ _CONTRACT = {key: _SCALAR for key in ("schema", "quantity_unit", "exchange_amoun
     "exchange_amount", "price", "reference_price", "notional", "reduce_only", "contract_id", "post_only")}
 _CONTRACT.update({
     "paper_account": {"schema": _SCALAR, "account_id": _SCALAR},
+    "paper_store": {"schema": _SCALAR, "store_id": _SCALAR},
     "market": {**{key: _SCALAR for key in ("exchange", "id", "symbol", "type", "base", "quote", "settle",
         "contractSize", "precision_mode")}, "precision": {key: _SCALAR for key in ("amount", "price", "base", "quote", "cost")},
         "limits": {"amount": _BOUNDS, "price": _BOUNDS, "cost": _BOUNDS}},

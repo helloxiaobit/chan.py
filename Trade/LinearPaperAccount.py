@@ -254,8 +254,8 @@ class CLinearPaperAccount:
         return self._apply(request, apply)
 
 
-def verify_linear_paper_report(report):
-    """按原输入 effect 顺序复算，不是独立公式/交易所认证，也不读取绩效。"""
+def restore_linear_paper_account(report):
+    """按原 effects 重建实际账户与去重集合；不反序列化任意 Python 对象。"""
     try:
         identity = report["identity"]
         account = CLinearPaperAccount(CCryptoAccountConfig(**identity["config"]), markets=identity["markets"],
@@ -273,6 +273,11 @@ def verify_linear_paper_report(report):
         reconstructed = account.to_dict()
         if canonical_bytes(report) != canonical_bytes(reconstructed):
             _fail()
-        return reconstructed
+        return account
     except (ValueError, TypeError, KeyError, AttributeError, DecimalException):
         _fail()
+
+
+def verify_linear_paper_report(report):
+    """按原输入 effect 顺序复算，不是独立公式/交易所认证，也不读取绩效。"""
+    return restore_linear_paper_account(report).to_dict()
