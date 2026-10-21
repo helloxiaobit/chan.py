@@ -293,12 +293,33 @@ pwsh -File Trade/Script/update_data_signal.ps1 Config/config.yaml runs/cycle-003
 配置 `trade.deployment_manifest` 时复用 C3 的真实模型/部署 reader，其冻结 symbol/level/策略优先，
 同时核对行情来源。要求模型却没有部署，或模型/清单损坏时不继续生成新订单。
 
-顺序为原订单恢复→配置/模型→逐 symbol 更新→只读来源/缺 K/水位检查→信号→新开仓。
+顺序为原订单恢复→配置/模型→逐 symbol 更新→只读来源/缺 K/水位检查→信号→输入重验→新开仓。
 任一输入失败就停止新增风险，但分别尝试后验、错误仓位关闭、止损跟踪、平仓查单/重试；
 这些操作仍受原账户/订单证据、candidate、模式、环境与 kill-switch 约束，不保证操作一定成功。
 未知恢复结果退出非零，不能猜测重下；SignalMonitor 的部分计算失败也会返回非零。
 管理阶段本身失败不跳过后续管理。配置指纹改变属于账户/目录授权漂移，后续动作全部停止，
 不会将新配置用于旧仓管理。
+
+运行壳与实际开仓共用 `Trade/Script/OpeningInputs.py`，不再仅信任信号子进程返回 0。
+同一次 SQLite 只读事务检查全部配置 symbol/level 的 closed rows，并对完整 OHLCV（含 volume）、
+scope、配置、策略/输入检查代码与 Python 身份生成摘要；相同水位但数据已修订也必须拒绝复用。
+信号生成后再次核验，开仓子进程必须接收原运行的三个摘要，不能以新有效数据替换旧批次的输入。
+`MakeOpenTrade` 命令入口现在要求运行壳元数据，不再支持无上下文的独立命令开仓；
+程序库的原直接调用与股票路径保留兼容，但没有检查器就不能宣称已通过本输入检查。
+
+显式 `COpeningInputs(config_path, ...)` 可绑定为 `CCCXTTradeEngine(..., opening_inputs=guard)`。
+每笔检查实际 DB 路径/engine 来源、配置池/交易级别、C2 冻结信号与原始已收盘 bar，以及 C3 模型身份；
+在准备前、意图前、等待频控后与发送边界重验。`snapshot_before.opening_inputs` 和原订单 journal identity
+保存当时检查，之后不得移除、重标为新输入版本或复用到另一信号。意图后失效保持 created/submitting 的
+实际未知边界，不自动重置或重下；query/cancel/reduce 不使用这个新增风险检查。
+缺行情、非有限/非正价格、模型损坏或检查失败令配置开仓 CLI 非零退出，不再把拒绝表现为成功的空结果。
+明确提供完整 paper 时沿用调用者的 UTC/bid/ask/mark，不用单一 last price 补造 mark。
+
+SignalMonitor 仅在重复信号的完整 frozen bytes 相等时记录为 existed；同一 SQL 目标却内容不同则
+报告失败并保留原记录，不忽略时间/评分字段来制造一致。重复观察产生新候选时钟等内容时仍会闭锁，
+后续显式信号换代/失效工作流尚待验收。此输入版本检查会全量重读相关已收盘历史与文件身份，容量未认证；
+行情库、交易库和网络没有全局原子事务，检查后的外部变异/in-flight 不能声称已被消除。
+只检查价格有限不代表 ticker 有可靠年龄，原生账户完整通道/鲜活准入、进程级 paper 与 C6 其余要求仍待。
 
 同一交易 SQLite 路径使用 OS 单实例锁，换报告名不能绕过；句柄退出即释放，残留 lock 文件不是运行证明。
 此锁尚不覆盖直接运行旧单脚本、跨主机或物理库的硬链接别名。JSONL 逐阶段写唯一运行 ID、

@@ -359,3 +359,26 @@ def test_powershell_resolves_relative_report_against_powershell_location_not_pro
         env={**os.environ, "PATH": str(fake)+os.pathsep+os.environ["PATH"]}, capture_output=True, text=True, timeout=30)
     assert result.returncode == 37, result.stderr
     assert str(tmp_path/"report.jsonl") in argv.read_text()
+
+
+@pytest.mark.parametrize("damage", ["gap", "source", "clock", "revision"])
+def test_successful_signal_process_cannot_outlive_its_actual_input_epoch(cycle, damage):
+    clock = {"now": NOW}
+    def mutate(module):
+        if module == "Trade.Script.SignalMonitor":
+            if damage == "clock":
+                clock["now"] += HOUR
+            else:
+                with CKLineDB(cycle[2]["offline_data"]["sqlite_path"]) as market:
+                    if damage == "gap":
+                        market.conn.execute("DELETE FROM kline WHERE symbol=? AND lv='K_60M' AND ts=?", (CODES[0], HOUR))
+                    elif damage == "revision":
+                        market.conn.execute("UPDATE kline SET v=9 WHERE symbol=? AND lv='K_60M' AND ts=?", (CODES[0], HOUR))
+                    else:
+                        market.conn.execute("UPDATE kline_source SET payload=?", (json.dumps({**SOURCE, "exchange": "okx"}),))
+                    market.conn.commit()
+    calls, command = command_log(mutate=mutate)
+    result = run_trade_cycle(cycle[0], report_path=cycle[1], command=command, now_ms=lambda: clock["now"])
+    assert "Trade.Script.MakeOpenTrade" not in [row[0] for row in calls]
+    assert [row[0] for row in calls][-4:] == MANAGEMENT
+    assert result["failed_stage"] == "pre_open_inputs"

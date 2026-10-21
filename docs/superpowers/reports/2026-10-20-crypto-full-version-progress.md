@@ -37,7 +37,7 @@
 | C3 | 已完成离线实现与验收 | UTC purge/unknown、三模型身份、write-once 部署、三阶段评分与 SQLite 版本链；非实盘/外部认证 |
 | C4 | 已完成离线实现与验收 | 有界实际样本→三模型→搜索/独立验证→部署→全 trial 重放；93 项组合、608 项全仓离线通过，非经济采用 |
 | C5 | 进行中 | 单位/原生恢复/历史/来源、区间核对与持久冻结已离线验收；显式 cross/lot paper 接入原状态机，鲜活准入链、原生同义模型及进程级 E2E 仍待 |
-| C6 | 进行中（仍未完成） | 配置驱动运行壳/阶段失败传播/已有仓位独立管理/OS 锁；强制鲜活准入、API/离线进程级 E2E 与安装矩阵待完成 |
+| C6 | 进行中（仍未完成） | 配置运行壳/失败传播/管理/OS 锁与逐笔输入版本重验；原生账户/报价鲜活准入、API/离线进程级 E2E 与安装矩阵待完成 |
 | C7 | 待前置验收 | 公共行情与有准入后的外部认证；代码发布按阶段进行 |
 
 基线：前一审计在完全相同 `22a5a56`、依赖和环境上执行的所选离线功能集合为 116 passed / 1 skipped / 1 deselected，带一个 XGBoost 弃用警告和 pytest 临时目录清理提示；该证据仅覆盖列明集合，不称全仓或真实交易所验收。行为修改后补跑对应回归。
@@ -443,3 +443,24 @@ C1 收尾清理计划：迁移校验由两份全表内存列表改为有序逐�
 - 按串行约束由主代理使用 code-review 清单自审，非独立审计。新风险 native_fresh_admission_not_integrated 保持显式闭锁，native_admission_verified 恒 false；完整纸面交易进程级服务器状态、输入到订单的强制鲜活准入、API schema、通知失败观测/安装矩阵/真实外部认证仍待后续。当前锁不覆盖旧单独脚本、跨主机或硬链接别名。C5/C6 与 Goal 不关闭；完整离线与精确提交验收后才快进推送。
 - 最终完整串行离线命令 python -m pytest tests -m 'not network' --basetemp <new-temp-directory> -q --tb=short -p no:cacheprovider：1317 passed / 8 expected skipped / 1 network deselected / 14 existing model warnings，575.49s。运行期间源码、测试与文档均未编辑；明确 exit=0 后仅补本记录与目录前提说明，提交前无其他行为变更。新旧 C5 的状态机/安全/单位/原生来源/核对/含费 paper 回归均包含在内，不将命令完成或 mock PASS 提升为外部认证。
 - 文件范围：新增 Trade/Script/RunTradeCycle.py、Trade/Script/RestoreOrders.py、tests/test_trade_cycle.py、tests/test_restore_orders_cli.py；接入 OfflineData/offline_data_util.py 的显式只读选项、SignalMonitor CLI 退出码与两套 update_data_signal 壳；补 tests/test_deployment_workflow.py，更新 README_FULL.md/本台账。无新依赖、用户配置/规则/权限变更、真实行情/私有 I/O、正式研究或绩效读取。Lore 后在精确提交复验适用短组合，再快进推送并核验远端/clean。
+
+### C6 第二运行边界实施/清理计划：输入时代绑定到每次真实新增风险
+
+- 前轮已推送且本轮起始 clean/HEAD=4a2e1abf0ea2cfb438f52d68ae1859a6b94e141d；1317 全离线、精确提交后 138 项通过，是有效进展。本轮不重新实现 C4 账户、C5 订单状态机，不改用户配置/依赖/规则/冻结研究，继续主代理串行与 RED→GREEN。
+- 已确认剩余孔洞：RunTradeCycle 只在 SignalMonitor 前观察质量；信号计算期间行情变旧、出现缺口/修订或模型变化后，旧观察仍可进入 MakeOpenTrade。仅子进程成功不能证明输入仍有效。先用真实合成 SQLite 与可变时钟/传输边界变异观察 RED，不能用 mock ready/passed 代替实际 reader。
+- 清理限于把现有 scope/只读质量逻辑提取为一个共享 OpeningInputs 模块，供运行壳与开仓 CLI/引擎调用，避免两份不同门槛。一次只读 SQLite 事务核对全部配置周期，并对实际 closed rows（含 volume）形成固定输入时代摘要；配置/模型/scope 同样重读。只记录观察到的状态，不冒称跨市场库、交易库与网络发送之间存在全局原子锁。
+- 父周期在信号前冻结配置/scope/输入时代，在信号后、开仓前重新验证；子进程携带同一摘要而非任意 passed 布尔值。每笔开仓在准备、意图前及发送边界重新验证，检查真实 DB/engine 来源、配置池/交易级别、C2 信号字节/已收盘原始 bar 与 C3 模型身份。输入失败停止新增风险，不重置/重下已取得意图；已有订单 query/cancel/reduce 路径不应用该新增风险门槛。
+- 新增仅是行情/模型/信号输入检查，绝不是原生账户鲜活准入。运行壳与默认开仓 CLI 的非 dry-run 新风险继续闭锁；保留 candidate/环境/kill-switch 与原账户身份检查。ticker 本身的年龄证明、原生完整账户通道、进程级 paper E2E、API/安装矩阵仍为后续要求，不用本子边界替换整体验收。
+- 保留旧直接库调用与股票扩展默认行为；配置驱动 CLI 绑定显式检查。原订单 journal 可按新增可选 identity 字段冻结输入检查摘要，旧无该字段的历史字节原样读取，不能补造过去的输入证明。补字段篡改/来源错配/失效后管理仍可用与 full paper 实际函数接通测试，再做适用组合/全离线/compileall/diff/Lore/精确提交/快进推送。
+
+### C6 第二运行边界证据：逐笔开仓输入版本（整体 C6 未完成）
+
+- 首先四项真实 RED 证明 signal 子进程返回 0 后，缺 K、来源漂移、时钟过期、仅 volume 修订仍会开仓。随后 OpeningInputs 缺模块 RED→GREEN；共享 CEnv/C1 只读事务/C3 reader/原 C2 decision，而不是两份 ready 布尔值。scope 增加实际 trade_lv 和 evaluator 身份，复用 feature_code_identity 绑定真实策略/特征与输入/订单工作流及 Python。数据水位一样但内容不同仍变摘要，public env/scope/snapshot 返回独立副本。
+- 低层引擎新增参数缺失 RED 后，检查接入原 add_trade 准备前、意图前、频控后和 CCXT/paper/配置模拟的发送边界。SQLite 原 CAS/journal 冻结 opening_inputs 检查；旧无此字段的历史不补写/升级。实际 RED 覆盖意图前/后及 claim 后失效、另一 engine 来源、移除/改写 stamp、新检查器重标旧意图、低层 qty/direction/price/leg 与原意图不符。无新订单状态机，未知原样留 created/submitting，由旧 restore/query/cancel/reduce 管理，不自动重下。
+- 实际 MakeOpenTrade 缺 failures/main RED 后，配置 CLI 需要原运行元数据、明确 dry-run 和配置 notional；不再从无上下文命令调用开仓。每笔源输入失败和缺失/bool/NaN/Infinity/负价格产生脱敏失败，CLI 非零，既有直接库调用/股票默认行为保留。完整 paper 使用显式原 UTC/bid/ask/mark，实际函数成功形成含费 fill；不把 last quote 当 mark。原真实账户门禁未弱化，非 dry-run 新风险仍 closed，native_admission_verified 恒 false。
+- SignalMonitor 同 SQL 目标但完整 frozen bytes 不同曾被当 existed，独立 RED 后改为显式失败/保留旧记录，不放宽比较。初次回归夹具用了 1970 UTC，触发 CChan 1980 起始时钟，先将该测试唯一 bar 改用已有 2024 fixture，再观察真实失败，不改生产时钟。完全相同重复仍幂等；不同模型观察时刻等造成的新候选内容需要后续显式换代/失效工作流，不隐藏为已验收。只读检查与发送之间的跨库/网络竞态、全历史重验容量、ticker 年龄与原生账户准入仍待。
+- 句柄 4966 后来明确 missing，额外检查无存活 Python 后才重跑，不把缺失输出算通过。取得的实际组合为 209 passed（40.67s）；补原请求/旧意图重标后组合 152 passed（21.10s）；补策略代码身份后 observer+cycle 73 passed（14.96s）。最终实际小模型部署/损坏后不发送正反例 2 passed（8.41s）；随后 opening/cycle/deployment/history/safety/units/native recovery/freeze/paper 组合 369 passed / 3 existing model warnings（84.96s）。所有 pytest 均明确退出后才编辑，无并行长任务。
+- 使用 code-review 清单由主代理串行自审，非独立审计；优先复用已有 canonical/source/model/history/CAS，删除 RunTradeCycle 中重复的 scope/quality 分支。无新依赖、真实 I/O、用户配置/权限/规则或冻结研究/绩效变更；完整离线/compileall/diff、可选依赖隔离与精确提交后复验通过才快进推送。C5/C6/C7 与 Goal 均未关闭。
+- compileall/diff 通过。独立 CPython 3.14.2/3.11.15 在主动屏蔽 ccxt/xgboost/lightgbm/sklearn/optuna/yaml 时，新增模块与代码身份读取、缺运行元数据时 CLI 明确拒绝、实际只读 SQLite/无会话恢复 smoke 均 PASS；这不是缺少 YAML/模型包的 3.11 完整配置/依赖安装认证。调用未建立行情/私有会话，临时库按测试自身生命周期回收。
+- 最终完整命令 python -m pytest tests -m 'not network' --basetemp <new-temp-directory> -q --tb=short -p no:cacheprovider：1363 passed / 8 expected skipped / 1 network deselected / 14 existing model warnings，568.50s。整个完整运行期间没有编辑源码、测试或文档，明确 exit=0 后才补本最终数字。此前 369 项组合对应同一行为代码，仅后续文档变更；不把旧结果重标为新运行。
+- 文件范围：新增 Trade/Script/OpeningInputs.py 与 tests/test_opening_inputs.py；接入 Trade/TradeEngine.py、Trade/CCXTTradeEngine.py、Trade/OrderAudit.py、MakeOpenTrade/RunTradeCycle/SignalMonitor；补 cycle/实际 model deployment 集成测试与 README/本台账。无 schema 重写、第二订单引擎或新依赖。冻结数据/策略/外部资产不变；提交前核对 staged 范围，Lore 后精确提交再复验并快进推送。Goal 保持 active，后续按原 C0–C7 目标继续。

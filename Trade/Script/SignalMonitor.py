@@ -64,15 +64,27 @@ def run_signal_monitor(
             stat["failed"] += 1
             continue
         valid_targets = {str(sig.target_klu_time) for sig in signals}
+        code_failed = False
         for sig in signals:
             try:
                 db.add_signal(sig)
                 stat["added"] += 1
             except CChanException as e:
                 if e.errcode == ErrCode.SIGNAL_EXISTED:
-                    stat["existed"] += 1
+                    matches = [rec for rec in db.get_watching_signals(code)
+                        if rec["lv"] == sig.lv.name and bool(rec["is_buy"]) == sig.is_buy
+                        and rec["target_klu_time"] == str(sig.target_klu_time)]
+                    if (len(matches) == 1 and type(sig.decision) is bytes
+                            and matches[0].get("signal_decision") == sig.decision.decode("utf-8")):
+                        stat["existed"] += 1
+                    else:
+                        stat["failed"] += 1
+                        code_failed = True
+                        print(f"[SignalMonitor] {code} 原信号字节不符，拒绝复用或补造历史")
                 else:
                     raise
+        if code_failed:
+            continue  # 拒绝该 code 的本轮结果，不用不一致的集合清理旧观察。
         # 失效清理:该 code 下 watching 但已不在当前信号集合的记录
         for rec in db.get_watching_signals(code):
             if rec["target_klu_time"] not in valid_targets:

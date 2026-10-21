@@ -114,6 +114,10 @@ class CTradeEngine(metaclass=abc.ABCMeta):
         """提交意图前的单位/精度 hook；股票及旧离线撮合保留原行为。"""
         return amount, price, None
 
+    def check_open_inputs(self, record):
+        """配置运行壳的新增风险 hook；股票/旧显式库调用默认不变。"""
+        return None
+
     def rate_limit(self):
         wait = self.api_interval - (time.time() - self._last_api_ts)
         if wait > 0:
@@ -190,6 +194,7 @@ class CTradeEngine(metaclass=abc.ABCMeta):
         record_id = trade_info["id"]
         record = self.chan_db.get_record(record_id)
         code = record["stock_code"]
+        self.check_open_inputs(record)
         snapshot = {"price": price, "entry_observed_ms": trade_info.get("entry_observed_ms", utc_now_ms())}
         score_before = record.get("model_score_before")
         if record.get("deployment_id") or record.get("model_version"):
@@ -202,6 +207,11 @@ class CTradeEngine(metaclass=abc.ABCMeta):
         if quota <= 0:
             raise CChanException(f"仓位计算为0: {code} price={price}", ErrCode.QUOTA_NOT_ENOUGH)
         quota, order_price, order_contract = self.prepare_order(code, quota, price, record=record)
+        opening_check = self.check_open_inputs(record)
+        if opening_check is not None:
+            snapshot["opening_inputs"] = opening_check
+            if not record.get("deployment_id"):
+                snapshot["entry_observed_ms"] = opening_check["checked_at_ms"]
         client_id = self.make_client_order_id(record, "open")
         position_side = self._position_side(record)
         acquired = self.chan_db.acquire_open_intent(
@@ -221,6 +231,7 @@ class CTradeEngine(metaclass=abc.ABCMeta):
                 ErrCode.SIGNAL_TRADED,
             )
         self.rate_limit()
+        self.check_open_inputs(record)
         order = self.place_order(
             code,
             bool(record["is_buy"]),

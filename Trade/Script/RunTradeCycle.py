@@ -2,19 +2,17 @@
 import argparse
 import hashlib
 import os
-import re
 import subprocess
 import sys
 import uuid
 from contextlib import contextmanager
 from pathlib import Path
 
-from Common.CEnum import KL_TYPE
 from Common.ChanException import CChanException, ErrCode
 from Common.KLineTime import utc_now_ms
 from Config.EnvConfig import CEnv
 from CustomBuySellPoint.Decision import canonical_bytes
-from OfflineData.offline_data_util import CKLineDB, validate_source_identity
+from .OpeningInputs import COpeningInputs, inspect_opening_inputs, read_cycle_scope
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -63,46 +61,6 @@ def _run_lock(database):
                         fcntl.flock(handle, fcntl.LOCK_UN)
             finally:
                 handle.close()
-
-
-def _scope(env):
-    source = validate_source_identity(env.offline_data_conf.get("source_identity"))
-    if (source["exchange"] not in {"binance", "okx"} or source["price_type"] != "contract"
-            or source["market_type"] not in {"spot", "swap"}
-            or env.ccxt_conf.get("exchange") != source["exchange"]
-            or env.ccxt_conf.get("default_type") != source["market_type"]):
-        _fail()
-    trade, model = env.get_section("trade"), env.model_conf
-    deployment = trade.get("deployment_manifest")
-    if deployment is not None:
-        if not isinstance(deployment, str) or not deployment:
-            _fail()
-        from .Deployment import CDeployment
-        deployed = CDeployment(env.abs_path(deployment))
-        if deployed.source_identity != source:
-            _fail()
-        codes, levels = deployed.code_list, deployed.lv_list
-        strategy = deployed._config["cbsp_strategy"].__name__
-        model = {"deployment_id": deployed.deployment_id, "model_artifact_id": deployed.model.artifact_id}
-    else:
-        if model.get("required") or model.get("path"):
-            _fail()
-        codes, names, strategy = trade.get("code_list"), trade.get("lv_list"), trade.get("strategy")
-        if names is None and "lv" in trade:
-            names = [trade["lv"]]
-        if not isinstance(names, list) or not names or any(type(name) is not str or name not in KL_TYPE.__members__ for name in names):
-            _fail()
-        levels = [KL_TYPE[name] for name in names]
-        if strategy not in {"custom", "multi_lv"}:
-            _fail()
-        model = {"deployment_id": None, "model_artifact_id": None}
-    pattern = r"[A-Za-z0-9._-]+/USDT:USDT" if source["market_type"] == "swap" else r"[A-Za-z0-9._-]+/[A-Za-z0-9._-]+"
-    if (not isinstance(codes, list) or not codes or any(not isinstance(code, str) or re.fullmatch(pattern, code) is None for code in codes)
-            or len(codes) != len(set(codes)) or (source["market_type"] == "swap" and source["settle"] != "USDT")
-            or any(left.value <= right.value for left, right in zip(levels, levels[1:]))):
-        _fail()
-    return {"code_list": codes, "lv_list": [lv.name for lv in levels], "strategy": strategy,
-            "source": source, **model}
 
 
 def _command(module, args, *, cwd, env):
@@ -190,7 +148,7 @@ def run_trade_cycle(config_path, *, report_path, command=None, now_ms=None):
             try:
                 if step("restore", "Trade.Script.RestoreOrders"):
                     try:
-                        scope = result["scope"] = _scope(env)
+                        scope = result["scope"] = read_cycle_scope(env)
                     except Exception:
                         failure("scope", "scope_or_model_unavailable")
                     if result["exit_code"] == 0:
@@ -199,23 +157,28 @@ def run_trade_cycle(config_path, *, report_path, command=None, now_ms=None):
                                 break
                     if result["exit_code"] == 0:
                         try:
-                            market_path = Path(env.abs_path(env.offline_data_conf["sqlite_path"]))
-                            if not market_path.is_file():
+                            observed = inspect_opening_inputs(env, now_ms=now_ms())
+                            if observed["scope"] != scope:
                                 _fail()
-                            with CKLineDB(str(market_path), read_only=True) as market:
-                                market.check_source(scope["source"])
-                                result["quality"] = [market.inspect_quality(code, KL_TYPE[level], now_ms=now_ms())
-                                    for code in scope["code_list"] for level in scope["lv_list"]]
-                            if not all(row["ready"] for row in result["quality"]):
-                                _fail()
+                            result["quality"] = observed["quality"]
+                            expected = {"config_sha256": fingerprint,
+                                **{key: observed[key] for key in ("scope_sha256", "inputs_sha256")}}
+                            child_env.update({"CHANPY_CYCLE_"+key.upper(): value for key, value in expected.items()})
                             emit("quality", observations=result["quality"])
                         except Exception:
                             failure("quality", "quality_unavailable_or_not_ready")
                     if result["exit_code"] == 0 and step("signal", "Trade.Script.SignalMonitor"):
-                        if env.ccxt_conf.get("mode") != "dry_run":
-                            failure("account_admission", "native_fresh_admission_not_integrated")
-                        else:
-                            step("open", "Trade.Script.MakeOpenTrade")
+                        try:
+                            COpeningInputs(config_path, expected=expected, now_ms=now_ms)
+                            result["opening_inputs"] = expected
+                            emit("pre_open_inputs", inputs=expected)
+                        except Exception:
+                            failure("pre_open_inputs", "opening_inputs_changed_or_unavailable")
+                        if result["exit_code"] == 0:
+                            if env.ccxt_conf.get("mode") != "dry_run":
+                                failure("account_admission", "native_fresh_admission_not_integrated")
+                            else:
+                                step("open", "Trade.Script.MakeOpenTrade")
             finally:
                 for module in MANAGEMENT:
                     step("manage:"+module.rsplit(".", 1)[-1], module)

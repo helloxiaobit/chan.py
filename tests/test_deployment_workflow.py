@@ -557,3 +557,63 @@ def test_configured_cycle_uses_real_deployment_scope_and_blocks_a_corrupt_model(
     assert not any(module in {"OfflineData.ccxt_update", "Trade.Script.SignalMonitor", "Trade.Script.MakeOpenTrade"}
                    for module, args in calls)
     assert len(calls) == 5  # restore plus all independent management attempts
+
+
+@pytest.mark.parametrize("damage_after_intent", [False, True])
+def test_real_model_opening_inputs_reach_intent_and_recheck_the_artifact_before_send(deployment_model, tmp_path, monkeypatch, damage_after_intent):
+    import shutil
+    from Trade.Script.Deployment import CDeployment, publish_deployment
+    from Trade.Script.OpeningInputs import COpeningInputs
+    from Trade.Script.MakeOpenTrade import make_open_trade
+    from Trade.Script.OpenConfig import COpenConfig
+    from Trade.CCXTTradeEngine import CCCXTTradeEngine
+    from Trade.OpenQuotaGen import CBenchPriceQuotaGen
+    from Trade.db_util import CChanDB
+    original = Path(deployment_model["model"].GetModelPath())
+    target = tmp_path/"models"
+    shutil.copytree(original.parent, target)
+    model = target/original.name
+    manifest = tmp_path/"deployment.json"
+    publish_deployment(manifest, model, candidate_score=0, entry_score=0, post_score=0)
+    deployed = CDeployment(manifest)
+    chan, signal = future_candidate(deployment_model)
+    now = signal.sig_klu.close_ms+HOUR//4
+    assert deployed.prepare_signal(chan, signal, observed_ms=now)["passed"]
+    chan[0].cbsp_strategy.publish_signals(chan, 0, signals=[signal])
+    path = tmp_path/"runtime.json"
+    conf = {"db": {"type": "sqlite", "sqlite_path": str(tmp_path/"trade.db")},
+        "ccxt": {"mode": "dry_run", "exchange": "binance", "default_type": "swap"},
+        "trade": {"deployment_manifest": str(manifest)}, "notify": {"backend": "none"},
+        "offline_data": {"sqlite_path": str(deployment_model["root"]/"kline.db"), "source_identity": SOURCE}}
+    path.write_text(json.dumps(conf))
+    monkeypatch.setenv("CHANPY_CONFIG", str(path))
+    CEnv.reset_instance()
+    guard = COpeningInputs(path, now_ms=lambda: now)
+    open_path = tmp_path/"open.json"
+    open_path.write_text("{}")
+    db = CChanDB(db_conf=conf["db"])
+    try:
+        key = db.add_signal(signal)
+        engine = CCCXTTradeEngine(db, ccxt_conf=conf["ccxt"], trade_conf=conf["trade"],
+            quota_gen=CBenchPriceQuotaGen(10), opening_inputs=guard, push_msg=False)
+        engine.api_interval = 0
+        if damage_after_intent:
+            monkeypatch.setattr(engine, "rate_limit", lambda: model.write_bytes(model.read_bytes()+b"changed"))
+        failures = []
+        price = signal.open_thred*(1.001 if signal.is_buy else 0.999)
+        opened = make_open_trade(db, engine, COpenConfig(str(open_path)), deployment=deployed,
+            now_ms=lambda: now, price_map={CODE: price}, failures=failures)
+        record = db.get_record(key)
+        assert record["open_attempt"] == 1
+        stamp = json.loads(record["snapshot_before"])["opening_inputs"]
+        assert stamp["inputs_sha256"] == guard.snapshot()["inputs_sha256"]
+        assert db.get_order_history(key)["attempts"][0]["identity"]["opening_inputs"] == stamp
+        if damage_after_intent:
+            assert opened == [] and failures and engine.sim_state.orders == {}
+            assert record["open_order_status"] == "created" and record["current_qty"] == 0
+        else:
+            assert opened == [key] and failures == [] and record["current_qty"] > 0
+        assert engine.exchange is None
+    finally:
+        db.close()
+        CEnv.reset_instance()

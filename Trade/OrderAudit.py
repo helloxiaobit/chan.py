@@ -102,7 +102,7 @@ def _whitelist(value, shape):
 def _identity(table, record, prefix):
     raw = record.get(f"{prefix}_order_contract")
     contract = None if raw is None else _whitelist(json.loads(raw), _CONTRACT)
-    return {"trade_table": table, "record_id": record["id"], "phase": "open" if prefix == "open" else "close",
+    identity = {"trade_table": table, "record_id": record["id"], "phase": "open" if prefix == "open" else "close",
         "attempt": record.get(f"{prefix}_attempt"), "client_order_id": record.get(f"{prefix}_client_order_id"),
         "instrument": record["stock_code"], "is_buy": record["is_buy"], "position_side": record.get("position_side"),
         "requested_qty": record.get(f"{prefix}_requested_qty"), "intent_ms": record.get(f"{prefix}_intent_ms"),
@@ -110,6 +110,22 @@ def _identity(table, record, prefix):
         "contract_complete": raw is not None and _encode(contract) == raw,
         "strategy_version": record.get("strategy_version"), "model_version": record.get("model_version"),
         "deployment_id": record.get("deployment_id")}
+    if prefix == "open":
+        try:
+            snapshot = json.loads(record.get("snapshot_before") or "{}")
+        except (TypeError, ValueError):
+            snapshot = None  # 无新字段的旧不透明快照不补造证明，也不重写原历史。
+        if isinstance(snapshot, dict) and "opening_inputs" in snapshot:
+            proof = snapshot["opening_inputs"]
+            hashes = ("config_sha256", "scope_sha256", "inputs_sha256", "signal_event_id")
+            if (not isinstance(proof, dict) or set(proof) != {"schema", "checked_at_ms", "native_admission_verified", *hashes}
+                    or proof["schema"] != "chan-opening-input-check-v1" or proof["native_admission_verified"] is not False
+                    or type(proof["checked_at_ms"]) is not int or not 0 <= proof["checked_at_ms"] < 2**63
+                    or any(not isinstance(proof[key], str) or len(proof[key]) != 64
+                        or set(proof[key])-set("0123456789abcdef") for key in hashes)):
+                _fail()
+            identity["opening_inputs"] = proof
+    return identity
 
 
 def _key(identity):

@@ -116,6 +116,7 @@ class CCCXTTradeEngine(CTradeEngine):
         environ=None,
         sim_state: Optional[CSimExchangeState] = None,
         push_msg: bool = True,
+        opening_inputs=None,
     ):
         super(CCCXTTradeEngine, self).__init__(
             market="crypto", chan_db=chan_db, quota_gen=quota_gen, push_msg=push_msg)
@@ -186,6 +187,16 @@ class CCCXTTradeEngine(CTradeEngine):
         self._sim_positions = self.sim_state.positions
         self._sim_balance = self.sim_state.balance
         self._sim_last_price = self.sim_state.last_price
+        self.opening_inputs = opening_inputs
+        if opening_inputs is not None:
+            from .Script.OpeningInputs import COpeningInputs
+            if type(opening_inputs) is not COpeningInputs:
+                raise CChanException("开仓输入必须由实际配置/来源 reader 构造，不能传 passed 标志", ErrCode.PARA_ERROR)
+
+    def check_open_inputs(self, record):
+        if self.opening_inputs is not None:
+            return self.opening_inputs.check(record, engine=self)
+        return None
 
     def get_exchange(self):
         if self.dry_run:
@@ -601,6 +612,8 @@ class CCCXTTradeEngine(CTradeEngine):
                 price,
                 client_order_id=client_order_id,
                 reduce_only=reduce_only,
+                position_side=side,
+                post_only=post_only,
             )
         self.safety_policy.assert_order_allowed()
         intent = self._validated_persisted_intent(
@@ -616,6 +629,8 @@ class CCCXTTradeEngine(CTradeEngine):
         contract = self._read_order_contract(code, intent, amount=amount, price=price, submitting=True)
         params = self._venue_params(contract, client_order_id, is_buy=is_buy, reduce_only=reduce_only, post_only=post_only, side=side)
         self.safety_policy.assert_order_allowed()
+        if not reduce_only:
+            self.check_open_inputs(intent["record"])
         if not self.chan_db.claim_order_submission(intent["record"]["id"], intent["phase"]):
             raise CChanException("持久化意图已提交或被其他进程获取", ErrCode.TRADE_UNLOCK_FAIL)
         try:
@@ -624,6 +639,8 @@ class CCCXTTradeEngine(CTradeEngine):
             self.safety_policy.assert_order_allowed()
             if not reduce_only and contract.get("schema") == "chan-ccxt-order-v3":
                 self.chan_db.assert_account_new_risk_allowed(contract["account_context"])
+            if not reduce_only:
+                self.check_open_inputs(intent["record"])
             order = exchange.create_order(
                 code,
                 order_type,
@@ -1087,6 +1104,8 @@ class CCCXTTradeEngine(CTradeEngine):
                 raise CChanException("paper 累计计划不符合冻结合约步长", ErrCode.PARA_ERROR)
         if not self.chan_db.claim_order_submission(intent["record"]["id"], intent["phase"]):
             raise CChanException("paper 意图已由其他进程提交", ErrCode.TRADE_UNLOCK_FAIL)
+        if not reduce_only:
+            self.check_open_inputs(intent["record"])
         sequence = next(self._order_id_gen)
         result = COrderResult(order_id=f"sim_{sequence}", requested=amount, filled=0, avg_price=None, status="open", client_order_id=client_id)
         quote = self._paper().quotes[code]
@@ -1292,6 +1311,8 @@ class CCCXTTradeEngine(CTradeEngine):
         *,
         client_order_id: Optional[str],
         reduce_only: bool,
+        position_side: Optional[str] = None,
+        post_only: bool = False,
     ) -> COrderResult:
         if price is None:
             price = self._sim_last_price.get(code)
@@ -1312,6 +1333,16 @@ class CCCXTTradeEngine(CTradeEngine):
                     "客户端订单号已被不同意图使用", ErrCode.PLACE_ORDER_FAIL
                 )
             return existing.result
+        if self.opening_inputs is not None and not reduce_only:
+            intent = self._validated_persisted_intent(code, is_buy, amount, client_order_id, reduce_only, position_side)
+            record = intent["record"]
+            snapshot = json.loads(record.get("snapshot_before") or "{}")
+            if amount != record["open_requested_qty"] or price != snapshot.get("price") or post_only:
+                raise CChanException("配置模拟必须使用原意图的精确数量/方向/价格/类型", ErrCode.TRADE_UNLOCK_FAIL)
+            self.check_open_inputs(intent["record"])
+            if not self.chan_db.claim_order_submission(intent["record"]["id"], intent["phase"]):
+                raise CChanException("配置运行意图已由其他进程提交", ErrCode.TRADE_UNLOCK_FAIL)
+            self.check_open_inputs(intent["record"])
         sequence = next(self._order_id_gen)
         client_id = client_order_id or f"sim_client_{sequence}"
         fill_plan = self._sim_fill_plans.pop(client_id, [amount])
