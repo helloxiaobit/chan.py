@@ -733,6 +733,17 @@ class CCCXTTradeEngine(CTradeEngine):
             raise CChanException(f"查余额失败: {e}", ErrCode.GET_HOLDING_QTY_FAIL) from e
         return {k: v for k, v in balance.get("total", {}).items() if v}
 
+    def sync_execution_facts(self, code, *, account_scope, start_ms, end_ms):
+        """Explicit read/import only; does not reconcile, release risk or book orders."""
+        if self.dry_run or self.market_type != "swap" or self.chan_db.db_type != "sqlite":
+            raise CChanException("真实来源导入仅用于显式 SQLite 线性永续会话；模拟不可创建真实会话", ErrCode.LIST_ORDER_FAIL)
+        from .ExecutionFacts import collect_execution_scan
+        definition, _ = self._market_contract(code)
+        receipt = collect_execution_scan(self.get_exchange(), definition, account_scope=account_scope,
+                                         mode=self.mode, start_ms=start_ms, end_ms=end_ms)
+        self.chan_db.store_execution_scan(receipt)
+        return receipt
+
     def get_position(self, code: str) -> float:
         if self.dry_run:
             return self._sim_positions.get(code, 0.0)

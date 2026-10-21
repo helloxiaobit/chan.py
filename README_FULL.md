@@ -428,6 +428,41 @@ SQLite 增加 `chanpy_order_attempts` / `chanpy_order_events`，当前订单行�
 `economics_complete=false`；订单均价不能代替逐笔实际 trade/fee/funding，缺费用不当 0。
 逐腿现金流对账、持续风险冻结及完整模拟账户仍为后续 C5，真实测试网/实盘仍锁定。
 
+#### C5 原生逐笔经济来源（离线子边界）
+
+显式调用 `engine.sync_execution_facts(code, account_scope=..., start_ms=..., end_ms=...)`
+可从已配置的非 dry-run 会话只读采集，再在 SQLite 同事务保存 `chanpy_execution_facts` 和
+`chanpy_execution_scans`。本阶段仅用 fake 私有端点验证，**不是运行真实账户的授权**；
+dry-run 不会创建真实会话，MySQL 尚未认证。`account_scope` 是稳定的非秘密调用者命名空间，
+不是 API key、服务器 UID 或账户认证；`account_scope_verified=false`，不可据它释放风险。
+SQLite 核心导入不需要 CCXT；显式真实来源采集仍需该既有可选依赖，缺包会清晰报错而不发请求。
+
+来源使用 [Binance userTrades](https://developers.binance.com/docs/derivatives/usds-margined-futures/trade/rest-api/Account-Trade-List)
+和 [income](https://developers.binance.com/docs/derivatives/usds-margined-futures/account/rest-api/Get-Income-History)，
+以及 [OKX fills/fills-history 与 bills-archive](https://my.okx.com/docs-v5/en/#order-book-trading-trade-get-transaction-details-last-3-months)。
+原生 Binance qty 是币数，OKX fillSz 是张数；与合约大小一起精确转成双单位，保留 native_quantity_unit。
+这是独立原生来源的单位边界，不从 COrderResult 的 rounded avg/filled 推导逐笔交易。
+费用扣款/返佣有符号且保留原币，PnL 标明结算币，不偷偷做外币转换；缺 fee 不当 0。
+数值按 50 位有界 Decimal 精确处理，非有限/超范围/需舍入时拒绝，不截尾。
+
+调用窗口为 source timestamp 的 `[start_ms,end_ms)`。Binance 以最多 6 日窗口查询，满页继续二分，
+不组合非法 fromId+time；单毫秒仍饱和即 unknown。OKX 近 3 日用 fills，较早用 fills-history，
+分别以 billId 排他 after 分页；`ts` 是数据生成时间，不能代替 `fillTime`，缺成交时间保留 null。
+资金费保留原生 cash_delta；OKX 的 fee/wallet/position channels 独立保留，缺腿身份不猜分配。
+每次最多 128 个 GET、90 日传输上界，超界/游标停滞/来源冲突都失败；这些不是策略搜索参数，
+也不保证交易所 3 个月保留期之外的数据可取。空页、导入成功均不证明资金费为零或账户完整。
+
+`get_execution_facts(account_scope, code, venue=..., mode=...)` 读取已验证的去重事实，
+`get_execution_scans(account_scope, code)` 重建原收据并核验 manifest→fact SHA、完整字段和单位。
+同来源 ID 同值幂等、变值拒绝；OKX billId 跨 kind 全局唯一，Binance funding tranId 跨标的唯一。
+只追加触发器与原子升级同前；取得写锁前冻结有限输入快照，调用者不能在校验后改写被发布内容。
+扫描仅存摘要清单，避免每次重复存整批事实，失败不留半次导入。
+不改当前订单/仓位，收据始终 `coverage=observed_execution_facts`、`economics_complete=false`。
+SHA 不是服务器签名。下一步还需服务器账户/环境绑定、每次历史 attempt 的归属核验、
+逐腿持仓/mark/钱包闭合、持久化新风险冻结和完整模拟账户；现有净仓位接口不能替代双腿对账。
+这两个来源流也不涵盖所有转账、转换、利息或强平附加费用；完整钱包对账必须另有流水证据，
+不能把余额差猜成交易收益，或将 funding-only 列表当作全钱包现金流。
+
 当前只完成了离线可证明的安全边界，尚未完成交易所逐一测试网认证。待验证项包括：
 沙盒支持与市场映射、客户端订单号历史查询窗口/分页、post-only/reduce-only/
 positionSide 的交易所差异、单向/双向持仓模式、杠杆和最小下单量、部分成交后

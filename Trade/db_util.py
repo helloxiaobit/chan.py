@@ -8,6 +8,7 @@
 import datetime
 import json
 import math
+import sqlite3
 from decimal import Context, Decimal, Inexact, localcontext
 from typing import List, Optional
 
@@ -169,6 +170,32 @@ class CChanDB:
         from .OrderAudit import read_history
         with self.db.transaction():
             return read_history(self.db, self.table, self.get_record(record_id))
+
+    def store_execution_scan(self, receipt):
+        self._require_execution_sqlite()
+        from .ExecutionStore import store_scan
+        receipt = json.loads(canonical_bytes(receipt))  # Own one finite snapshot before taking the writer lock.
+        try:
+            with self.db.transaction():
+                return store_scan(self.db, receipt)
+        except sqlite3.DatabaseError:
+            raise CChanException("逐笔来源存储冲突/失败，整组回滚且禁止重下", ErrCode.LIST_ORDER_FAIL) from None
+
+    def get_execution_scans(self, account_scope, instrument):
+        self._require_execution_sqlite()
+        from .ExecutionStore import read_scans
+        with self.db.transaction():
+            return read_scans(self.db, account_scope, instrument)
+
+    def get_execution_facts(self, account_scope, instrument, *, venue, mode):
+        self._require_execution_sqlite()
+        from .ExecutionStore import read_facts
+        with self.db.transaction():
+            return read_facts(self.db, account_scope, instrument, venue, mode)
+
+    def _require_execution_sqlite(self):
+        if self.db_type != "sqlite":
+            raise CChanException("MySQL 逐笔经济来源迁移/事务未认证", ErrCode.LIST_ORDER_FAIL)
 
     def _write_fill(self, record, prefix, assignments, values):
         # Compare the complete read/write ledger snapshot, including both

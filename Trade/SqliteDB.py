@@ -109,7 +109,8 @@ MIGRATION_COLUMNS = {
 class CSqliteDB:
     def __init__(self, db_path: str, table_name: str = "chan_trade"):
         from .OrderAudit import SCHEMA, initialize_schema
-        if table_name in SCHEMA:
+        from .ExecutionStore import SCHEMA as execution_schema, initialize_schema as initialize_execution_schema
+        if table_name in SCHEMA or table_name in execution_schema:
             raise ValueError("Reserved order audit table")
         self.table_name = table_name
         self.conn = sqlite3.connect(db_path)
@@ -122,6 +123,7 @@ class CSqliteDB:
                 self.conn.execute(CREATE_TABLE_SQL.format(table_name=table_name))
                 self._migrate_state_machine()
                 initialize_schema(self.conn)
+                initialize_execution_schema(self.conn)
         except BaseException:
             self.conn.close()
             raise

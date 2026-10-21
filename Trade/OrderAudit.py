@@ -52,9 +52,9 @@ def _encode(value):
     return canonical_bytes(value).decode("utf-8")
 
 
-def validate_schema(conn):
+def validate_schema(conn, schema=None):
     """Do not adopt similarly named foreign tables or missing guard triggers."""
-    for name, sql in SCHEMA.items():
+    for name, sql in (SCHEMA if schema is None else schema).items():
         row = conn.execute("SELECT sql FROM sqlite_master WHERE name=?", (name,)).fetchone()
         if row is None or " ".join(row[0].split()) != " ".join(sql.split()):
             _fail()
