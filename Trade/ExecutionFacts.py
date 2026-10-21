@@ -216,7 +216,7 @@ def collect_execution_scan(exchange, market, *, account_scope, mode, start_ms, e
                     or type(start_ms) is not int or type(end_ms) is not int
                     or not observed_now-MAX_AGE_MS <= start_ms < end_ms <= observed_now):
                 _fail()
-            facts, requests = {}, 0
+            facts, wire, requests = {}, {}, 0
             def request(kind, params, *, recent=False):
                 nonlocal requests
                 requests += 1
@@ -235,16 +235,19 @@ def collect_execution_scan(exchange, market, *, account_scope, mode, start_ms, e
                     _fail()
                 return rows
 
-            def add(rows, kind, begin, end):
+            def add(rows, kind, begin, end, *, target=None):
                 ids = []
+                selected_begin, selected_end = (begin, end) if target is None else target
                 for row in rows:
                     fact = _normalize(row, market, venue, kind)
                     if not begin <= fact["source_ms"] < end:
                         _fail()
                     key = (kind, fact["source_id"])
-                    if key in facts and facts[key] != fact:
+                    if key in wire and canonical_bytes(wire[key]) != canonical_bytes(fact):
                         _fail()
-                    facts[key] = fact
+                    wire[key] = fact
+                    if selected_begin <= fact["source_ms"] < selected_end:
+                        facts[key] = fact
                     ids.append(int(fact["source_id"]))
                 return ids
 
@@ -273,13 +276,16 @@ def collect_execution_scan(exchange, market, *, account_scope, mode, start_ms, e
                         if end_ms > cutoff:
                             windows.append((max(start_ms, cutoff), end_ms, True))
                     for begin, end, recent in windows:
-                        params = {"instId": market["id"], "instType": "SWAP", "begin": str(begin), "end": str(end-1), "limit": "100"}
+                        # Read adjacent integer boundaries because provider
+                        # wording does not promise timestamp inclusion. The
+                        # published lane still uses exactly [begin,end).
+                        params = {"instId": market["id"], "instType": "SWAP", "begin": str(max(0, begin-1)), "end": str(end), "limit": "100"}
                         if kind == "funding":
                             params.update(type="8", ctType="linear", ccy="USDT")
                         previous = None
                         while True:
                             rows = request(kind, params, recent=recent)
-                            ids = add(rows, kind, begin, end)
+                            ids = add(rows, kind, max(0, begin-1), end+1, target=(begin, end))
                             if previous is not None and any(key >= previous for key in ids):
                                 _fail()
                             if len(rows) < 100:

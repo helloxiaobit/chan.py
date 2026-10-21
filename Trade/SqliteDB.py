@@ -110,7 +110,8 @@ class CSqliteDB:
     def __init__(self, db_path: str, table_name: str = "chan_trade"):
         from .OrderAudit import SCHEMA, initialize_schema
         from .ExecutionStore import SCHEMA as execution_schema, initialize_schema as initialize_execution_schema
-        if table_name in SCHEMA or table_name in execution_schema:
+        from .AccountStore import SCHEMA as account_schema, initialize_schema as initialize_account_schema
+        if table_name in SCHEMA or table_name in execution_schema or table_name in account_schema:
             raise ValueError("Reserved order audit table")
         self.table_name = table_name
         self.conn = sqlite3.connect(db_path)
@@ -124,6 +125,7 @@ class CSqliteDB:
                 self._migrate_state_machine()
                 initialize_schema(self.conn)
                 initialize_execution_schema(self.conn)
+                initialize_account_schema(self.conn)
         except BaseException:
             self.conn.close()
             raise

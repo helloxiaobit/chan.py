@@ -88,6 +88,47 @@ def collect(source, start, end):
                                   start_ms=start, end_ms=end)
 
 
+@pytest.mark.parametrize("strict", [True, False])
+def test_okx_execution_and_funding_include_target_edge_ms_without_assuming_filter_inclusion(strict):
+    start = utc_now_ms()-10_000
+    end = start+10
+    rows = [fill("okx", at, key=101+i) for i, at in enumerate((start-1, start, end-1, end))]
+    cash = [funding("okx", at, key=901+i) for i, at in enumerate((start-1, start, end-1, end))]
+    source = NativeSources("okx", rows, cash)
+
+    def server(kind, params):
+        begin, finish = int(params["begin"]), int(params["end"])
+        selected = rows if kind == "trades" else cash
+        result = [r for r in selected if (begin < int(r["ts"]) < finish if strict else begin <= int(r["ts"]) <= finish)]
+        return {"code": "0", "data": copy.deepcopy(result)}
+
+    source.override = server
+    receipt = collect(source, start, end)
+    facts = receipt["payload"]["facts"]
+    assert [(r["source_ms"], r["kind"]) for r in facts] == [(start, "funding"), (start, "trade"), (end-1, "funding"), (end-1, "trade")]
+    assert all(int(params["begin"]) == start-1 and int(params["end"]) == end for _, params in source.requests)
+
+
+@pytest.mark.parametrize("strict", [True, False])
+def test_okx_archive_and_recent_overlap_does_not_duplicate_or_omit_the_fixed_cutoff(monkeypatch, strict):
+    import Trade.ExecutionFacts as module
+    now = utc_now_ms()
+    monkeypatch.setattr(module, "utc_now_ms", lambda: now)
+    cutoff = now-3*86_400_000
+    rows = [fill("okx", at, key=101+i) for i, at in enumerate((cutoff-2, cutoff-1, cutoff, cutoff+1))]
+    source = NativeSources("okx", rows, [])
+
+    def server(kind, params):
+        begin, end = int(params["begin"]), int(params["end"])
+        result = [r for r in rows if (begin < int(r["ts"]) < end if strict else begin <= int(r["ts"]) <= end)] if kind == "trades" else []
+        return {"code": "0", "data": copy.deepcopy(result)}
+
+    source.override = server
+    receipt = collect(source, cutoff-1, cutoff+1)
+    assert [f["source_ms"] for f in receipt["payload"]["facts"]] == [cutoff-1, cutoff]
+    assert source.endpoints == ["fills-history", "fills", "bills-archive"]
+
+
 @pytest.mark.parametrize("venue", ["binance", "okx"])
 @pytest.mark.parametrize("fee", ["0.003", "0", "-0.0001"])
 def test_native_fees_and_funding_preserve_sign_currency_and_decimal_units(venue, fee):

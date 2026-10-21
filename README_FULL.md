@@ -473,6 +473,7 @@ SQLite 核心导入不需要 CCXT；显式真实来源采集仍需该既有可�
 调用窗口为 source timestamp 的 `[start_ms,end_ms)`。Binance 以最多 6 日窗口查询，满页继续二分，
 不组合非法 fromId+time；单毫秒仍饱和即 unknown。OKX 近 3 日用 fills，较早用 fills-history，
 分别以 billId 排他 after 分页；`ts` 是数据生成时间，不能代替 `fillTime`，缺成交时间保留 null。
+OKX 成交/资金费也先读取目标窗口的邻接毫秒，再按每条 recent/archive lane 的 `[begin,end)` 本地过滤，避免依赖未明确的端点包含语义。
 资金费保留原生 cash_delta；OKX 的 fee/wallet/position channels 独立保留，缺腿身份不猜分配。
 每次来源扫描最多 128 个 GET、90 日传输上界，另有扫描前后两次账户身份 GET；
 超界/游标停滞/来源冲突都失败；这些不是策略搜索参数，
@@ -507,6 +508,37 @@ SHA 不是服务器签名。新扫描的账户关联与历史 attempt 归属检�
 该报告只声明 `coverage=observed_scan_facts_only`、`economics_complete=false`。匹配到全部已观察成交、
 空扫描或零条异常，都不证明未漏成交、钱包现金流完整、余额/mark/双腿闭合，不能释放新风险。
 它不更新订单数量/PnL，也不是服务器签名、真实交易所认证或真实账户运行授权。
+
+#### C5 独立账户级钱包与逐腿来源（离线子边界）
+
+`engine.sync_wallet_cashflows(start_ms=..., end_ms=...)` 请求所有原生现金流类型和币种，
+不使用 symbol/instrument/type/currency 过滤。Binance 使用 all-type income，唯一键为
+`incomeType:tranId`；OKX 使用 trading-account bills-archive，唯一键为 billId，按排他 after 分页。
+OKX 时间过滤在目标 `[start,end)` 外多读相邻毫秒，再本地严格过滤，避免依赖未明确的 begin/end 包含语义而漏掉首尾毫秒。
+交易账户不等于 OKX 独立 funding account，不能把这份数据称为整个交易所账户资产。
+保留原币、有符号 account/position cash delta、余额及原生 fee/pnl/interest 分量；
+**分量已包含在原生余额变化中，不能再次相加记账**。未知流水类型保留原生字面值，不猜为交易收益。
+
+`engine.sync_account_snapshot([code, ...])` 使用显式 market 单位以及原生 account/balance/positions
+读取全部返回持仓。Binance 额外读取原生 symbol configuration 和 multi-assets mode；
+long/short 不净额抹除，零仓位但有 isolated 资金的记录也保留。未提供或不支持的 market 持仓留在
+`unsupported_positions`，不猜币数/张数；两平台统一输出双单位、方向、entry、mark、reported
+unrealized/realized PnL（原生没有的仍为 null）、保证金、原币余额与来源时间。
+OKX 的 totalEq 及 Binance multi-assets 总值明确为 USD，不当作 USDT；逐币资产不做暗中转换。
+`update_ms` 是原生账户/持仓更新时间，不是 mark 生成时间，故 `mark_ms=null`；
+两个 REST 响应也不宣称原子同一时刻。后续对账必须处理观察区间内的变化和未知字段。
+
+这些调用在私有读取前后核对同一原生账户/环境，观察收据一律 `economics_complete=false`，
+只代表 `observed_account_cashflows` 或 `observed_native_account`，不自动对账、解锁或下单。
+钱包最多 128 次来源 GET、90 日传输上界，时间饱和/无进展/原生冲突均失败，另有前后身份 GET；
+snapshot 使用 Binance 4 次或 OKX 2 次来源 GET，另有身份读取。空页、全字段相等均非外部认证。
+
+SQLite 增加独立只追加 `chanpy_account_evidence`，`store_account_evidence(document)` 返回文档 SHA，
+`get_account_evidence(evidence_id)` 重新核验 canonical 字节、完整来源/摘要、账户和列身份。
+原生流水同 context/ID 变值拒绝，重复文档幂等；单表首次升级和发布失败均回滚，旧订单不补资产。
+取得写锁前冻结输入，不在 DB 写锁内发网络请求。当前跨历史钱包文档校验成本、存储体积及限频延时
+尚未做实际容量认证，C6/C7 需验证增量运行预算。MySQL disabled，dry-run 不创建真实会话。
+钱包闭合、逐腿 mark/余额对账、持久新风险冻结和含费模拟仍未完成；本文接口不能用作放行证明。
 
 当前只完成了离线可证明的安全边界，尚未完成交易所逐一测试网认证。待验证项包括：
 沙盒支持与市场映射、客户端订单号历史查询窗口/分页、post-only/reduce-only/

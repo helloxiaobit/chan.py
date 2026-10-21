@@ -216,6 +216,22 @@ class CChanDB:
         if self.db_type != "sqlite":
             raise CChanException("MySQL 逐笔经济来源迁移/事务未认证", ErrCode.LIST_ORDER_FAIL)
 
+    def store_account_evidence(self, document):
+        self._require_execution_sqlite()
+        from .AccountStore import store_evidence
+        document = json.loads(canonical_bytes(document))
+        try:
+            with self.db.transaction():
+                return store_evidence(self.db, document)
+        except sqlite3.DatabaseError:
+            raise CChanException("账户来源发布失败/冲突，整份证据回滚", ErrCode.LIST_ORDER_FAIL) from None
+
+    def get_account_evidence(self, evidence_id):
+        self._require_execution_sqlite()
+        from .AccountStore import read_evidence
+        with self.db.transaction():
+            return read_evidence(self.db, evidence_id)
+
     def _write_fill(self, record, prefix, assignments, values):
         # Compare the complete read/write ledger snapshot, including both
         # attempts. One SQL statement is atomic across independent connections;

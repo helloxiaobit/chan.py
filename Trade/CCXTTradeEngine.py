@@ -769,8 +769,7 @@ class CCCXTTradeEngine(CTradeEngine):
 
     def sync_execution_facts(self, code, *, account_scope, start_ms, end_ms):
         """Explicit read/import only; does not reconcile, release risk or book orders."""
-        if self.dry_run or self.market_type != "swap" or self.chan_db.db_type != "sqlite":
-            raise CChanException("真实来源导入仅用于显式 SQLite 线性永续会话；模拟不可创建真实会话", ErrCode.LIST_ORDER_FAIL)
+        self._assert_native_source_session()
         from .ExecutionFacts import collect_execution_scan
         definition, _ = self._market_contract(code)
         started = utc_now_ms()
@@ -781,6 +780,28 @@ class CCCXTTradeEngine(CTradeEngine):
         self.chan_db.store_execution_scan(receipt, account_observation={"before": before, "after": after,
             "started_ms": started, "finished_ms": utc_now_ms()})
         return receipt
+
+    def _assert_native_source_session(self):
+        if self.dry_run or self.market_type != "swap" or self.chan_db.db_type != "sqlite":
+            raise CChanException("真实来源导入仅用于显式 SQLite 线性永续会话；模拟不可创建真实会话", ErrCode.LIST_ORDER_FAIL)
+
+    def sync_wallet_cashflows(self, *, start_ms, end_ms):
+        """Explicit account-wide source import only, without ordering/release."""
+        self._assert_native_source_session()
+        from .AccountSources import collect_wallet_scan
+        document = collect_wallet_scan(self.get_exchange(), mode=self.mode, start_ms=start_ms, end_ms=end_ms)
+        self.chan_db.store_account_evidence(document)
+        return document
+
+    def sync_account_snapshot(self, codes):
+        """Observe all returned legs, preserving unsupported external positions."""
+        self._assert_native_source_session()
+        if not isinstance(codes, (list, tuple)) or any(not isinstance(code, str) or not code for code in codes) or len(set(codes)) != len(codes):
+            raise CChanException("账户观察需要显式无重复的 market 标的列表", ErrCode.PARA_ERROR)
+        from .AccountSources import collect_account_snapshot
+        document = collect_account_snapshot(self.get_exchange(), [self._market_contract(code)[0] for code in codes], mode=self.mode)
+        self.chan_db.store_account_evidence(document)
+        return document
 
     def get_position(self, code: str) -> float:
         if self.dry_run:

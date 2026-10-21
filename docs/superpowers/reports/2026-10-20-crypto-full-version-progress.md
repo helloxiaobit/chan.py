@@ -36,7 +36,7 @@
 | C2 | 已完成离线实现与验收 | 父 K/原始关系发布边界、不可变决策、完整身份对账、真实三层策略 future/prefix 变异；非外部认证 |
 | C3 | 已完成离线实现与验收 | UTC purge/unknown、三模型身份、write-once 部署、三阶段评分与 SQLite 版本链；非实盘/外部认证 |
 | C4 | 已完成离线实现与验收 | 有界实际样本→三模型→搜索/独立验证→部署→全 trial 重放；93 项组合、608 项全仓离线通过，非经济采用 |
-| C5 | 进行中 | 单位/原生参数/恢复/历史/来源/账户绑定/扫描内历史归属离线通过；钱包与逐腿对账、持久冻结、模拟账户仍待 |
+| C5 | 进行中 | 订单/原生恢复/历史/账户绑定/逐笔归属及全类型钱包/逐腿来源离线通过；钱包与逐腿闭合、持久冻结、模拟账户仍待 |
 | C6 | 待开发 | 调度/API/离线 E2E |
 | C7 | 待前置验收 | 公共行情与有准入后的外部认证；代码发布按阶段进行 |
 
@@ -356,3 +356,25 @@ C1 收尾清理计划：迁移校验由两份全表内存列表改为有序逐�
 - 新解释器屏蔽 ccxt，ownership/store/交易核心导入与 SQLite/dry-run 构造 smoke PASS；compileall/diff 已通过，提交前再核 staged diff。主代理按串行约束自审，不声称独立审计；没有真实账户 I/O、正式研究/绩效、依赖/配置/权限修改。
 - 文件范围：新增 `Trade/ExecutionReconcile.py`、`tests/test_execution_account_binding.py`、`tests/test_execution_ownership.py`；修改 `Trade/ExecutionStore.py`、`Trade/CCXTTradeEngine.py`、`Trade/db_util.py`、`README_FULL.md` 和本台账。复用原 manifest、事务、source normalization、history verifier 和 canonical helper，删除旧重复的 manifest 发布/字段检查分支；没有第二套订单生命周期。
 - 下一步仍为 C5 必需工作：独立 account-wide 钱包流水（含非 funding 的转账/转换/利息/强平等，不与 trade fee/PnL 双记）、带原生来源/时钟的逐腿持仓与 mark/余额观察、对账差异和持久化新风险冻结，保留已证明的取消/降风险，及完整含费模拟账户。当前 funding 缺 native leg 明确 unallocated；扫描局部/空页/零异常不能证明无遗漏或完整现金流。全账户现金流与逐腿资金费分配是不同证据，不能为凑 PASS 猜分配；实际限频/锁时延预算和外部平台仍未认证。C6/C7、Goal 与所有交易/研究门禁保持原状态。
+
+### C5 第九子边界实施与清理计划：独立全类型钱包和逐腿账户来源
+
+- 第八子边界已 Lore 提交并推送 `97bfa85e99e0d6f3b68f2914d34ee32cd181901b`，精确提交后 71 项复验、远端一致且 clean，为有效进展。继续 Inline 串行、fake native GET、TDD；不调用真实账户，不放宽候选/测试网/实盘/研究门禁。
+- Binance 全账户 income 不传 symbol/incomeType；原生唯一键是 (incomeType, tranId)，不同收入类型不能仅按 tranId 去重。OKX 全账户 bills 不传 instId/instType/ccy/type 等过滤，保留 account 与 isolated-position 的现金/余额 channel，不把 pnl+fee 再加到 balChg，不把 trading-account 流水冒称 funding-account 钱包。逐币保留，不能把 BNB/美元总资产误当 USDT。
+- 逐腿 snapshot 使用原生账户资产、position risk/positions、市场单位及原生 margin/mode 证据，明确币数与张数、long/short、mark、entry、reported unrealized、初始/维持保证金与时间。多空同时存在不得净额抹除；零数量且有 isolated 余额的记录不丢弃；不支持或未提供市场 metadata 的持仓保留显式 unsupported 证据，不猜单位。
+- 输入前后复用原生账户/环境绑定；钱数字符串复用现有固定 Decimal 边界、canonical/SHA，不复制 raw 私有标识/任意响应。分页/时间窗/限额只是协议预算，饱和或无进展 fail closed，空页不认证经济完整；snapshot 是一个观察区间，不把 updateTime 伪称 mark 生成时间，也不保证两个 REST 响应原子同一时刻。
+- 使用小型真实协议夹具先 RED→GREEN，再同一 SQLite append-only 证据表原子保存账户级文档，独立于按 instrument 的 execution facts；复用原 schema/事务校验器，不造另一套订单生命周期。旧库非破坏性增加独立表，不给旧扫描/订单补原始资产。引擎显式 sync 入口无订单/配置副作用，dry-run 不建会话。
+- 本轮完成独立钱包/资产/逐腿来源及存储后，继续用两端可信观察与全类型现金流做钱包闭合、DB/原生成交逐腿数量/mark 对账，再接持久风险冻结及含费模拟；这些缺口仍是 C5 必需验收，来源 receipt 一律不提供 PASS/放行接口。短组合、核心缺依赖、完整离线与 Lore 快进推送后继续 Goal，不将本子边界当 C5 完成。
+
+### C5 第九子边界证据：全类型钱包、逐腿快照与独立持久来源（C5 未完成）
+
+- AccountSources 先观察缺模块 RED；全账户钱包不传 instrument/type/currency 过滤，Binance income 采用 (incomeType, tranId)，OKX bills-archive 用 billId 排他 after。复用原 ExecutionFacts 的固定 50 位 native decimal/ID/currency 边界和原生身份前后观察；保留真实 account/position cash 与余额 channel、原币 fee/pnl/interest，不将分量二次加进余额，不把陌生原生类型猜为收益。原生 notes/info、余额接口附带私有 ID、任意响应和异常正文均不复制；无真实 HTTP。
+- 钱包 fixture 覆盖两平台 transfer/funding/保险或未知类型、BNB 原币、相同 tranId 不同 incomeType、独立 fee/pnl 与 isolated channel、时间窗拆分/饱和毫秒/请求预算/停滞游标、错误格式/缺现金/冲突/重算摘要及脱敏。首次 bool-time 两项未触发是 fake server 提前把坏行过滤掉；纠正 fixture 为直接返回坏 wire row 后验证原解析器确实拒绝，没有放宽类型约束来凑 GREEN。
+- Snapshot API 缺函数 RED 后，原生 account/balance、positions/positionRisk、Binance symbolConfig/multi-assets margin 形成可复核有限文档；Binance 原生数量是币数，OKX 是张数，再按显式 metadata 转双单位。long/short 不净额，零数量有 isolated 资金的返回记录保留；未知市场持仓明确 unsupported，不能猜单位。多币余额、reported realized/unrealized、entry/mark/初始/维持保证金与原生 update time 独立保留，USD 总值不标 USDT，未提供的字段保持 null。mark_ms 明确 null，不把账户更新时间假称 mark 生成时间，不冒称多 REST 响应原子一致。
+- 自审四项真实 RED 后，独立 Binance account leg 重复、该响应内非有限金额、unsupported position 内 NaN 和未来时钟也拒绝；不能用 unsupported 标签跳过来源验证。账户切换/原生异常、重算摘要后的 summary 或 mark 时钟变异、低精度与 Subnormal 调用者 context 均有回归。
+- AccountStore/DB/engine 首组 20 RED→GREEN：单一新增只追加 chanpy_account_evidence，重用 SQLite 事务、schema 精确核验和有限 canonical；同文档幂等、原生流水同 context/ID 变值拒绝、不同账户 ID 不混同、失败回滚、重启重读、UPDATE/DELETE/REPLACE 拦截、foreign schema 整体升级失败原样保留。导入前取一次自有文档快照；网络发生在写锁外，dry-run 不建真实会话，三种源入口共用既有会话门禁，订单生命周期/qty/PnL 不改。
+- 适用来源/存储/历史/事务先 211 passed（23.62s）；交易/恢复/部署组合 586 passed / 6 existing small-model warnings（92.58s）；首轮完整离线 1138 passed / 7 skipped / 1 network deselected / 14 existing warnings，541.67s。该进程明确终止后才做后述窗口修正，没有将 1138 当最终修正树结果。
+- 收尾审查发现 OKX 文档未明确 begin/end 的包含语义；钱包 2 项 RED、旧 ExecutionFacts 2 项 RED 在严格 filter 模型下证明旧换算会静默漏目标首尾毫秒（不声称已经真实认证服务端语义）。现在原生钱包、成交及 funding 都在目标外读取邻接整数毫秒，校验所有返回 wire 身份/冲突，再本地严格过滤到原 [start,end)。recent/archive 各 lane 仍精确 end-exclusive，另外 2 项切换 fixture 证明无重算/漏 cutoff。Binance 已明示 inclusive 的参数不改，旧收据 bytes/validator/flags 不升级，没有修改冻结 research。
+- 最终来源/账户/历史/事务组合 270 passed（23.64s），包含新 29 wallet / 30 snapshot / 20 store 及原 57 execution source 等。最终完整命令 `python -m pytest tests -m 'not network' --basetemp <new-temp-directory> -q --tb=short -p no:cacheprovider`：1144 passed / 7 expected skipped / 1 network deselected / 14 existing model warnings，540.98s。始终只运行一套测试，结束后才补台账；compileall/diff 已通过，Lore 前核 staged diff。ccxt 被新解释器屏蔽时 native source/store/交易核心导入、SQLite 与 dry-run 构造 smoke PASS。
+- 文件范围：新增 Trade/AccountSources.py、Trade/AccountStore.py 及 tests/test_native_account_{sources,snapshot,store}.py；修改 Trade/CCXTTradeEngine.py、Trade/ExecutionFacts.py、Trade/SqliteDB.py、Trade/db_util.py、tests/test_execution_facts.py、README_FULL.md 和本台账。没有新依赖、用户配置/权限/规则或研究变更；只共享旧转换/事务/校验/会话 guard，不建立第二套订单引擎。按串行约束主代理自审，非独立审计。
+- 继续 C5 的真实缺口：需要可信观察区间与全类型账单的逐币钱包闭合，独立重建 DB/原生成交的逐腿数量/mark/PnL 并处理 native 精度/未知，接同事务持久新风险冻结、保留可证明的取消/降风险，再完善含费/资金费/不利路径模拟。全历史钱包文档校验容量、数据保留/同步时延和限频、区域端点与实际交易所均未认证；unknown/empty/source import 本身不能当账户 PASS。C6/C7 未完成，Goal active，候选/测试网/实盘/正式研究门禁保持。
