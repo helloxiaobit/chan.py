@@ -396,9 +396,20 @@ class FakeCCXTError(Exception):
 
 class FakeContractExchange:
     def __init__(self):
+        self.id = "binance"
+        self.precisionMode = 4  # CCXT TICK_SIZE；此夹具的 formatter 保持原精度。
         self.created = []
         self.leverage_calls = []
         self.positions_calls = []
+
+    def load_markets(self):
+        return {"BTC/USDT:USDT": self.market("BTC/USDT:USDT")}
+
+    def market(self, code):
+        return {"id": "BTCUSDT", "symbol": code, "base": "BTC", "quote": "USDT", "settle": "USDT",
+                "spot": False, "swap": True, "contract": True, "linear": True, "inverse": False,
+                "active": True, "contractSize": 1, "precision": {"amount": 0.001, "price": 0.1},
+                "limits": {"amount": {}, "price": {}, "cost": {}}}
 
     def amount_to_precision(self, code, amount):
         return str(amount)
@@ -413,6 +424,9 @@ class FakeContractExchange:
         self.created.append((code, order_type, side, amount, price, params or {}))
         return {
             "id": "exchange-1",
+            "symbol": code,
+            "side": side,
+            "type": order_type,
             "clientOrderId": (params or {}).get("clientOrderId"),
             "amount": amount,
             "filled": 0.75,
@@ -465,8 +479,9 @@ def test_contract_order_passes_explicit_intent_and_queries_positions(
     )
     trade_db.record_open_submission(record_id, "old-open", "closed")
     trade_db.apply_open_fill(record_id, 2.0, 100.0, "closed")
+    quantity, price, order_contract = engine.prepare_order("BTC/USDT:USDT", 2.0, 101.0, reduce_only=True)
     assert trade_db.acquire_close_intent(
-        record_id, 2.0, "close-42", "test"
+        record_id, quantity, "close-42", "test", order_contract=order_contract
     )
 
     result = engine.place_order(

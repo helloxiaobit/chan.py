@@ -36,6 +36,7 @@ CREATE TABLE IF NOT EXISTS {table_name}(
     open_filled_qty FLOAT DEFAULT 0,
     open_order_status VARCHAR(20),
     open_attempt INT DEFAULT 0,
+    open_order_contract TEXT,
     open_image_url VARCHAR(64),
     cover_image_url VARCHAR(64),
     peak_price_after_open FLOAT,
@@ -52,6 +53,7 @@ CREATE TABLE IF NOT EXISTS {table_name}(
     cover_filled_qty FLOAT DEFAULT 0,
     cover_order_status VARCHAR(20),
     cover_attempt INT DEFAULT 0,
+    cover_order_contract TEXT,
 
     current_qty FLOAT DEFAULT 0,
     order_last_update DATETIME(6),

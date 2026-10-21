@@ -36,7 +36,7 @@
 | C2 | 已完成离线实现与验收 | 父 K/原始关系发布边界、不可变决策、完整身份对账、真实三层策略 future/prefix 变异；非外部认证 |
 | C3 | 已完成离线实现与验收 | UTC purge/unknown、三模型身份、write-once 部署、三阶段评分与 SQLite 版本链；非实盘/外部认证 |
 | C4 | 已完成离线实现与验收 | 有界实际样本→三模型→搜索/独立验证→部署→全 trial 重放；93 项组合、608 项全仓离线通过，非经济采用 |
-| C5 | 待开发 | 合约适配/恢复/对账 |
+| C5 | 进行中 | 先接单位/精度/持久化意图一致性；参数适配、分页对账和模拟账户仍待 |
 | C6 | 待开发 | 调度/API/离线 E2E |
 | C7 | 待前置验收 | 公共行情与有准入后的外部认证；代码发布按阶段进行 |
 
@@ -200,3 +200,22 @@ C1 收尾清理计划：迁移校验由两份全表内存列表改为有序逐�
 - 限定：candidate/post 阈值是用户显式冻结值，本阶段不宣称在线三阶段价格相同或限价撮合等价。搜索额度仍属账户/建议口径，C5 绑定真实合约单位和在线额度；C6 验收完整调度/锁/环境矩阵。所有结果 candidate_authorized=false；C5–C7、交易所外部认证与正式经济采用未完成，Goal 保持 active。
 - 最新完整代码树独立串行复验：608 passed / 7 expected skipped / 1 network deselected / 14 warnings，487.51s。14 警告为八次小 XGB validation 单类 AUC、五次 MLP 60 步未收敛及既有 libsvm 文本输入弃用；跳过仍为六项外部研究资产及缺 PyQt6 的股票 GUI。不设置研究路径、不使用网络订单来消除跳过。compileall 与 diff 检查通过；后续只更新本台账的状态/结果，不修改通过验证的运行时代码。
 - C4 离线验收完成；进入 C5 时仍以币数量/合约张数、精度化后的持久化意图一致、exchange 参数与累计成交/重启对账为先，不重建状态机。C6 还需 fresh checkout 行尾、Python 3.11/当前版本核心与完整安装矩阵、调度锁/故障管理/在线式 E2E；当前 608 项通过不是这些外部/跨环境门槛的替代。
+
+## C5 实施与清理计划：单位契约优先，保留唯一订单状态机
+
+- 起始 HEAD `41155d683f14cf62d4e9e491868b19fca5ad85cb`、工作树干净，上一 Goal turn 为有效进展。本轮沿用已批准计划和 Inline 严格串行；不创建子代理、不运行正式研究或真实下单。
+- 本机 CCXT 4.5.43 与 [官方 FAQ](https://github.com/ccxt/ccxt/wiki/FAQ) 明确：线性合约 create_order 的 amount/累计 filled 为张数，币数量=张数×contractSize。[官方手册](https://github.com/ccxt/ccxt/wiki/Manual) 区分 precision 与 limits。现有 quota_gen 返回币数，但引擎直接当 CCXT amount，且在 DB CAS 之后才舍入；该问题先用真实 CCXT precision + fake I/O + SQLite 重现。
+- 内部 quota/current_qty/requested/filled 统一保留**币数量**，名义为 quote/USDT；仅 CCXT 边界转换张数。用原生 amount_to_precision/price_to_precision，舍入后重新检查非零、amount/price/cost limits，禁止向上增加币数；无来源/不支持的 inverse、非 USDT 线性永续等明确拒绝，不猜 contractSize=1。
+- 文件范围：TradeEngine 增加默认兼容的预处理 hook；CCXTTradeEngine 复用现有 place/query/restore 路径做单位转换。SQLite 只非破坏性补 open/cover order contract 字段并在同一 intent CAS 持久化精度化后的 spec；db_util 保持累计成交逻辑原位不变。MySQL 新契约写入在迁移/事务验收前 fail closed，保留旧接口，不冒称同级认证。
+- 清理/复用：删除 CAS 后的二次数量舍入；规格记录 market 身份、contractSize/precision/limits、币数/张数/价格及摘要。提交前重核规格，恢复按已持久化单位转换；缺规格的旧合约在途订单不自动贴单位，保留查询失败与撤单能力，不能重新下单。股票默认 hook 不改变已有行为，现有无 metadata 的 dry-run 仅保留兼容，完整模拟合约账户另按 C5 验收。
+- 严格 RED→GREEN：先 contractSize≠1、舍入零/最小名义/精度、真实 DB 意图与请求、partial/重启/重复回报和 metadata 漂移；再做 Binance/OKX mode/margin/reduce/post/client-id 适配、查单分页、双向逐腿持仓和余额对账冻结新风险、含费用/funding/mark 的模拟账户。不得以第一子边界通过代替整个 C5。
+
+### C5 第一子边界：精度化前置、单位入库与冻结单位恢复（C5 未完成）
+
+- 先观察 RED：首轮 fake Exchange 的基类覆盖了 id 导致夹具错误，补真实 id 后重跑，得到 14 项有效失败。币数 0.037 被直接传为 contracts 导致精度拒绝；限额/无效 metadata 失败发生在 DB 已变 submitted 后；持仓 3 contracts 被读成 3 币而不是 0.03；现货 DB requested 也与实际舍入量不一致。
+- 沿用同一 CTradeEngine/CChanDB 状态机，prepare_order 在 CAS 前把显式币数转换、精度化并检查完整 limits/数值可重读性。只在 CCXT 边界转张数，返回累计成交转回币数。open/cover contract 在同一 SQLite CAS 保存，原候选报价/模型 snapshot 不被精度化限价覆盖。删除提交之后再次改 amount 的路径，没有第二套订单循环。
+- 完整真实 CCXT precision + fake I/O + SQLite 验证 partial、直接 order-id 查单、缺返回 client-id、重启/重复回报、全部退出、市价参考不冒充限价、spot 不套 contractSize、双向净持仓币数。底层 schema 非破坏性补列，旧行保持 null、不编造单位；重新打开 SQLite 后完整记录不变。MySQL 仅更新 fresh schema 说明，未验收新契约写入保持拒绝。
+- 补强 RED：调用方 Decimal 精度实际改变 filled/position；错误 side/type/已知 id 原本被接受；市场在 CAS 后停用仍会提交，单纯 tick/limits 更新却阻断旧单恢复；极细数值在 DB/CCXT float 边界被静默改写；未知单位旧仓被自动平仓。逐项最小修复，Decimal 固定 50 位，已知订单身份不替换，新提交严格核当前规格/active，旧单按冻结单位但非新 limits 记账，无法数值往返或旧单位无证据时在 CAS 前拒绝。
+- 原安全夹具的手动合约 close intent 缺单位证据；改为显式 prepare+持久化实际 spec，保留原参数、模式与 CAS 断言，而不是放宽运行时 guard。旧无 metadata dry-run 与股票默认 hook 保持兼容，未知真实合约记录不自动迁移；取消接口未移除。
+- 运行时代码组合：104 passed / 3 expected small-model warnings（39.83s），含所有新增单位测试、trade safety/state-machine/M6、C3 真实部署/评分/intent 版本链。之后仅补 long/short/flat、SQLite 重开和 migration null、MySQL disabled 结构/回归测试，最新适用集合 73 passed（10.05s，无警告）。C4 的 608 全仓证据仅复用于未变区域，未重标成本次完整树证明；整个 C5 完成时再完整验收。编译/diff 与 Lore 提交单独核验。
+- C5 仍未完成：当前尚不是交易所参数/模式认证；客户端号分页、逐腿对账/持久化冻结、完整模拟账户和在线额度部署接线继续按原计划推进。C6/C7、真实测试网及实盘仍保持各自门禁，Goal active。

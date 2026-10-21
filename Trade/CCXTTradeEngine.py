@@ -4,11 +4,15 @@ dry_run 模式绝不创建交易所会话。默认立即成交，也可按客户
 单调累计成交计划，用于验证零成交、部分成交和重启恢复逻辑。
 """
 import itertools
+import hashlib
+import json
 import math
 from dataclasses import dataclass, field
+from decimal import Decimal, InvalidOperation, localcontext
 from typing import Dict, List, Optional
 
 from Common.ChanException import CChanException, ErrCode
+from CustomBuySellPoint.Decision import canonical_bytes
 
 from .db_util import CChanDB
 from .OpenQuotaGen import COpenQuotaGen
@@ -26,6 +30,29 @@ _CCXT_STATUS_MAP = {
     "expired": "canceled",
     "rejected": "rejected",
 }
+
+
+def _quantity(value, *, positive=False):
+    try:
+        if value is None or isinstance(value, bool):
+            raise ValueError("missing numeric evidence")
+        result = Decimal(str(value))
+        if not result.is_finite() or result < 0 or (positive and result == 0):
+            raise ValueError("invalid numeric evidence")
+        return result
+    except (ValueError, InvalidOperation) as error:
+        raise CChanException("订单单位/价格证据必须为有限有效数值", ErrCode.PARA_ERROR) from error
+
+
+def _contract_id(value):
+    return hashlib.sha256(canonical_bytes({k: v for k, v in value.items() if k != "contract_id"})).hexdigest()
+
+
+def _float_exact(value):
+    result = float(value)
+    if _quantity(result) != value:
+        raise CChanException("订单数值无法经过 DB/CCXT 数值边界原样重读", ErrCode.PARA_ERROR)
+    return result
 
 
 @dataclass
@@ -160,7 +187,7 @@ class CCCXTTradeEngine(CTradeEngine):
             raise CChanException("dry_run 成交计划必须单调递增", ErrCode.PARA_ERROR)
         self._sim_fill_plans[client_order_id] = fills
 
-    def _claim_persisted_intent(
+    def _validated_persisted_intent(
         self,
         code: str,
         is_buy: bool,
@@ -168,7 +195,7 @@ class CCCXTTradeEngine(CTradeEngine):
         client_order_id: Optional[str],
         reduce_only: bool,
         position_side: str,
-    ) -> None:
+    ) -> dict:
         if not client_order_id:
             raise CChanException(
                 "非 dry-run 下单必须提供客户端订单号",
@@ -212,11 +239,113 @@ class CCCXTTradeEngine(CTradeEngine):
                 "下单参数与持久化意图不一致",
                 ErrCode.TRADE_UNLOCK_FAIL,
             )
-        if not self.chan_db.claim_order_submission(record["id"], phase):
-            raise CChanException(
-                "持久化意图已提交或被其他进程获取",
-                ErrCode.TRADE_UNLOCK_FAIL,
-            )
+        return intent
+
+    def _market_contract(self, code):
+        """当前交易所真实 metadata；不从 symbol 或缺省 contractSize 猜单位。"""
+        exchange = self.get_exchange()
+        exchange.load_markets()
+        market = exchange.market(code)
+        spot = self.market_type == "spot"
+        if (market.get("symbol") != code or not market.get("id") or not exchange.id
+                or not market.get("base") or not market.get("quote")
+                or (spot and (market.get("spot") is not True or market.get("contract")))
+                or (not spot and (self.market_type != "swap" or market.get("swap") is not True
+                    or market.get("contract") is not True or market.get("linear") is not True
+                    or market.get("inverse") is not False or market.get("settle") != "USDT"
+                    or market.get("quote") != "USDT"))):
+            raise CChanException("缺少或不支持的现货/USDT 线性永续 market 身份", ErrCode.PARA_ERROR)
+        size = Decimal(1) if spot else _quantity(market.get("contractSize"), positive=True)
+        precision = market.get("precision") or {}
+        if precision.get("amount") is None or precision.get("price") is None:
+            raise CChanException("market 缺少数量/价格精度", ErrCode.PARA_ERROR)
+        definition = {"exchange": exchange.id, "id": market["id"], "symbol": code,
+            "type": self.market_type, "base": market["base"], "quote": market["quote"],
+            "settle": "" if spot else market["settle"], "contractSize": str(size),
+            "precision_mode": exchange.precisionMode, "precision": precision,
+            "limits": {key: (market.get("limits") or {}).get(key) or {} for key in ("amount", "price", "cost")}}
+        # 复制完整有限字节，后续 metadata 原地变动不能回写已发布意图。
+        return json.loads(canonical_bytes(definition)), market
+
+    @staticmethod
+    def _check_limits(definition, amount, price, cost):
+        for key, value in (("amount", amount), ("price", price), ("cost", cost)):
+            for bound, test in (("min", lambda x, y: x < y), ("max", lambda x, y: x > y)):
+                limit = definition["limits"][key].get(bound)
+                if limit is not None and test(value, _quantity(limit)):
+                    raise CChanException(f"精度化后订单违反 market {key}.{bound}", ErrCode.QUOTA_NOT_ENOUGH)
+
+    def prepare_order(self, code, amount, price, *, reduce_only=False, record=None):
+        if self.dry_run:
+            return super().prepare_order(code, amount, price, reduce_only=reduce_only, record=record)
+        self.safety_policy.assert_order_allowed()
+        if self.chan_db.db_type != "sqlite":
+            raise CChanException("MySQL 单位契约迁移/事务尚未验收", ErrCode.TRADE_UNLOCK_FAIL)
+        if reduce_only and record is not None:
+            # 自动平仓的数量来自 DB；旧数量没有单位证据时不能推断成币数。
+            self._read_order_contract(code, {"phase": "open", "record": record})
+        import ccxt
+        try:
+            definition, market = self._market_contract(code)
+            if not reduce_only and market.get("active") is not True:
+                raise CChanException("market 非明确 active，禁止新风险", ErrCode.TRADE_UNLOCK_FAIL)
+            with localcontext() as context:
+                context.prec = 50
+                size = _quantity(definition["contractSize"], positive=True)
+                desired = _quantity(amount, positive=True)
+                amount = _quantity(self.get_exchange().amount_to_precision(code, str(desired/size)), positive=True)
+                quantity = amount*size
+                if quantity > desired:
+                    raise CChanException("精度化不得向上扩大币数量", ErrCode.PARA_ERROR)
+                price = None if price is None else _quantity(self.get_exchange().price_to_precision(code, price), positive=True)
+                reference = price if price is not None else _quantity(self.get_exchange().fetch_ticker(code).get("last"), positive=True)
+                self._check_limits(definition, amount, reference, quantity*reference)
+                contract = {"schema": "chan-ccxt-order-v1", "market": definition, "quantity_unit": "base_currency",
+                    "exchange_amount_unit": "base_currency" if self.market_type == "spot" else "contracts",
+                    "quantity": str(quantity), "exchange_amount": str(amount),
+                    "price": None if price is None else str(price), "reference_price": str(reference),
+                    "notional": str(quantity*reference), "reduce_only": bool(reduce_only)}
+                contract["contract_id"] = _contract_id(contract)
+                _float_exact(amount)  # 下单 API 的张数也不能被 float 静默改写。
+                return _float_exact(quantity), None if price is None else _float_exact(price), contract
+        except ccxt.BaseError as error:
+            raise CChanException("market metadata/精度校验失败，未取得订单意图", ErrCode.PARA_ERROR) from error
+
+    def _read_order_contract(self, code, intent, *, amount=None, price=None, submitting=False):
+        try:
+            phase, record = intent["phase"], intent["record"]
+            field = "open_order_contract" if phase == "open" else "cover_order_contract"
+            raw = record.get(field)
+            contract = json.loads(raw)
+            expected_keys = {"schema", "market", "quantity_unit", "exchange_amount_unit", "quantity", "exchange_amount",
+                             "price", "reference_price", "notional", "reduce_only", "contract_id"}
+            definition, market = self._market_contract(code)
+            with localcontext() as context:
+                context.prec = 50
+                quantity, exchange_amount, reference = (_quantity(contract[k], positive=True)
+                    for k in ("quantity", "exchange_amount", "reference_price"))
+                frozen = contract["market"]
+                size = _quantity(frozen["contractSize"], positive=True)
+                unit_keys = set(definition)-{"precision", "precision_mode", "limits"}
+                same_units = all(frozen.get(key) == definition[key] for key in unit_keys)
+                requested = record["open_requested_qty" if phase == "open" else "cover_requested_qty"]
+                if (set(contract) != expected_keys or canonical_bytes(contract).decode() != raw
+                        or contract["schema"] != "chan-ccxt-order-v1" or contract["contract_id"] != _contract_id(contract)
+                        or not same_units or (submitting and (frozen != definition or
+                            (phase == "open" and market.get("active") is not True)))
+                        or contract["quantity_unit"] != "base_currency"
+                        or contract["exchange_amount_unit"] != ("base_currency" if self.market_type == "spot" else "contracts")
+                        or contract["reduce_only"] is not (phase == "close") or record["stock_code"] != code
+                        or quantity != exchange_amount*size or quantity != _quantity(requested, positive=True)
+                        or _quantity(contract["notional"]) != quantity*reference
+                        or (submitting and (quantity != _quantity(amount, positive=True)
+                            or (None if price is None else _quantity(price, positive=True)) !=
+                               (None if contract["price"] is None else _quantity(contract["price"], positive=True))))):
+                    raise ValueError("order contract drift")
+                self._check_limits(frozen, exchange_amount, reference, quantity*reference)
+                return contract
+        except (TypeError, ValueError, KeyError, AttributeError) as error:
+            raise CChanException("缺少完整订单单位契约或 market 漂移，禁止猜测重下/记账", ErrCode.TRADE_UNLOCK_FAIL) from error
 
     # ===== 撮合接口 =====
     def place_order(
@@ -249,7 +378,7 @@ class CCCXTTradeEngine(CTradeEngine):
                 reduce_only=reduce_only,
             )
         self.safety_policy.assert_order_allowed()
-        self._claim_persisted_intent(
+        intent = self._validated_persisted_intent(
             code,
             is_buy,
             amount,
@@ -259,11 +388,12 @@ class CCCXTTradeEngine(CTradeEngine):
         )
         import ccxt  # 懒加载
         exchange = self.get_exchange()
+        contract = self._read_order_contract(code, intent, amount=amount, price=price, submitting=True)
+        if not self.chan_db.claim_order_submission(intent["record"]["id"], intent["phase"]):
+            raise CChanException("持久化意图已提交或被其他进程获取", ErrCode.TRADE_UNLOCK_FAIL)
         try:
-            amount = float(exchange.amount_to_precision(code, amount))  # 精度对齐
+            exchange_amount = _float_exact(_quantity(contract["exchange_amount"], positive=True))
             order_type = "market" if price is None else "limit"
-            if price is not None:
-                price = float(exchange.price_to_precision(code, price))
             params = {}
             if client_order_id:
                 params["clientOrderId"] = client_order_id
@@ -284,7 +414,7 @@ class CCCXTTradeEngine(CTradeEngine):
                 code,
                 order_type,
                 "buy" if is_buy else "sell",
-                amount,
+                exchange_amount,
                 price,
                 params,
             )
@@ -295,7 +425,7 @@ class CCCXTTradeEngine(CTradeEngine):
                 ErrCode.PLACE_ORDER_FAIL,
             ) from e
         return self._result_from_ccxt(
-            order, requested=amount, client_order_id=client_order_id
+            order, code=code, intent=intent, contract=contract
         )
 
     def cancel_order(self, code: str, order_id: str) -> bool:
@@ -354,7 +484,12 @@ class CCCXTTradeEngine(CTradeEngine):
         except ccxt.BaseError as e:
             identity = order_id or client_order_id
             raise CChanException(f"查单失败 {code} {identity}: {e}", ErrCode.LIST_ORDER_FAIL) from e
-        return self._result_from_ccxt(order)
+        intent = (self.chan_db.get_order_intent(client_order_id) if client_order_id else
+                  self.chan_db.get_order_intent_by_order_id(code, str(order["id"])))
+        if intent is None or (order_id is not None and str(order.get("id")) != str(order_id)):
+            raise CChanException("交易所订单与持久化意图不匹配", ErrCode.LIST_ORDER_FAIL)
+        contract = self._read_order_contract(code, intent)
+        return self._result_from_ccxt(order, code=code, intent=intent, contract=contract)
 
     def get_balance(self) -> Dict[str, float]:
         if self.dry_run:
@@ -378,18 +513,22 @@ class CCCXTTradeEngine(CTradeEngine):
                     f"查合约持仓失败 {code}: {e}",
                     ErrCode.GET_HOLDING_QTY_FAIL,
                 ) from e
-            total = 0.0
-            for position in positions:
-                if position.get("symbol") not in {None, code}:
-                    continue
-                amount = float(
-                    position.get("contracts")
-                    or position.get("amount")
-                    or 0
-                )
-                side = str(position.get("side") or "").lower()
-                total += -abs(amount) if side == "short" else abs(amount)
-            return total
+            definition, _ = self._market_contract(code)
+            size = _quantity(definition["contractSize"], positive=True)
+            with localcontext() as context:
+                context.prec = 50
+                total = Decimal(0)
+                for position in positions:
+                    if position.get("symbol") not in {None, code}:
+                        continue
+                    amount = _quantity(position.get("contracts"))*size
+                    if position.get("contractSize") is not None and _quantity(position["contractSize"], positive=True) != size:
+                        raise CChanException("持仓 contractSize 与 market 不一致", ErrCode.GET_HOLDING_QTY_FAIL)
+                    side = str(position.get("side") or "").lower()
+                    if amount and side not in {"long", "short"}:
+                        raise CChanException("持仓缺少明确方向", ErrCode.GET_HOLDING_QTY_FAIL)
+                    total += -abs(amount) if side == "short" else abs(amount)
+                return _float_exact(total) if total >= 0 else -_float_exact(-total)
         base = code.split("/")[0]  # 现货持仓即基础币余额
         return self.get_balance().get(base, 0.0)
 
@@ -406,26 +545,39 @@ class CCCXTTradeEngine(CTradeEngine):
     def _result_from_ccxt(
         self,
         order: dict,
-        requested: Optional[float] = None,
-        client_order_id: Optional[str] = None,
+        *, code, intent, contract,
     ) -> COrderResult:
-        requested_value = order.get("amount")
-        if requested_value is None:
-            requested_value = requested
-        if requested_value is None:
-            requested_value = order.get("filled") or 0
+        requested_value = _quantity(contract["exchange_amount"], positive=True)
+        if order.get("symbol") != code or (order.get("amount") is not None and _quantity(order["amount"]) != requested_value):
+            raise CChanException("交易所订单 symbol/amount 与单位契约不一致", ErrCode.LIST_ORDER_FAIL)
+        filled = _quantity(order.get("filled"))
+        average = _quantity(order.get("average"), positive=True) if filled else None
+        if filled > requested_value or not order.get("id"):
+            raise CChanException("交易所累计成交量/id 无效", ErrCode.LIST_ORDER_FAIL)
+        record, phase = intent["record"], intent["phase"]
+        client_order_id = record["open_client_order_id" if phase == "open" else "cover_client_order_id"]
+        expected_id = record["open_order_id" if phase == "open" else "cover_order_id"]
+        is_buy = bool(record["is_buy"]) if phase == "open" else not bool(record["is_buy"])
+        if (order.get("side") != ("buy" if is_buy else "sell")
+                or order.get("type") != ("market" if contract["price"] is None else "limit")
+                or (expected_id is not None and str(order["id"]) != str(expected_id))):
+            raise CChanException("交易所订单方向/类型/id 与持久化意图不一致", ErrCode.LIST_ORDER_FAIL)
         client_value = (
             order.get("clientOrderId")
             or order.get("client_order_id")
             or client_order_id
         )
+        if client_value != client_order_id:
+            raise CChanException("交易所客户端订单号与持久化意图不一致", ErrCode.LIST_ORDER_FAIL)
+        size = _quantity(contract["market"]["contractSize"], positive=True)
+        with localcontext() as context:
+            context.prec = 50
+            filled_base = _float_exact(filled*size)
         return COrderResult(
             order_id=str(order["id"]),
-            requested=float(requested_value),
-            filled=float(order.get("filled") or 0),
-            avg_price=(
-                float(order["average"]) if order.get("average") else None
-            ),
+            requested=float(_quantity(contract["quantity"], positive=True)),
+            filled=filled_base,
+            avg_price=None if average is None else _float_exact(average),
             status=_normalize_order_status(order.get("status")),
             client_order_id=(str(client_value) if client_value else None),
         )

@@ -209,6 +209,8 @@ def test_old_sqlite_schema_migrates_without_losing_legacy_cover(tmp_path):
         "cover_order_status",
         "open_attempt",
         "cover_attempt",
+        "open_order_contract",
+        "cover_order_contract",
         "order_last_update",
         "position_side",
         "strategy_version",
@@ -220,6 +222,7 @@ def test_old_sqlite_schema_migrates_without_losing_legacy_cover(tmp_path):
     assert record["open_filled_qty"] == 2.0
     assert record["cover_filled_qty"] == 2.0
     assert record["current_qty"] == 0.0
+    assert record["open_order_contract"] is None and record["cover_order_contract"] is None
     assert db.get_open_records() == []
     db.close()
 
@@ -238,6 +241,8 @@ def test_mysql_fresh_schema_has_state_machine_parity():
         "cover_order_status",
         "open_attempt",
         "cover_attempt",
+        "open_order_contract",
+        "cover_order_contract",
         "order_last_update",
         "position_side",
         "strategy_version",

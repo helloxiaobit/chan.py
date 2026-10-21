@@ -48,8 +48,8 @@ class COrderResult:
             raise CChanException(f"未知订单状态: {status}", ErrCode.PARA_ERROR)
         self.order_id = order_id
         self.client_order_id = client_order_id
-        self.requested = requested    # 提交给交易所的数量
-        self.filled = filled          # 累计已成交数量
+        self.requested = requested    # 引擎内部数量；crypto 一律为币数，CCXT 边界才转张数
+        self.filled = filled          # 同一内部单位的累计已成交数量
         self.avg_price = avg_price    # 成交均价
         self.status = status          # open / closed / canceled / rejected
 
@@ -110,6 +110,10 @@ class CTradeEngine(metaclass=abc.ABCMeta):
         ...
 
     # ===== 通用逻辑 =====
+    def prepare_order(self, code, amount, price, *, reduce_only=False, record=None):
+        """提交意图前的单位/精度 hook；股票及旧离线撮合保留原行为。"""
+        return amount, price, None
+
     def rate_limit(self):
         wait = self.api_interval - (time.time() - self._last_api_ts)
         if wait > 0:
@@ -184,6 +188,7 @@ class CTradeEngine(metaclass=abc.ABCMeta):
         quota = self.quota_gen.get_quota(code, price)
         if quota <= 0:
             raise CChanException(f"仓位计算为0: {code} price={price}", ErrCode.QUOTA_NOT_ENOUGH)
+        quota, order_price, order_contract = self.prepare_order(code, quota, price)
         client_id = self.make_client_order_id(record, "open")
         position_side = self._position_side(record)
         acquired = self.chan_db.acquire_open_intent(
@@ -195,6 +200,7 @@ class CTradeEngine(metaclass=abc.ABCMeta):
             risk_multiplier=float(record.get("risk_multiplier") or 1.0),
             score_before=score_before,
             snapshot=snapshot,
+            order_contract=order_contract,
         )
         if not acquired:
             raise CChanException(
@@ -206,7 +212,7 @@ class CTradeEngine(metaclass=abc.ABCMeta):
             code,
             bool(record["is_buy"]),
             quota,
-            price,
+            order_price,
             client_order_id=client_id,
             position_side=position_side,
         )
@@ -274,12 +280,14 @@ class CTradeEngine(metaclass=abc.ABCMeta):
             raise CChanException(
                 f"当前仓位为 0: id={record_id}", ErrCode.RECORD_NOT_OPENED
             )
+        quota, order_price, order_contract = self.prepare_order(code, quota, price, reduce_only=True, record=record)
         client_id = self.make_client_order_id(record, "close")
         acquired = self.chan_db.acquire_close_intent(
             record_id,
             requested_qty=quota,
             client_order_id=client_id,
             reason=reason,
+            order_contract=order_contract,
         )
         if not acquired:
             raise CChanException(
@@ -291,7 +299,7 @@ class CTradeEngine(metaclass=abc.ABCMeta):
             code,
             not bool(record["is_buy"]),
             quota,
-            price,
+            order_price,
             client_order_id=client_id,
             reduce_only=True,
             position_side=self._position_side(record),

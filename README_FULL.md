@@ -253,12 +253,13 @@ python -m ModelStrategy.research.cli certify-v5-btc-is --spec ModelStrategy/rese
 交易模式只能由 `ccxt.mode` 显式选择，默认且推荐保持 `dry_run`。API
 密钥本身永远不会打开测试网或实盘，`dry_run=False` 也不能绕过该配置。
 dry-run 不创建 CCXT 会话；默认即时成交，测试时还可注入零成交/部分成交序列，
-完整验证重启恢复而不连接交易所。
+验证订单状态恢复而不连接交易所。这条旧模拟路径尚未完成 C5 的费用/funding/mark
+账户与真实合约规格撮合验收，不能作为真实账户认证。
 
 ```yaml
 ccxt:
   mode: dry_run                 # dry_run / testnet / live
-  default_type: spot            # spot / swap / future
+  default_type: spot            # 当前新单位接口仅 spot / USDT linear swap；future 未验收并拒绝
   leverage: 1                   # 合约显式设置
   position_side: BOTH           # 合约 BOTH / LONG / SHORT
 trade:
@@ -306,6 +307,33 @@ signal → submitted → partially_filled → open → closing → closed
 `CTradeEngine.restore()` 优先按交易所订单号、缺失时按客户端订单号恢复；只应用
 单调增加的累计成交量。撤单只有在再次查单确认 `canceled/closed/rejected` 后，
 才会以新客户端编号对剩余仓位提交 reduce-only 重试。
+
+#### C5 订单单位契约（离线子边界，不是交易所认证）
+
+内部 quota、requested/filled/current_qty 统一为**币数量**，名义金额为 quote 币（目标为 USDT）。
+CCXT 线性合约接口的 amount/filled 则是**张数**，币数=张数×contractSize，见
+[CCXT 官方说明](https://github.com/ccxt/ccxt/wiki/FAQ)。引擎从实际 market metadata 读取
+contractSize、amount/price precision 和 limits，不从 symbol 猜 contractSize=1；现货不套用合约张数。
+反向、非 USDT 线性永续及未适配的 future/option 组合拒绝。
+
+非 dry-run 的 `prepare_order` 在 intent CAS **之前**完成数量/价格精度化、非零及
+amount/price/cost 限额检查，且不向上扩大币数量；无法原样经过 DB/CCXT 数值边界时拒绝。
+SQLite 在同一 CAS 保存精度化后的币数与 `open_order_contract`/`cover_order_contract`，
+记录张数、价格/市价参考、market 身份/规格与摘要。原候选/入场报价仍留在评分快照中，
+不把精度化限价冒称原观察报价。提交前重验，原有 CAS 后再次改数量的路径已移除。
+
+累计成交回报先核对 symbol、请求量、方向、类型、客户端号和已有交易所订单号，再转回币数入账。
+转换固定 Decimal 精度，不随调用方上下文改变。重启只查原订单并单调更新，不猜测重下；
+单纯更改 tick/limits 或停用市场不会改变旧订单的冻结单位，新风险仍拒绝。
+contractSize/交易所等单位身份漂移则明确失败，不能换算成另一个数量。
+
+SQLite 自动只补两列，不为旧记录虚构单位。缺单位规格的旧合约在途单禁止重下，
+单位未知的已有仓位也不能自动平仓；须先显式核验来源/单位，当前没有自动迁移放行入口。
+取消原订单仍保留。MySQL 新订单契约写入在真实迁移/事务验收前 disabled，旧接口不自动升级。
+
+C5 仍在开发：Binance/OKX 具体 position/margin/reduce/post/client-id 适配、完整分页查询、
+逐腿持仓/余额对账与冻结新风险、含费用和资金费的模拟账户尚未完成；上述 mock/SQLite
+验收不替代 C7 真实环境授权与认证。
 
 当前只完成了离线可证明的安全边界，尚未完成交易所逐一测试网认证。待验证项包括：
 沙盒支持与市场映射、客户端订单号历史查询窗口/分页、post-only/reduce-only/

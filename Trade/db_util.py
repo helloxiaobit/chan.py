@@ -12,7 +12,7 @@ from typing import List, Optional
 
 from Common.ChanException import CChanException, ErrCode
 from CustomBuySellPoint.Signal import CSignal
-from CustomBuySellPoint.Decision import read_decision
+from CustomBuySellPoint.Decision import canonical_bytes, read_decision
 
 
 def now_str() -> str:
@@ -139,6 +139,7 @@ class CChanDB:
         risk_multiplier: float = 1.0,
         score_before: Optional[float] = None,
         snapshot: Optional[dict] = None,
+        order_contract: Optional[dict] = None,
     ) -> bool:
         requested = _positive_qty(requested_qty, "开仓请求量")
         if not client_order_id:
@@ -149,6 +150,10 @@ class CChanDB:
         risk = float(risk_multiplier)
         if not math.isfinite(risk) or risk <= 0:
             raise CChanException("风险乘数必须大于 0", ErrCode.PARA_ERROR)
+        if order_contract is not None and self.db_type != "sqlite":
+            raise CChanException("MySQL 订单单位契约迁移尚未验收", ErrCode.TRADE_UNLOCK_FAIL)
+        contract_clause = ", open_order_contract=?" if self.db_type == "sqlite" else ""
+        contract_args = (canonical_bytes(order_contract).decode() if order_contract is not None else None,) if contract_clause else ()
         changed = self.db.execute(
             f"UPDATE {self.table} SET status='submitted', "
             "open_client_order_id=?, open_requested_qty=?, "
@@ -158,7 +163,7 @@ class CChanDB:
             "order_last_update=?, position_side=?, strategy_version=?, "
             "risk_multiplier=?, "
             "model_score_before=COALESCE(?, model_score_before), "
-            "snapshot_before=? "
+            "snapshot_before=?" + contract_clause + " "
             "WHERE id=? AND status='signal' AND watching=1 AND is_open=0 "
             "AND COALESCE(open_client_order_id, '')=''",
             (
@@ -170,6 +175,7 @@ class CChanDB:
                 risk,
                 score_before,
                 json.dumps(snapshot or {}, ensure_ascii=False, default=str),
+                *contract_args,
                 record_id,
             ),
         )
@@ -196,6 +202,15 @@ class CChanDB:
                 matches.append({"phase": "open", "record": record})
             if record.get("cover_client_order_id") == client_order_id:
                 matches.append({"phase": "close", "record": record})
+        return matches[0] if len(matches) == 1 else None
+
+    def get_order_intent_by_order_id(self, code: str, order_id: str) -> Optional[dict]:
+        rows = self.db.query(
+            f"SELECT * FROM {self.table} WHERE stock_code=? AND (open_order_id=? OR cover_order_id=?)",
+            (code, order_id, order_id),
+        )
+        matches = [{"phase": phase, "record": record} for record in rows for phase, field in
+                   (("open", "open_order_id"), ("close", "cover_order_id")) if record.get(field) == order_id]
         return matches[0] if len(matches) == 1 else None
 
     def claim_order_submission(self, record_id: int, phase: str) -> bool:
@@ -304,6 +319,7 @@ class CChanDB:
         requested_qty: float,
         client_order_id: str,
         reason: str,
+        order_contract: Optional[dict] = None,
     ) -> bool:
         requested = _positive_qty(requested_qty, "平仓请求量")
         if not client_order_id:
@@ -312,6 +328,10 @@ class CChanDB:
         current = float(rec["current_qty"] or 0)
         if requested > current:
             raise CChanException("平仓请求量超过当前仓位", ErrCode.PARA_ERROR)
+        if order_contract is not None and self.db_type != "sqlite":
+            raise CChanException("MySQL 订单单位契约迁移尚未验收", ErrCode.TRADE_UNLOCK_FAIL)
+        contract_clause = ", cover_order_contract=?" if self.db_type == "sqlite" else ""
+        contract_args = (canonical_bytes(order_contract).decode() if order_contract is not None else None,) if contract_clause else ()
         changed = self.db.execute(
             f"UPDATE {self.table} SET status='closing', "
             "cover_client_order_id=?, cover_requested_qty=?, "
@@ -319,7 +339,7 @@ class CChanDB:
             "cover_order_status='created', cover_order_id=NULL, "
             "cover_attempt=COALESCE(cover_attempt, 0)+1, "
             "cover_quota=?, cover_date=?, cover_reason=?, "
-            "order_last_update=? WHERE id=? AND status='open' "
+            "order_last_update=?" + contract_clause + " WHERE id=? AND status='open' "
             "AND is_open=1 AND current_qty>=?",
             (
                 client_order_id,
@@ -328,6 +348,7 @@ class CChanDB:
                 now_str(),
                 reason,
                 now_str(),
+                *contract_args,
                 record_id,
                 requested,
             ),
