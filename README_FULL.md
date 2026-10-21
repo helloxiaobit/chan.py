@@ -331,7 +331,7 @@ SignalMonitor 仅在重复信号的完整 frozen bytes 相等时记录为 existe
 当前运行壳对非 dry-run 新风险明确返回 `native_fresh_admission_not_integrated`，
 `native_admission_verified` 恒为 false；历史上没有冻结并不等于鲜活账户准入。
 已有仓位管理仍可按原门禁尝试。完整经济 paper 的进程级状态绑定、强制鲜活账户/报价准入、
-通知失败观测、API schema、逐事件 E2E 和安装矩阵仍待 C6；本入口的命令完成状态不是完整验收或生产授权。
+通知失败观测、逐事件 E2E 和安装矩阵仍待 C6；版本化 API 见下文，本入口的命令完成状态不是完整验收或生产授权。
 
 非 dry-run 还必须同时满足以下门禁：
 
@@ -762,6 +762,63 @@ pytest -m "not network"     # 跳过联网用例
 `feature_reconcile(..., lv_list=[KL_TYPE.K_4H, KL_TYPE.K_60M, KL_TYPE.K_15M])` 支持三级对账，原单级别 `lv=` 调用保留。它独立读取三次：批量 load、按收盘时刻分组的 trigger、无历史信号回调的控制路径；核对完整事件 payload、输入 count/SHA、每次策略更新时的结构和去重检查点。`report.is_exact and report.input_verified` 才表示本次精确路径对账通过；显式 `rel_tol` 只允许特征浮点容差，不把容差一致标为精确通过。缺证据、重复、乱序、无交易但输入不同，以及信号回调副作用均不能默认通过。
 
 诊断输入仍须遵守 C1 的来源与 finality 契约。输入摘要相同不是交易所真实性认证，一致性也不代替独立的未来父 K/suffix 变异测试。诊断会完整读取并承诺结构内容，适合受控验证窗口，不自动启动全历史或冻结研究任务；`only_judge_last` 模式不能声明历史逐决策覆盖。
+
+### 版本化结构 API：当前视图与原发布证据分开
+
+```python
+legacy = chan.toJson()                  # 旧 level→klu/bi/seg/zs/bsp/cbsp 形状不变
+assert legacy == chan.toJson(schema_version=1)
+document = chan.toJson(schema_version=2)
+assert document["schema"] == "chan-api-v2"
+levels = document["payload"]["levels"]
+```
+
+只支持整数版本 1/2，不接受 bool/字符串或静默回退。两版所有输出都必须是有限 JSON；
+NaN/Infinity/不可序列化字段抛 `CChanException`，不替换为字符串或 null。
+v2 返回独立对象，修改返回值不改写通道/原事件；调用者须串行访问通道，不承诺跨线程原子快照。
+不启动 Web 服务、行情更新、模型推理或交易。
+
+v2 外层固定为 `schema/schema_version/payload/payload_sha256`。
+`payload` 为 `code/level_order/structure_semantics/levels`，摘要是该完整 payload 的
+UTF-8 canonical JSON（sort_keys=True、ensure_ascii=False、separators=(",", ":")、allow_nan=False）SHA256。
+`level_order` 保留实际高→低级别顺序；所有索引仅在本 payload/对应级别内解析，不按日期字符串定位。
+
+每级包含来源、观察水位及下列固定数组；无内容时为空数组：
+
+| 数组 | 字段契约（公共快照标记之外） |
+|---|---|
+| `klu` | idx、显示 time、OHLC、trade_info、clock、source、klc_idx、parent/children `{level, klu_idx}` 引用 |
+| `klc` | idx、dir、fx、low/high、klu_indices；分型是当前 KLC 状态，不另造历史分型事件 |
+| `bi` | idx、dir、is_sure/used_to_be_sure、begin/end_klu_idx、begin/end_val、parent_seg_idx |
+| `seg/segseg` | 同 line 字段，加 begin/end_line_idx 和 reason；seg 引用 bi，segseg 引用 seg |
+| `zs/segzs` | begin/end_line_idx、begin/end_klu_idx、low/high/mid/peak_low/peak_high、is_sure、in/out_line_idx、sub_centers；分别引用 bi/seg |
+| `bsp/segbsp` | klu_idx、显示 time、line_idx、is_buy、type、is_segbsp、features、relate_bsp1_klu_idx |
+| `cbsp` | klu_idx、显示 time、方向/类型、open_price/sl_price/score/is_cover/profit/features、open_event_id、close_event_ids、close_actions `{price, quota, reason, klu_idx}` |
+| `decisions` | ordinal、time_basis、available_at_ms、完整原 `chan-decision-v1` record（含 identity/event_id/payload/payload_sha256） |
+
+除原始 `klu` 与原事件 `decisions` 外，各当前结构有 `snapshot_id`、
+`availability="not_recorded"`、`available_at_ms=null`。`snapshot_id` 是 code/level、
+本级来源状态及已知来源、kind/body 的内容摘要，不是一次历史发布事件，也不保证跨历史窗口全局唯一；
+缓存/引用须同时携带 payload SHA。`is_sure`/`used_to_be_sure` 仅描述当前算法标志，
+不能用端点时刻推算首次确认时间；当前结构可能随后续数据变化。`parent_seg_idx` 沿用原算法的
+归属索引，末端未形成段时可能仅是候选位置，不应当作已有确认段。
+
+来源状态为 `known/partial/unknown`；只有该级全部 KLU 声明同一合法来源才输出级别 `source`，
+否则为 null，每根已知来源仍保留。任何级别间已知来源冲突、原事件与已知市场矛盾均拒绝；
+不会为旧 CSV/股票/人工数据猜交易所。KLU clock 显式区分 `utc_closed_bar` 与 `legacy_unspecified`；
+完整 UTC 周期记录 open_ms/close_ms/available_at_ms/is_final，非 final 不宣称可用；旧未声明时钟为 null。
+仅本级所有 bar 的 UTC 时钟完整且 final 时，`observed_through_ms` 才是已记录 available_at_ms 的最大值，
+它不是数据新鲜度或缺 K 认证。
+
+`decisions` 保留原字节的解码内容与发布顺序，不从可变 cbsp 重新生成过去特征。
+完整且对齐的 UTC 原 bar 时钟才允许 wrapper 的 `available_at_ms=identity.decision_ms`；
+旧未声明时钟保留 `legacy_unspecified/null`，残缺 UTC 字段拒绝。重复/乱序、错误 code/level、
+退出父事件/方向/市场不符、cbsp 与原事件链接不符、悬空/不互认的跨级引用和非法索引均拒绝。
+无策略时 ledger 为空；自定义策略若缺少 `decision_records` 不能伪装成完整空 ledger。
+这不是签名认证、全历史 cutoff 接口或订单/账户准入证明。
+
+本次改动在现有模型绑定的 Chan/Common 代码范围内，旧模型/部署清单会被实际 reader 判为代码漂移；
+须由新样本重生成模型并重新发布，不能修改旧契约摘要续用。C6 其余验收和 C7 外部认证仍未完成。
 
 ## A股与可选件
 

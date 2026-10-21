@@ -37,7 +37,7 @@
 | C3 | 已完成离线实现与验收 | UTC purge/unknown、三模型身份、write-once 部署、三阶段评分与 SQLite 版本链；非实盘/外部认证 |
 | C4 | 已完成离线实现与验收 | 有界实际样本→三模型→搜索/独立验证→部署→全 trial 重放；93 项组合、608 项全仓离线通过，非经济采用 |
 | C5 | 进行中 | 单位/原生恢复/历史/来源、区间核对与持久冻结已离线验收；显式 cross/lot paper 接入原状态机，鲜活准入链、原生同义模型及进程级 E2E 仍待 |
-| C6 | 进行中（仍未完成） | 配置运行壳/失败传播/管理/OS 锁与逐笔输入版本重验；原生账户/报价鲜活准入、API/离线进程级 E2E 与安装矩阵待完成 |
+| C6 | 进行中（仍未完成） | 配置运行壳/失败传播/管理/OS 锁与逐笔输入版本重验、版本化 API 已离线验收；原生账户/报价鲜活准入、离线进程级 E2E 与安装矩阵待完成 |
 | C7 | 待前置验收 | 公共行情与有准入后的外部认证；代码发布按阶段进行 |
 
 基线：前一审计在完全相同 `22a5a56`、依赖和环境上执行的所选离线功能集合为 116 passed / 1 skipped / 1 deselected，带一个 XGBoost 弃用警告和 pytest 临时目录清理提示；该证据仅覆盖列明集合，不称全仓或真实交易所验收。行为修改后补跑对应回归。
@@ -464,3 +464,22 @@ C1 收尾清理计划：迁移校验由两份全表内存列表改为有序逐�
 - compileall/diff 通过。独立 CPython 3.14.2/3.11.15 在主动屏蔽 ccxt/xgboost/lightgbm/sklearn/optuna/yaml 时，新增模块与代码身份读取、缺运行元数据时 CLI 明确拒绝、实际只读 SQLite/无会话恢复 smoke 均 PASS；这不是缺少 YAML/模型包的 3.11 完整配置/依赖安装认证。调用未建立行情/私有会话，临时库按测试自身生命周期回收。
 - 最终完整命令 python -m pytest tests -m 'not network' --basetemp <new-temp-directory> -q --tb=short -p no:cacheprovider：1363 passed / 8 expected skipped / 1 network deselected / 14 existing model warnings，568.50s。整个完整运行期间没有编辑源码、测试或文档，明确 exit=0 后才补本最终数字。此前 369 项组合对应同一行为代码，仅后续文档变更；不把旧结果重标为新运行。
 - 文件范围：新增 Trade/Script/OpeningInputs.py 与 tests/test_opening_inputs.py；接入 Trade/TradeEngine.py、Trade/CCXTTradeEngine.py、Trade/OrderAudit.py、MakeOpenTrade/RunTradeCycle/SignalMonitor；补 cycle/实际 model deployment 集成测试与 README/本台账。无 schema 重写、第二订单引擎或新依赖。冻结数据/策略/外部资产不变；提交前核对 staged 范围，Lore 后精确提交再复验并快进推送。Goal 保持 active，后续按原 C0–C7 目标继续。
+
+### C6 API 子边界实施与清理计划：明确快照与历史事件，兼容旧调用
+
+- 上轮 ccf42e7e046e406d8f998136c8bb3d46d9054123 已推送，1363 全离线与精确提交后 146 项通过；本轮起始 clean，属于有效进展。继续按批准 C6 第 5 项，主代理串行、真实 RED→GREEN、原模式/研究门禁；不新增 Web 产品/依赖或修改段理论、配置默认值。
+- CChan.toJson() 无参保留原 level→klu/bi/seg/zs/bsp/cbsp 形状；显式 schema_version=1 等价。对所有公开版本拒绝 NaN/Infinity/不可序列化值，不以字符串或 null 悄悄替代坏数字。新 schema_version=2 由单一 Common/ChanExport.py 适配器输出 chan-api-v2、完整 finite canonical payload 与 SHA，不移动或重写结构计算。
+- v2 明确支持 klu/klc（含分型）/bi/seg/segseg/zs/segzs/bsp/segbsp/cbsp 当前结构视图，保留层级索引/起止引用、source、UTC 已收盘 clock、交易量/特征/退出动作等声明字段。结构的 is_sure 只是当前算法标志，不等于已记录的因果确认时刻；未记录时 available_at_ms=null 并明确 not_recorded，不能用端点时间补造发布时钟。
+- 不可变 C2 decision_records 单独作为每级 decisions ledger，保留完整原 identity/payload/digest，不在导出时从可变 cbsp 重算过去。明确 available_at_ms=已记录 decision_ms 仅适用于完整 UTC bar clock；旧 CSV/股票未声明时钟/来源时保留未知，不猜 UTC/交易所。检查 event code/level/顺序/重复/退出父事件与边界，旧无发布能力的自定义策略不得伪装成完整空 ledger。
+- 先测试缺新版本入口与旧非有限泄漏 RED，再最小实现、原 toJson/多级别/绘图回归；小合成 crypto 夹具逐字段对照真实结构，已返回对象和旧事件不被未来输入/外部修改改写。测试 unknown/partial/mixed source、坏 clock、空数据、非法版本/数字和完整 4h/1h/15m load/trigger 对齐。所有复杂化仅为契约/可重放验证，不复制策略/研究实现；完整离线、核心 optional 隔离、compileall/diff、自审/Lore/精确提交后才快进推送。
+- API 是当前结构观察与原发布证据的适配器，不授予交易/账户准入，也不提供“历史某时刻当前结构”的伪 cutoff。C6 其余鲜活准入、信号换代、持久纸面 E2E/通知/安装与 C7 保留未完成，不因 API 子项通过关闭 Goal。
+
+### C6 API 子边界离线证据（仅本子项，不是完整 C6）
+
+- 先缺显式版本与旧 NaN/Infinity 泄漏 RED，再实现独立 Common/ChanExport 适配器；v1 默认形状不改，v2 十一类数组覆盖当前 KLC/笔/段/段段/中枢/买卖点/CBSP 与完整原 C2 ledger。未记录的结构确认时间始终 not_recorded/null；仅真实完整 UTC 原事件披露已记录发布时刻，不发明 endpoint→confirmation 或 cutoff 语义。
+- 原事件源/边界/父链与 cbsp 发布链接的五项真实 RED→GREEN；随后四项真实 RED 证实跨 venue 快照 ID 碰撞、残缺 UTC signal 被降级为 legacy、悬空父引用和 bool raw index。补来源上下文摘要、完整时钟要求、实际对象归属和双向父子检查。后续真实 RED 覆盖跨级来源混用、整个当前市场重标却保留原事件、KLC 错误归属/bool index 与仍自洽但不对齐 UTC 的时钟；复用已有 C1 时间/来源与 C2 canonical/reader，不复制算法。
+- 三级 full load/逐 15m feed 最初差异是测试把同一配置字典传入会消费它的 CChanConfig，第二路丢失策略/参数；改为独立配置副本后完整 payload 逐字节相等，未删字段或修改算法。两处非法 fixture 先修正（未对齐的 foreign 4h 时间、只读 klc property 改用已有 setter）再观察生产失败，不把测试错误当修复证据。先前一次输出丢失，检查无存活 Python 后重新取得明确 5 failed；不把丢失输出算通过。
+- 当前已明确终止的实际组合：39 API + 原 decision/causal/M1/三级策略，115 passed（93.59s）。覆盖真实带特征 multi_lv、全原事件逐字节、未来输入不改旧发布、返回值隔离、有限数值与 unknown/partial source、legacy clock/empty levels。主代理沿 code-review 清单串行自审，非独立审计；README 给出字段/时钟/迁移与非全局快照 ID 契约。
+- 文件范围限 Chan.py、新 Common/ChanExport.py、新 tests/test_chan_api_contract.py、README_FULL.md 与本台账；不改段算法、配置、规则、依赖、冻结资产或交易状态机。Chan/Common 参与已有模型指纹，旧模型须重生成并重新部署，不能重封旧契约。C5/C6/C7 与 Goal 保持未完成。
+- compileall 与 git diff --check 通过。独立 CPython 3.14.2/3.11.15 主动屏蔽 ccxt/xgboost/lightgbm/sklearn/optuna/yaml 后，实际已收盘合成行情的 v1/v2 导出、完整 SHA 与非有限拒绝均 PASS；不读取配置或网络。这是核心 optional-free smoke，不是 3.11 完整依赖安装认证。当前结构对象须由调用者串行使用；没有跨线程原子快照、全历史输出容量或历史首次结构确认时钟认证。
+- 最终完整命令 python -m pytest tests -m 'not network' --basetemp <new-temp-directory> -q --tb=short -p no:cacheprovider：1402 passed / 8 expected skipped / 1 network deselected / 14 existing model warnings，571.61s。运行期间源码、测试、文档均未编辑；明确 exit=0 后仅补本最终数字与状态，不冒称旧输出丢失时的结果。按 Lore 提交后，精确提交短组合须通过才快进推送并核验远端与 clean；不将 mock/离线通过提高为交易所外部认证。

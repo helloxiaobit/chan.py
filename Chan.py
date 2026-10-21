@@ -442,7 +442,12 @@ class CChan:
         assert len(self.lv_list) == 1
         return self[0].bs_point_lst.get_latest_bsp(number)
 
-    def toJson(self):
+    def toJson(self, *, schema_version=1):
+        if type(schema_version) is not int or schema_version not in (1, 2):
+            raise CChanException("不支持的 Chan API schema_version", ErrCode.PARA_ERROR)
+        if schema_version == 2:
+            from Common.ChanExport import export_chan_v2
+            return export_chan_v2(self)
         # 服务化接口:输出各级别 klu/bi/seg/zs/bsp/cbsp 信息(dict,可直接 json.dumps)
         res = {}
         for lv in self.lv_list:
@@ -496,6 +501,8 @@ class CChan:
                     for cbsp in kl_list.cbsp_strategy
                 ]
             res[lv.name] = lv_dict
+        from CustomBuySellPoint.Decision import canonical_bytes
+        canonical_bytes(res)  # v1 形状不变，但公开 API 不能输出 NaN/Infinity。
         return res
 
     def chan_dump_pickle(self, file_path):
