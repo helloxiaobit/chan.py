@@ -80,6 +80,11 @@ _CONTRACT.update({
         "limits": {"amount": _BOUNDS, "price": _BOUNDS, "cost": _BOUNDS}},
     "execution": {key: _SCALAR for key in ("venue", "position_mode", "position_side", "margin_mode", "leverage")},
     "account_observation": {key: _SCALAR for key in ("hedged", "margin_mode", "long_leverage", "short_leverage")},
+    "account_context": {
+        **{key: _SCALAR for key in ("schema", "venue", "mode", "identifier_kind", "identifier_sha256", "context_id")},
+        "environment": {"sandbox": _SCALAR, "hostname": _SCALAR, "simulated_trading": _SCALAR,
+            "private_routes": {key: _SCALAR for key in ("fapiPrivate", "fapiPrivateV2", "fapiPrivateV3", "rest")}},
+    },
 })
 
 

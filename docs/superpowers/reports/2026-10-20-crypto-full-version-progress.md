@@ -36,7 +36,7 @@
 | C2 | 已完成离线实现与验收 | 父 K/原始关系发布边界、不可变决策、完整身份对账、真实三层策略 future/prefix 变异；非外部认证 |
 | C3 | 已完成离线实现与验收 | UTC purge/unknown、三模型身份、write-once 部署、三阶段评分与 SQLite 版本链；非实盘/外部认证 |
 | C4 | 已完成离线实现与验收 | 有界实际样本→三模型→搜索/独立验证→部署→全 trial 重放；93 项组合、608 项全仓离线通过，非经济采用 |
-| C5 | 进行中 | 单位契约与原生请求参数离线通过；ACK/历史分页、逐腿账户对账和模拟账户仍待 |
+| C5 | 进行中 | 单位/原生参数/ACK/历史分页/尝试历史/逐笔来源/新意图账户绑定离线通过；逐腿对账与模拟账户仍待 |
 | C6 | 待开发 | 调度/API/离线 E2E |
 | C7 | 待前置验收 | 公共行情与有准入后的外部认证；代码发布按阶段进行 |
 
@@ -314,3 +314,24 @@ C1 收尾清理计划：迁移校验由两份全表内存列表改为有序逐�
 - 最后一个发布边界 RED：真实 SQLite 第一次 INSERT 后改变调用者第二条原生事实，原实现返回成功但扫描根摘要已经与事实不符。现在 CChanDB 在取得写锁前用既有 finite canonical helper 冻结自有输入对象；相同交错后原收据、facts 和 manifest 均保持校验前的字节，116 focused passed（6.52s，53 source / 22 store / 35 history / 6 transaction）。仅做一处快照，不加新 publisher/订单状态机。最终完整离线 `python -m pytest tests -m 'not network' --basetemp <new-temp-directory> -q --tb=short -p no:cacheprovider`：923 passed / 7 expected skipped / 1 network deselected / 14 existing warnings，521.13s。每次前一进程终止后才编辑，始终只跑一套测试；最后仅补本文数字和钱包范围说明。
 - 文件范围：新增 `Trade/ExecutionFacts.py`、`Trade/ExecutionStore.py`、`tests/test_execution_facts.py`、`tests/test_execution_store.py`；修改 `Trade/CCXTTradeEngine.py`、`Trade/db_util.py`、`Trade/SqliteDB.py`、`Trade/OrderAudit.py`、`README_FULL.md` 与本台账。只复用 schema validator 的可选 schema、既有 SQLite 事务和 canonical helper；无依赖/配置/权限/研究改动，没有第二个订单生命周期。
 - 下一步前置缺口：现有 intent/order_contract 只冻结 venue/执行参数，尚未冻结服务器账户 UID/环境；account_scope 是调用者标签，不能仅按 order_id 跨账户绑定历史。C5 先加入原生只读账户身份与新意图的同事务冻结，再用真实历史 client/id/attempt 证明归属，处理遗留缺项；随后才独立重建逐腿 cashflow/mark/余额、设置持久化新风险冻结、补完整 dry-run 账户。完整钱包还需转账/转换/利息/强平附加费用等独立流水，不能把 funding-only 当全账户现金流或余额差当收益。不得把本次 flags=false 源收据改作账户 PASS。C6/C7 仍未完成，外部认证/正式研究/真实订单门禁不变，Goal active。
+
+### C5 第七子边界实施与清理计划：原生账户和环境绑定
+
+- 起始 clean `aa85fae98ebe75a8f28f7208bb3b31ea4388f63f`；继续主代理串行、TDD、fake 私有 I/O。复用现有 intent/CAS/追加式历史，不另建订单状态机，不迁移或补造旧授权。
+- 核对官方只读接口及本地 CCXT 路由：Binance USDT 永续 balance 的 `accountAlias` 是原生唯一账户别名，OKX account/config 的 `uid` 是账户标识；分别冻结 typed identifier 的摘要，不把 Spot UID、API key、调用者 account_scope 冒充永续身份。上一节笼统的 UID 在此细化为平台原生标识类型。
+- 先测试缺模块/错 sandbox/私有路由/模拟盘请求头/缺失或冲突身份/原始错误脱敏；仅在实际客户端环境与本地无凭据 CCXT 标准路由一致后读取账户标识。摘要收据不包含原生标识明文、余额或任意响应，也不声称服务器签名/外部认证。
+- 新 swap 契约使用 v3，把账户上下文冻结到原有 order_contract 和同事务 journal；提交、恢复、取消及降风险时重新核对已冻结身份。v1/v2 保留明确的只读历史兼容，不因重启获得 v3 身份；缺原始账户证据的旧 swap 不能自动新建 reduce 意图，显式关联证明留待后续归属边界。Spot v2 不受新 swap 身份语义改写。
+- 清理仅为让 v2/v3 共用现有执行参数/回报检查和 journal 白名单；先有回归，再删除仅 v2 的误分支，不改成交公式。fake 客户端显式带合法 sandbox 路由及原生身份响应，仍拦截全部真实 HTTP。
+- 短组合、核心可选依赖隔离、完整离线/compileall/diff 与 Lore 快进推送后继续 C5：原生逐笔归属、逐腿钱包/mark 重建、持久冻结、含费模拟仍未完成。不得提升旧 observed_execution_facts 的 flags，也不关闭 Goal。
+
+### C5 第七子边界证据：新永续意图的原生账户/环境身份（C5 未完成）
+
+- AccountIdentity 先观察缺模块 RED，再用真实无凭据 CCXT 路由和 fake 原生账户 GET 实现最小 GREEN：Binance/binanceusdm 使用 Futures balance V3 的唯一 accountAlias，OKX account/config 使用 uid。两者 typed digest 分开，环境保留 testnet/live、sandbox、有效私有路由、OKX hostname/模拟盘头；不保存原生 ID 明文/余额/任意响应。不存在 Spot UID 回退、隐式账户模式修改或真实 HTTP。
+- 新 swap 契约 v3 将上下文并入原 finite canonical contract_id 和 SQLite 同事务 journal，Spot 保持 v2、dry-run 无账户会话。v2/v3 共用旧执行/回报检查，journal 只扩展既有白名单，无新表/迁移或第二套订单生命周期。CChanDB 的旧 v1/v2 字节不补字段，旧 history origin 也不改写。
+- 实际 RED 证明旧实现会先请求错环境的 private settings、接受 mid-prepare 账户变化、在意图后换账户仍 claim/submit、跨账户 query/ack/cancel 和把 v2 视为足够的 reduce 授权。修正后私有读取前检查 sandbox/TLS/全部相关私有路由/模拟盘头；准备末、claim 前和响应后重新读原生身份。首次 legacy fixture 错用未支持的 context manager，改为 try/finally 后再次观察两项真实 DID NOT RAISE RED，不把 fixture 错误当行为证明。
+- 追加两组 race RED：提交响应期间换账户，原来仍保存 ACK，现保持同次 submitting/无 ACK/无 fill，未知不补单；检查原开仓与准备平仓之间换账户，原来会产生新账户的 close contract，现与原 frozen context 再比对，准备即失败。未知服务器 id 撤单也先拒绝，不发私有动作。
+- 旧 v1/v2 swap 保留历史单位/回报的兼容读取，但没有历史账户证明，不能自动新提交、取消或新建 reduce 意图；不是既有资金管理的外部认证，人工/显式关联迁移仍待后续边界。v3 同账户重启后能够继续 query、累积 fill 和取消原单；后续全局 mode/margin 或 leverage 变化的已知 leg 降风险仍通过前序回归。
+- 初始交易组合 387 passed（41.04s）；补充 guard/重启回归与 safety/state-machine/部署组合 176 passed / 6 existing model warnings（41.01s）。最终新测试为 41 identity + 26 SQLite binding，均由后续完整树包含。独立新解释器屏蔽 ccxt，核心 identity/引擎导入、SQLite 与 dry-run 构造 PASS，不新增核心依赖。
+- 完整串行离线命令 `python -m pytest tests -m 'not network' --basetemp <new-temp-directory> -q --tb=short -p no:cacheprovider`：990 passed / 7 expected skipped / 1 network deselected / 14 existing model warnings，553.29s。前一 pytest 明确 exit 0 后才补本节；compileall/diff 已通过，提交前再核 staged diff。按主代理串行自审，不冒称独立审计。
+- 文件范围：新增 `Trade/AccountIdentity.py`、`tests/test_account_identity.py`、`tests/test_crypto_account_binding.py`；修改 `Trade/CCXTTradeEngine.py`、`Trade/OrderAudit.py`、`tests/test_crypto_order_contract.py`、`tests/test_crypto_venue_parameters.py`、`tests/test_trade_safety.py`、`README_FULL.md` 与本台账。fake 私有 I/O 和真实本地 request builder 不变，没有依赖/配置/权限/冻结研究改动。
+- 范围与下一步：观察到客户端上下文不是服务器签名/全局客户端锁，未真实验证测试网路由、区域 endpoint 或频率/延时预算。后续先把新扫描的前后原生上下文与原 scan hash 独立关联，再用历史 attempt/client/server id/单位/时钟核实逐笔归属，不能仅凭 identifier_sha256 忽略 venue+mode，也不能给旧扫描补造身份或提升 `account_scope_verified=false` / `economics_complete=false`。钱包转账/转换/利息/强平等流水、逐腿 mark/余额重建、持久风险冻结、含费模拟与 C6/C7 仍待，Goal active，所有研究/真实订单/外部认证门禁保留。

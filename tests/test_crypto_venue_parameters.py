@@ -26,6 +26,9 @@ class CVenueExchange(COfflineExchange):
         super().__init__(definition)
         self.id, self.mode, self.margin, self.leverage = venue, mode, margin, leverage
         self.builder = getattr(ccxt, venue)({"options": {"defaultType": "spot" if spot else "swap"}})
+        self.builder.set_sandbox_mode(True)
+        self.urls, self.headers = copy.deepcopy(self.builder.urls), copy.deepcopy(self.builder.headers)
+        self.hostname = self.builder.hostname
         self.builder.set_markets([definition])
         self.native_requests, self.account_reads = [], []
 
@@ -82,7 +85,7 @@ def test_native_open_and_reduce_requests_bind_the_correct_account_leg(order_db, 
         assert not native.get("reduceOnly", False)
         assert re.fullmatch(r"[A-Za-z0-9]{1,32}", native["clOrdId"])
     contract = json.loads(order_db.get_record(record_id)["open_order_contract"])
-    assert contract["schema"] == "chan-ccxt-order-v2"
+    assert contract["schema"] == "chan-ccxt-order-v3"
     assert contract["execution"]["position_mode"] == mode
     assert contract["execution"]["margin_mode"] == margin
     trade.cover_trade(order_db.get_record(record_id), 101, "native exit")
@@ -179,7 +182,7 @@ def replace_contract(db, record_id, contract):
 
 
 @pytest.mark.parametrize("changed", ["missing_leg", "bool_leverage", "unknown_mode", "wrong_observed_mode", "missing_observation"])
-def test_rehashed_v2_execution_evidence_is_checked_during_readonly_restore(order_db, tmp_path, changed):
+def test_rehashed_execution_evidence_is_checked_during_restore(order_db, tmp_path, changed):
     trade = venue_engine(order_db, tmp_path, "okx")
     record_id = order_db.add_signal(make_signal(code=CODE))
     order = trade.add_trade(order_db.get_record(record_id), 100)
@@ -206,7 +209,7 @@ def test_v1_units_remain_readable_but_cannot_silently_supply_missing_execution_s
     order = trade.add_trade(order_db.get_record(record_id), 100)
     contract = json.loads(order_db.get_record(record_id)["open_order_contract"])
     contract["schema"] = "chan-ccxt-order-v1"
-    del contract["execution"], contract["account_observation"], contract["post_only"]
+    del contract["execution"], contract["account_observation"], contract["post_only"], contract["account_context"]
     contract["contract_id"] = hashlib.sha256(canonical_bytes({k: v for k, v in contract.items() if k != "contract_id"})).hexdigest()
     record = order_db.get_record(record_id)
     record["open_order_contract"] = canonical_bytes(contract).decode()

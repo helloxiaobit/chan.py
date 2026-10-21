@@ -50,6 +50,17 @@ class COfflineExchange(ccxt.Exchange):
         self.fill = 1
         self.status = "open"
         self.positions = []
+        self.account_alias, self.account_uid = "offline-Futures-A", "12345678"
+        routing = ccxt.binance()
+        routing.set_sandbox_mode(True)
+        self.urls, self.headers = copy.deepcopy(routing.urls), copy.deepcopy(routing.headers)
+        self.isSandboxModeEnabled, self.verify = True, True
+
+    def fapiPrivateV3GetBalance(self, params=None):
+        return [{"asset": "USDT", "accountAlias": self.account_alias, "balance": "50"}]
+
+    def privateGetAccountConfig(self, params=None):
+        return {"code": "0", "data": [{"uid": self.account_uid}]}
 
     def set_leverage(self, leverage, code, params=None):
         self.leverage_calls.append((leverage, code, params))
@@ -126,7 +137,7 @@ def test_contract_size_and_precision_are_frozen_before_the_real_db_intent(order_
     request = trade.exchange.created[0]
     assert request[3:5] == (3, 100.1)
     contract = json.loads(stored["open_order_contract"])
-    assert contract["schema"] == "chan-ccxt-order-v2"
+    assert contract["schema"] == "chan-ccxt-order-v3"
     assert contract["quantity_unit"] == "base_currency" and contract["exchange_amount_unit"] == "contracts"
     assert float(contract["quantity"]) == pytest.approx(0.03)
     assert float(contract["exchange_amount"]) == 3

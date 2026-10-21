@@ -401,6 +401,18 @@ class FakeContractExchange:
         self.created = []
         self.leverage_calls = []
         self.positions_calls = []
+        # This dependency-free safety fixture never performs HTTP; separate
+        # identity tests compare routing against the actual installed CCXT.
+        self.urls = {"api": {"fapiPrivate": "https://testnet.binancefuture.com/fapi/v1",
+            "fapiPrivateV2": "https://testnet.binancefuture.com/fapi/v2",
+            "fapiPrivateV3": "https://testnet.binancefuture.com/fapi/v3"}}
+        self.headers, self.isSandboxModeEnabled, self.verify = {}, True, True
+
+    def set_sandbox_mode(self, enabled):
+        self.isSandboxModeEnabled = enabled
+
+    def fapiPrivateV3GetBalance(self, params):
+        return [{"asset": "USDT", "accountAlias": "offline-Futures-safety"}]
 
     def load_markets(self):
         return {"BTC/USDT:USDT": self.market("BTC/USDT:USDT")}
@@ -478,7 +490,7 @@ def test_contract_order_passes_explicit_intent_and_queries_positions(
     exchange = FakeContractExchange()
     engine.exchange = exchange
     monkeypatch.setitem(
-        sys.modules, "ccxt", SimpleNamespace(BaseError=FakeCCXTError)
+        sys.modules, "ccxt", SimpleNamespace(BaseError=FakeCCXTError, binance=FakeContractExchange)
     )
 
     record_id = trade_db.add_signal(make_signal(code="BTC/USDT:USDT"))

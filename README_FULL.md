@@ -329,7 +329,9 @@ contractSize/交易所等单位身份漂移则明确失败，不能换算成另�
 
 SQLite 只做非破坏性补列，不为旧记录虚构单位或 UTC 意图时间。缺单位规格的旧合约在途单禁止重下，
 单位未知的已有仓位也不能自动平仓；须先显式核验来源/单位，当前没有自动迁移放行入口。
-取消原订单仍保留。MySQL 新订单契约写入在真实迁移/事务验收前 disabled，旧接口不自动升级。
+原账户/环境有 v3 证据且仍匹配时保留原订单的取消/管理；旧 swap 缺账户证据时，不能仅按服务器 id
+自动取消另一账户可能同号的订单，须先显式核验归属，当前没有自动补证放行入口。
+MySQL 新订单契约写入在真实迁移/事务验收前 disabled，旧接口不自动升级。
 
 C5 仍在开发：订单恢复的离线边界见下；逐腿持仓/余额对账与冻结新风险、
 含费用和资金费的模拟账户尚未完成；mock/SQLite 验收不替代
@@ -353,8 +355,31 @@ Binance/OKX 的原生 request builder 已分别做离线验证。授权的非 dr
 `chan-ccxt-order-v2` 同时绑定单位、execution 设置、只读账户观测和 post-only，读取时
 验证完整字段/类型/关联关系，不只检查 SHA。原有已知 leg/margin 的降风险订单继续使用
 开仓时的设置；后来全局配置切换或仅 leverage 漂移不应把它切成另一条腿。
-v1 单位规格仍可只读查单，但不能据缺失的执行设置自动新提交或平仓，需要显式补足证据。
+v1 单位规格仍可只读兼容查单，v2 的执行设置读取也保留；这些旧规格不因此获得历史账户归属证明。
 在准备结束、提交权 CAS 前和实际发送前均复查既有 kill-switch/解锁条件。
+
+#### C5 新永续订单的账户/环境规格 v3（离线协议验收）
+
+新 swap 意图使用 `chan-ccxt-order-v3`，沿用单位/执行参数/成交状态机，并在同一 SQLite
+意图与追加式 attempt 历史中冻结 `account_context`。Spot 继续使用 v2，dry-run 不创建账户会话。
+账户上下文保存 typed identifier 的 SHA256，不保存原生标识明文、余额、任意响应或密钥：
+
+- Binance 使用永续 `GET /fapi/v3/balance` 的唯一 `accountAlias`，类型为 `futures_account_alias`；
+  不借用 Spot UID 或调用者 account_scope。[接口定义](https://developers.binance.com/docs/derivatives/usds-margined-futures/account/rest-api/Futures-Account-Balance-V3)
+- OKX 使用 `GET /api/v5/account/config` 的 `uid`；缺失、多项或矛盾响应拒绝。
+  [接口定义](https://my.okx.com/docs-v5/en/#trading-account-rest-api-get-account-configuration)
+- 私有读取前核对实际 CCXT sandbox 标志、TLS 校验、有效私有路由，以及 OKX 模拟盘请求头和 hostname。
+  路由以安装的无凭据 CCXT 标准客户端为基准；不允许自定义私有端点静默混用环境，区域端点不在本次支持范围。
+
+提交权 CAS 前、读取/提交响应后重新核对原账户。漂移或读取未知即拒绝记账/新提交；
+响应期间漂移的已发送订单保留未知状态，不推断失败再补单。重启和降风险继续使用原账户/leg，
+不能因当前配置变化把新平仓意图冻结到另一账户。取消也要求唯一持久化订单和原账户匹配。
+旧 v1/v2 swap 不补造账户证明，故不自动新提交、取消或新建 reduce 意图；原有历史单位/回报的
+兼容读取不等于账户审计通过，显式历史关联/迁移尚待后续 C5。
+
+这是请求前后的客户端/原生身份观察，不是服务器签名、对并发修改客户端的全局锁或 C7 外部认证；
+标准路由能否连接当前测试网也未实际验证。逐笔来源的 `account_scope_verified=false`、
+`economics_complete=false` 不会因此升级。逐腿钱包/持仓对账、持久风险冻结与含费模拟仍未完成。
 
 #### C5 ACK 与有界历史恢复（离线协议验收）
 
@@ -362,7 +387,7 @@ create_order 的 ACK 不等于成交报告。引擎先保存已验证的交易�
 不把未知 filled/status 写成零成交或 open，再按该 id 补查。补查失败保留订单字段
 `*_order_status=submitting`（生命周期仍为 submitted/closing），
 恢复继续查询原意图，不自动补单。完整报告必须匹配冻结限价、数量、方向、单位与服务器
-leg；v2 还核对原生 post-only、one-way reduce-only，以及 OKX 的 tdMode/posSide。
+leg；v2/v3 还核对原生 post-only、one-way reduce-only，以及 OKX 的 tdMode/posSide。
 
 原生查询先用已知 id，其次用 Binance origClientOrderId / OKX clOrdId。
 只有明确 OrderNotFound/NotSupported 才扫描历史；网络、鉴权和限频异常直接保持未知。

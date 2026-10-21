@@ -17,6 +17,7 @@ from Common.KLineTime import utc_now_ms
 from CustomBuySellPoint.Decision import canonical_bytes
 
 from .db_util import CChanDB
+from .AccountIdentity import observe_account_context, verify_account_context
 from .OpenQuotaGen import COpenQuotaGen
 from .SafetyPolicy import build_trading_safety_policy
 from .TradeEngine import COrderResult, CTradeEngine
@@ -193,9 +194,9 @@ class CCCXTTradeEngine(CTradeEngine):
             raise CChanException("当前交易参数仅适配 Binance/OKX", ErrCode.PARA_ERROR)
         if reduce_only and record is not None:
             opened = self._read_order_contract(code, {"phase": "open", "record": record})
-            if opened["schema"] == "chan-ccxt-order-v2":
+            if opened["schema"] == "chan-ccxt-order-v3" or (self.market_type == "spot" and opened["schema"] == "chan-ccxt-order-v2"):
                 return dict(opened["execution"])
-            raise CChanException("v1 只读恢复：自动提交前须显式补足执行设置证据", ErrCode.TRADE_UNLOCK_FAIL)
+            raise CChanException("旧契约只读恢复：自动操作前须显式补足原账户/执行设置证据", ErrCode.TRADE_UNLOCK_FAIL)
         if self.market_type == "spot":
             return {"venue": venue, "position_mode": "one_way", "position_side": "BOTH",
                     "margin_mode": "cash", "leverage": 1}
@@ -418,13 +419,17 @@ class CCCXTTradeEngine(CTradeEngine):
         self.safety_policy.assert_order_allowed()
         if self.chan_db.db_type != "sqlite":
             raise CChanException("MySQL 单位契约迁移/事务尚未验收", ErrCode.TRADE_UNLOCK_FAIL)
+        opened = None
         if reduce_only and record is not None:
             # 自动平仓的数量来自 DB；旧数量没有单位证据时不能推断成币数。
-            self._read_order_contract(code, {"phase": "open", "record": record})
+            opened = self._read_order_contract(code, {"phase": "open", "record": record})
         import ccxt
         try:
             definition, market = self._market_contract(code)
             execution = self._execution_settings(code, record, reduce_only=reduce_only)
+            account = None if self.market_type == "spot" else observe_account_context(self.get_exchange(), self.mode)
+            if opened is not None and opened.get("account_context") != account:
+                raise CChanException("降风险意图不得切换原账户/环境", ErrCode.TRADE_UNLOCK_FAIL)
             observation = self._observe_account(code, execution, reduce_only=reduce_only)
             if not reduce_only and market.get("active") is not True:
                 raise CChanException("market 非明确 active，禁止新风险", ErrCode.TRADE_UNLOCK_FAIL)
@@ -445,6 +450,9 @@ class CCCXTTradeEngine(CTradeEngine):
                     "price": None if price is None else str(price), "reference_price": str(reference),
                     "notional": str(quantity*reference), "reduce_only": bool(reduce_only),
                     "execution": execution, "account_observation": observation, "post_only": post_only}
+                if account is not None:
+                    contract.update(schema="chan-ccxt-order-v3", account_context=account)
+                    self._assert_account_context(contract)
                 contract["contract_id"] = _contract_id(contract)
                 _float_exact(amount)  # 下单 API 的张数也不能被 float 静默改写。
                 self.safety_policy.assert_order_allowed()
@@ -460,9 +468,12 @@ class CCCXTTradeEngine(CTradeEngine):
             contract = json.loads(raw)
             expected_keys = {"schema", "market", "quantity_unit", "exchange_amount_unit", "quantity", "exchange_amount",
                              "price", "reference_price", "notional", "reduce_only", "contract_id"}
-            v2 = contract.get("schema") == "chan-ccxt-order-v2"
-            if v2:
+            version = contract.get("schema")
+            execution_version = version in {"chan-ccxt-order-v2", "chan-ccxt-order-v3"}
+            if execution_version:
                 expected_keys |= {"execution", "account_observation", "post_only"}
+            if version == "chan-ccxt-order-v3":
+                expected_keys.add("account_context")
             definition, market = self._market_contract(code)
             with localcontext() as context:
                 context.prec = 50
@@ -474,7 +485,7 @@ class CCCXTTradeEngine(CTradeEngine):
                 same_units = all(frozen.get(key) == definition[key] for key in unit_keys)
                 requested = record["open_requested_qty" if phase == "open" else "cover_requested_qty"]
                 if (set(contract) != expected_keys or canonical_bytes(contract).decode() != raw
-                        or contract["schema"] not in {"chan-ccxt-order-v1", "chan-ccxt-order-v2"}
+                        or version not in {"chan-ccxt-order-v1", "chan-ccxt-order-v2", "chan-ccxt-order-v3"}
                         or contract["contract_id"] != _contract_id(contract)
                         or not same_units or (submitting and (frozen != definition or
                             (phase == "open" and market.get("active") is not True)))
@@ -488,15 +499,29 @@ class CCCXTTradeEngine(CTradeEngine):
                                (None if contract["price"] is None else _quantity(contract["price"], positive=True))))):
                     raise ValueError("order contract drift")
                 self._check_limits(frozen, exchange_amount, reference, quantity*reference)
-                if v2:
+                if execution_version:
                     self._check_execution_evidence(contract, record, phase)
+                self._assert_account_context(contract)
                 if submitting:
-                    if not v2 or contract["execution"] != self._execution_settings(code, record, reduce_only=phase == "close"):
+                    if (not execution_version or (self.market_type == "swap" and version != "chan-ccxt-order-v3")
+                            or contract["execution"] != self._execution_settings(code, record, reduce_only=phase == "close")):
                         raise ValueError("execution settings drift")
                     self._observe_account(code, contract["execution"], reduce_only=phase == "close")
+                    self._assert_account_context(contract)
                 return contract
         except (TypeError, ValueError, KeyError, AttributeError) as error:
             raise CChanException("缺少完整订单单位契约或 market 漂移，禁止猜测重下/记账", ErrCode.TRADE_UNLOCK_FAIL) from error
+
+    def _assert_account_context(self, contract):
+        if contract["schema"] != "chan-ccxt-order-v3":
+            return  # No fictional native identity is added to legacy contracts.
+        frozen = contract["account_context"]
+        verify_account_context(frozen)
+        venue = contract["market"]["exchange"]
+        venue = "binance" if venue in {"binance", "binanceusdm"} else venue
+        if (contract["market"]["type"] != "swap" or frozen["venue"] != venue or frozen["mode"] != self.mode
+                or frozen != observe_account_context(self.get_exchange(), self.mode)):
+            raise CChanException("订单冻结账户/环境与当前原生身份不一致", ErrCode.TRADE_UNLOCK_FAIL)
 
     # ===== 撮合接口 =====
     def place_order(
@@ -562,6 +587,7 @@ class CCCXTTradeEngine(CTradeEngine):
                 f"下单失败 {code} {order_side} {amount}: {e}",
                 ErrCode.PLACE_ORDER_FAIL,
             ) from e
+        self._assert_account_context(contract)
         self._check_order_identity(order, code, intent, contract, partial=True)
         self.chan_db.record_order_ack(intent["record"]["id"], intent["phase"], str(order["id"]), client_order_id=client_order_id,
             expected_attempt=intent["record"]["open_attempt" if intent["phase"] == "open" else "cover_attempt"])
@@ -577,8 +603,15 @@ class CCCXTTradeEngine(CTradeEngine):
                 self._sim_orders[order_id].status = "canceled"
             return True
         import ccxt
+        intent = self.chan_db.get_order_intent_by_order_id(code, str(order_id))
+        if intent is None:
+            raise CChanException("撤单缺少唯一持久化意图", ErrCode.CANDEL_ORDER_FAIL)
+        contract = self._read_order_contract(code, intent)
+        if self.market_type == "swap" and contract["schema"] != "chan-ccxt-order-v3":
+            raise CChanException("旧永续契约撤单需先证明原账户归属", ErrCode.CANDEL_ORDER_FAIL)
         try:
             self.get_exchange().cancel_order(order_id, code)
+            self._assert_account_context(contract)
             return True
         except ccxt.BaseError as e:
             raise CChanException(f"撤单失败 {code} {order_id}: {e}", ErrCode.CANDEL_ORDER_FAIL) from e
@@ -619,6 +652,7 @@ class CCCXTTradeEngine(CTradeEngine):
         except ccxt.BaseError as e:
             identity = known_id or client_order_id
             raise CChanException(f"查单失败 {code} {identity}: {e}", ErrCode.LIST_ORDER_FAIL) from e
+        self._assert_account_context(contract)
         try:
             result = self._result_from_ccxt(order, code=code, intent=intent, contract=contract)
         except CChanException as error:
@@ -840,7 +874,7 @@ class CCCXTTradeEngine(CTradeEngine):
 
     @staticmethod
     def _check_execution_report(order, contract):
-        if contract["schema"] != "chan-ccxt-order-v2":
+        if contract["schema"] not in {"chan-ccxt-order-v2", "chan-ccxt-order-v3"}:
             return  # v1 remains read-only; it cannot authorize a new submission.
         execution, info = contract["execution"], order.get("info")
         if not isinstance(info, dict):
