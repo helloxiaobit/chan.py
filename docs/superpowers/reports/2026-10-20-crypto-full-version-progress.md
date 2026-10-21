@@ -237,3 +237,22 @@ C1 收尾清理计划：迁移校验由两份全表内存列表改为有序逐�
 - 新增只读核验后再观察 6 项权限时序 RED：准备、只读核验或 claim 期间 kill-switch/解锁撤销原本仍会占用意图或发送。现准备结束、claim 前及实际发送前重新复查原 SafetyPolicy；未改权限规则本身，也不因读取账户成功绕过撤销。
 - 最新适用组合：155 passed / 3 expected small-model warnings，40.94s；包括 47 venue、36 unit、全部 trade safety/state-machine/M6 与 35 C3 deployment 工作流。三警告仅两个小 XGB validation 单类 AUC 与一个小 MLP 60 步未收敛。compileall/diff/Lore 另行核验；不把 C4 的 608 旧树证据重标为本次全仓。
 - 剩余 C5：真实 ACK 后补查、按 client-id 的原生查询及历史分页、服务端 leg/成交回报和逐腿持仓/余额对账、持久化冻结新风险但保留可证降风险、完整费用/funding/mark 模拟账本与在线额度绑定。当前只证明离线请求/拒绝协议，不是完整服务器生命周期或交易所认证；Goal 仍 active。
+
+### C5 第三子边界实施与清理计划：ACK、原生查单与有界历史恢复
+
+- 起始 clean `6741acdbcb5eac6851173fcde70c372f96eab335`。沿用一个 intent/CAS/累计成交状态机；只增加 ACK 的已知订单号持久化，不把缺少 filled/status 的 ACK 伪装成零成交/open。补查失败仍 submitting，重启查原 id/client，不重下。
+- 删除客户端号的单页通用 fetch_orders 路径。先用 Binance origClientOrderId / OKX clOrdId 原生 fetch_order；只有明确 OrderNotFound/NotSupported 才进入历史补查，网络/鉴权/限频失败不触发旁路扫描。SQLite 同一意图 CAS 增加 UTC 毫秒边界，旧本地无时区字符串不猜 UTC、不回填历史时间。
+- Binance 历史按小于 7 日的固定窗口和递增 orderId 分页；OKX pending 与 archive filled/canceled 按递减 ordId 分页，使用本机 CCXT 实际 request/parser 验证。固定页数预算、游标无进展、时间/身份冲突和多单同 client 均 fail closed；空结果不是未接单证明，更不是重下许可。
+- 测试先覆盖真实 CCXT ACK/parser、受理后响应丢失、原生 client 查询、第二页/窗口/取消历史、重复/冲突与预算、重启和两进程原 intent 争抢。所有 I/O 为 fake；不变的 C4/C5 既有证据仅按原树复用，提交前串行回归适用组合。逐腿账户、冻结新风险及完整模拟账本仍是后续 C5，不提前宣称阶段完成。
+
+### C5 第三子边界证据：ACK、原生查询、分页与不抹零余量（C5 未完成）
+
+- 首批 16 RED 证明 ACK id 未落库、响应丢失无法原生 client 查询、第二页不可恢复和缺 UTC 边界。复用原提交权 CAS，在补查之前保存 ACK id，未知 filled/status 仍 submitting；完整报告后才记账。已知 id 不能被后续 submission 回报覆盖，query 也不能绑定另一张订单。
+- Binance/OKX 实际 fetch_order builder/parser + fake 私有端点，覆盖 open/close 的 ACK 即时成功、补查网络失败后新 DB 连接恢复、受理后超时丢响应、重复恢复、订单号查询。只有 OrderNotFound/NotSupported 才进入历史；网络/鉴权/限频不旁路重扫。时钟缺失/早于本意图和缺 client echo 不能作 client-only 证据，旧 UTC null 重开不回填。
+- 新增 6 项 server leg/margin/post-only RED、4 项限价/已知 id 覆盖 RED。完整回报校验服务器原生字段，不靠请求体自证执行语义。旧单 v1 仍只读单位，不升级授权；不把这些 fake 回报认证冒称真实服务器验收。
+- 复核 [Binance All Orders](https://developers.binance.com/docs/derivatives/usds-margined-futures/trade/rest-api/All-Orders) 时发现无 orderId 默认取最近页；独立 RED 证明会漏老单，现每个 6 日窗口显式从正整数 id 起步、max+1 前进。OKX 用 pending + archive filled/canceled 与递减 after；本机 fetch_canceled_orders 不支持 archive，使用经实际 builder 核验的 fetch_closed_orders state override。每页 1000/100、总 32 页、90 日回溯预算，覆盖第二页、跨窗、取消部分成交、重复/歧义/页预算/空结果。测试中有一项 OKX 预算夹具误含 after 本身，按官方排他游标纠正，未把该夹具错误算作生产 RED。
+- 完整部分平仓撤单测试另暴露真实 DB 浮点余量缺陷：0.03−0.02 被写成 0.009999999999999998，无法再转成一个 contract。3 项精确数量/小余量 RED 与 2 项超出数值范围 RED 后，数量 delta/remaining/total 在固定 Decimal 上下文计算；不可精确通过 DB 边界或发生 Inexact 时先拒绝，不向上补量。删除 1e-12 自动清仓阈值，1e-13 真实仓位保留。旧汇总均价仍是 legacy float，不把数量修复宣传成完整现金流对账。
+- 两个短 SQLite 子进程只在同一提交权 CAS 同时争抢，实际一个 true、一个 false；没有并发测试套件或子代理。它不证明所有跨进程累计回报的事务性。代码复核发现 fill 的 read→write 仍需乐观 CAS/绑定当前 client attempt，终态旧回报也需独立覆盖；此项列为下一 C5 子边界，未宣称完整并发恢复验收。
+- 最新关键组合 218 passed / 3 expected small-model warnings（53.08s），覆盖 63 recovery、36 units、47 venues、trade state/safety/M6、35 deployment。完整离线回归 `python -m pytest tests -m 'not network' --basetemp <new-temp-directory> -q --tb=short -p no:cacheprovider`：754 passed / 7 expected skipped / 1 network deselected / 14 existing model warnings，494.26s。运行期间未改源码、未启动第二套测试；最后只补充本记录及文档措辞，未重标旧树结果。
+- 文件：`Trade/CCXTTradeEngine.py`、`Trade/db_util.py`、`Trade/SqliteDB.py`、`tests/test_crypto_order_recovery.py`、`tests/test_crypto_order_contract.py`、`tests/test_trade_safety.py`、`README_FULL.md` 与本台账。清理掉单页通用查单、重复身份校验及 epsilon 抹零，未加新依赖/第二套订单状态机，未改配置或冻结研究资产。
+- 下一 C5 子边界先保护跨进程累计成交：raw report 绑定当前 client attempt/id，fill 的 read→write 增加乐观 CAS，旧终态回报不得回绕；用确定性交错与双 DB 连接先观察 RED，拒绝冲突且保留已知仓位。之后继续逐腿账户/持久化风险冻结/模拟账本。C6/C7 与真实交易所认证仍未完成，Goal active。

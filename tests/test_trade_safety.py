@@ -435,9 +435,12 @@ class FakeContractExchange:
             "type": order_type,
             "clientOrderId": (params or {}).get("clientOrderId"),
             "amount": amount,
+            "price": price,
             "filled": 0.75,
             "average": 101.0,
             "status": "open",
+            "info": {"positionSide": (params or {}).get("positionSide"), "reduceOnly": False,
+                     "timeInForce": "GTX" if (params or {}).get("postOnly") else "GTC"},
         }
 
     def fetch_positions(self, symbols):

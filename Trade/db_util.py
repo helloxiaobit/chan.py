@@ -8,9 +8,11 @@
 import datetime
 import json
 import math
+from decimal import Context, Decimal, Inexact, localcontext
 from typing import List, Optional
 
 from Common.ChanException import CChanException, ErrCode
+from Common.KLineTime import utc_now_ms
 from CustomBuySellPoint.Signal import CSignal
 from CustomBuySellPoint.Decision import canonical_bytes, read_decision
 
@@ -34,6 +36,13 @@ def _cumulative_qty(value: float) -> float:
     if not math.isfinite(quantity) or quantity < 0:
         raise CChanException("累计成交量无效", ErrCode.PARA_ERROR)
     return quantity
+
+
+def _exact_qty_float(value: Decimal) -> float:
+    result = float(value)
+    if not math.isfinite(result) or result < 0 or Decimal(str(result)) != value:
+        raise CChanException("数量无法经 DB 数值边界原样保存", ErrCode.PARA_ERROR)
+    return result
 
 
 def _order_status(value: str) -> str:
@@ -152,8 +161,8 @@ class CChanDB:
             raise CChanException("风险乘数必须大于 0", ErrCode.PARA_ERROR)
         if order_contract is not None and self.db_type != "sqlite":
             raise CChanException("MySQL 订单单位契约迁移尚未验收", ErrCode.TRADE_UNLOCK_FAIL)
-        contract_clause = ", open_order_contract=?" if self.db_type == "sqlite" else ""
-        contract_args = (canonical_bytes(order_contract).decode() if order_contract is not None else None,) if contract_clause else ()
+        contract_clause = ", open_order_contract=?, open_intent_ms=?" if self.db_type == "sqlite" else ""
+        contract_args = (canonical_bytes(order_contract).decode() if order_contract is not None else None, utc_now_ms()) if contract_clause else ()
         changed = self.db.execute(
             f"UPDATE {self.table} SET status='submitted', "
             "open_client_order_id=?, open_requested_qty=?, "
@@ -180,6 +189,20 @@ class CChanDB:
             ),
         )
         return changed == 1
+
+    def record_order_ack(self, record_id: int, phase: str, order_id: str) -> None:
+        """ACK 只证明 id；不伪造 status/零成交，也不允许替换已知 id。"""
+        if phase not in {"open", "close"} or not isinstance(order_id, str) or not order_id.strip():
+            raise CChanException("ACK 阶段/交易所订单号无效", ErrCode.LIST_ORDER_FAIL)
+        prefix = "open" if phase == "open" else "cover"
+        states = "('submitted', 'partially_filled')" if phase == "open" else "('closing')"
+        changed = self.db.execute(
+            f"UPDATE {self.table} SET {prefix}_order_id=?, order_last_update=? WHERE id=? "
+            f"AND status IN {states} AND {prefix}_order_status='submitting' AND {prefix}_order_id IS NULL",
+            (order_id, now_str(), record_id),
+        )
+        if changed != 1 and self.get_record(record_id).get(f"{prefix}_order_id") != order_id:
+            raise CChanException("ACK 不能替换已知订单号或越过提交边界", ErrCode.LIST_ORDER_FAIL)
 
     def get_recoverable_records(self) -> List[dict]:
         return self.db.query(
@@ -242,8 +265,8 @@ class CChanDB:
         changed = self.db.execute(
             f"UPDATE {self.table} SET open_order_id=?, open_order_status=?, "
             "order_last_update=? WHERE id=? "
-            "AND status IN ('submitted', 'partially_filled')",
-            (order_id, raw_status, now_str(), record_id),
+            "AND status IN ('submitted', 'partially_filled') AND (open_order_id IS NULL OR open_order_id=?)",
+            (order_id, raw_status, now_str(), record_id, order_id),
         )
         if changed != 1:
             rec = self.get_record(record_id)
@@ -272,6 +295,10 @@ class CChanDB:
             raise CChanException("开仓累计成交量超过请求量", ErrCode.PARA_ERROR)
         if filled and (avg_price is None or float(avg_price) <= 0):
             raise CChanException("开仓成交均价无效", ErrCode.PARA_ERROR)
+        with localcontext(Context(prec=50)) as context:
+            delta = _exact_qty_float(Decimal(str(filled))-Decimal(str(previous)))
+            if context.flags[Inexact]:
+                raise CChanException("开仓数量超出精确计算范围", ErrCode.PARA_ERROR)
 
         if filled == 0:
             next_status = (
@@ -311,7 +338,7 @@ class CChanDB:
                 record_id,
             ),
         )
-        return filled - previous
+        return delta
 
     def acquire_close_intent(
         self,
@@ -330,8 +357,8 @@ class CChanDB:
             raise CChanException("平仓请求量超过当前仓位", ErrCode.PARA_ERROR)
         if order_contract is not None and self.db_type != "sqlite":
             raise CChanException("MySQL 订单单位契约迁移尚未验收", ErrCode.TRADE_UNLOCK_FAIL)
-        contract_clause = ", cover_order_contract=?" if self.db_type == "sqlite" else ""
-        contract_args = (canonical_bytes(order_contract).decode() if order_contract is not None else None,) if contract_clause else ()
+        contract_clause = ", cover_order_contract=?, cover_intent_ms=?" if self.db_type == "sqlite" else ""
+        contract_args = (canonical_bytes(order_contract).decode() if order_contract is not None else None, utc_now_ms()) if contract_clause else ()
         changed = self.db.execute(
             f"UPDATE {self.table} SET status='closing', "
             "cover_client_order_id=?, cover_requested_qty=?, "
@@ -363,8 +390,8 @@ class CChanDB:
             raise CChanException("平仓交易所订单号不能为空", ErrCode.PARA_ERROR)
         changed = self.db.execute(
             f"UPDATE {self.table} SET cover_order_id=?, cover_order_status=?, "
-            "order_last_update=? WHERE id=? AND status='closing'",
-            (order_id, raw_status, now_str(), record_id),
+            "order_last_update=? WHERE id=? AND status='closing' AND (cover_order_id IS NULL OR cover_order_id=?)",
+            (order_id, raw_status, now_str(), record_id, order_id),
         )
         if changed != 1:
             rec = self.get_record(record_id)
@@ -393,14 +420,17 @@ class CChanDB:
             raise CChanException("平仓累计成交量超过请求量", ErrCode.PARA_ERROR)
         if filled and (avg_price is None or float(avg_price) <= 0):
             raise CChanException("平仓成交均价无效", ErrCode.PARA_ERROR)
-        delta = filled - previous_order
         previous_current = float(rec["current_qty"] or 0)
-        if delta > previous_current:
-            raise CChanException("平仓成交量超过当前仓位", ErrCode.PARA_ERROR)
-        current = previous_current - delta
-
         previous_total = float(rec["cover_filled_qty"] or 0)
-        total = previous_total + delta
+        with localcontext(Context(prec=50)) as context:
+            delta_decimal = Decimal(str(filled))-Decimal(str(previous_order))
+            if delta_decimal > Decimal(str(previous_current)):
+                raise CChanException("平仓成交量超过当前仓位", ErrCode.PARA_ERROR)
+            delta = _exact_qty_float(delta_decimal)
+            current = _exact_qty_float(Decimal(str(previous_current))-delta_decimal)
+            total = _exact_qty_float(Decimal(str(previous_total))+delta_decimal)
+            if context.flags[Inexact]:
+                raise CChanException("平仓数量超出精确计算范围", ErrCode.PARA_ERROR)
         previous_total_avg = float(rec["cover_avg_price"] or 0)
         previous_order_avg = float(rec["cover_order_avg_price"] or 0)
         other_notional = (
@@ -413,8 +443,7 @@ class CChanDB:
             else rec.get("cover_avg_price")
         )
 
-        if current <= 1e-12:
-            current = 0.0
+        if current == 0:
             next_status = "closed"
             is_open = 0
             watching = 0

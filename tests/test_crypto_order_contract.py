@@ -7,6 +7,7 @@ import ccxt
 import pytest
 
 from Common.ChanException import CChanException
+from Common.KLineTime import utc_now_ms
 from Trade.CCXTTradeEngine import CCCXTTradeEngine
 from Trade.OpenQuotaGen import CBenchPriceQuotaGen
 from Trade.db_util import CChanDB
@@ -50,15 +51,26 @@ class COfflineExchange(ccxt.Exchange):
 
     def create_order(self, code, order_type, side, amount, price=None, params=None):
         self.created.append((code, order_type, side, amount, price, copy.deepcopy(params)))
+        info = ({"tdMode": params.get("tdMode"), "posSide": params.get("posSide"),
+                 "ordType": "post_only" if params.get("postOnly") else order_type}
+                if self.id == "okx" else {"positionSide": params.get("positionSide", "BOTH"),
+                    "timeInForce": "GTX" if params.get("postOnly") else "GTC", "type": order_type.upper()})
+        info["reduceOnly"] = params.get("reduceOnly", False)
         row = {"id": str(len(self.created)), "symbol": code, "clientOrderId": params["clientOrderId"],
                "amount": amount, "filled": self.fill, "average": price or 100, "status": self.status,
                "price": price, "remaining": amount-self.fill, "side": side, "type": order_type,
-               "timestamp": 1, "datetime": "1970-01-01T00:00:00.001Z", "fee": None, "info": {}}
+               "timestamp": utc_now_ms(), "fee": None, "info": info}
         self.orders[row["id"]] = copy.deepcopy(row)
         return row
 
     def fetch_order(self, order_id, code, params=None):
-        return copy.deepcopy(self.orders[order_id])
+        if order_id is not None:
+            return copy.deepcopy(self.orders[order_id])
+        client = (params or {}).get("origClientOrderId") or (params or {}).get("clOrdId")
+        rows = [row for row in self.orders.values() if row["clientOrderId"] == client]
+        if len(rows) != 1:
+            raise ccxt.OrderNotFound("no unique client match")
+        return copy.deepcopy(rows[0])
 
     def fetch_orders(self, code, since=None, limit=None, params=None):
         return list(copy.deepcopy(self.orders).values())

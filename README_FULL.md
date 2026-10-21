@@ -327,12 +327,12 @@ SQLite 在同一 CAS 保存精度化后的币数与 `open_order_contract`/`cover
 单纯更改 tick/limits 或停用市场不会改变旧订单的冻结单位，新风险仍拒绝。
 contractSize/交易所等单位身份漂移则明确失败，不能换算成另一个数量。
 
-SQLite 自动只补两列，不为旧记录虚构单位。缺单位规格的旧合约在途单禁止重下，
+SQLite 只做非破坏性补列，不为旧记录虚构单位或 UTC 意图时间。缺单位规格的旧合约在途单禁止重下，
 单位未知的已有仓位也不能自动平仓；须先显式核验来源/单位，当前没有自动迁移放行入口。
 取消原订单仍保留。MySQL 新订单契约写入在真实迁移/事务验收前 disabled，旧接口不自动升级。
 
-C5 仍在开发：完整服务器订单生命周期、分页查询、逐腿持仓/余额对账与冻结新风险、
-含费用和资金费的模拟账户尚未完成；请求参数的离线适配见下，mock/SQLite 验收不替代
+C5 仍在开发：订单恢复的离线边界见下；逐腿持仓/余额对账与冻结新风险、
+含费用和资金费的模拟账户尚未完成；mock/SQLite 验收不替代
 C7 真实环境授权与认证。
 
 #### C5 平台参数与执行规格 v2
@@ -356,8 +356,34 @@ Binance/OKX 的原生 request builder 已分别做离线验证。授权的非 dr
 v1 单位规格仍可只读查单，但不能据缺失的执行设置自动新提交或平仓，需要显式补足证据。
 在准备结束、提交权 CAS 前和实际发送前均复查既有 kill-switch/解锁条件。
 
-此处仅证明请求体、冻结设置和拒绝边界。真实 ACK 后完整状态补查、历史分页、
-逐腿成交/余额对账、带费用和资金费的模拟账户仍在 C5 后续工作；C6/C7 也未完成。
+#### C5 ACK 与有界历史恢复（离线协议验收）
+
+create_order 的 ACK 不等于成交报告。引擎先保存已验证的交易所订单号，
+不把未知 filled/status 写成零成交或 open，再按该 id 补查。补查失败保留订单字段
+`*_order_status=submitting`（生命周期仍为 submitted/closing），
+恢复继续查询原意图，不自动补单。完整报告必须匹配冻结限价、数量、方向、单位与服务器
+leg；v2 还核对原生 post-only、one-way reduce-only，以及 OKX 的 tdMode/posSide。
+
+原生查询先用已知 id，其次用 Binance origClientOrderId / OKX clOrdId。
+只有明确 OrderNotFound/NotSupported 才扫描历史；网络、鉴权和限频异常直接保持未知。
+客户端号可能在交易所终态后重用，因此 client-only 匹配还必须有本意图之后的 UTC 创建时刻。
+`open_intent_ms`/`cover_intent_ms` 与新意图同一 SQLite CAS 写入；旧行保持 null，
+不会把本地无时区日期猜成 UTC。旧行有已知交易所 id 时仍可核验；缺时间的客户端号恢复需先人工核实。
+
+- Binance USDT 永续：固定 6 日窗口（小于官方 7 日限制），每窗显式从正整数 orderId 开始、
+  以最大 id+1 前进，每页最多 1000；不使用会默认取“最近一页”的无游标起步。
+- OKX：pending 及 archive filled/canceled 三条只读路径，每页最多 100，以 after=最小 ordId 向更早记录前进。
+  使用实际 CCXT 4.5.43 archive builder；不依赖不支持的通用 fetch_orders。
+- 一次历史补查最多 32 页、最多回溯 90 日；这些是传输预算，不是交易所历史可见性的保证。
+  保留期更短、空结果、重复/不前进游标、多单同客户端号或矛盾回报都维持未知，不能据此重下。
+
+依据：[Binance All Orders](https://developers.binance.com/docs/derivatives/usds-margined-futures/trade/rest-api/All-Orders)、
+[OKX 订单 API](https://www.okx.com/docs-v5/en/)。上述请求和原生解析器均只在 fake I/O 中验证，未连真实账户。
+部分平仓的剩余数量用固定 Decimal 计算后精确经过 DB 数值边界；无法表示则拒绝写入，
+不向上补量，也不使用 epsilon 把小仓位抹成零。
+
+两进程提交权 CAS 已验证只产生一个赢家；尚未完成的跨进程累计回报原子性、
+逐腿余额/现金流对账与持久化风险冻结仍是 C5 剩余工作。C6/C7 也未完成。
 
 当前只完成了离线可证明的安全边界，尚未完成交易所逐一测试网认证。待验证项包括：
 沙盒支持与市场映射、客户端订单号历史查询窗口/分页、post-only/reduce-only/

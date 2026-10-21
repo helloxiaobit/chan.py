@@ -13,6 +13,7 @@ from decimal import Decimal, InvalidOperation, localcontext
 from typing import Dict, List, Optional
 
 from Common.ChanException import CChanException, ErrCode
+from Common.KLineTime import utc_now_ms
 from CustomBuySellPoint.Decision import canonical_bytes
 
 from .db_util import CChanDB
@@ -23,6 +24,11 @@ from .TradeEngine import COrderResult, CTradeEngine
 
 _CONTRACT_TYPES = {"swap", "future"}
 _POSITION_SIDES = {"BOTH", "LONG", "SHORT"}
+# Transport bounds, not strategy/search parameters. Exhaustion means unknown,
+# never proof that an accepted order did not exist. Native-id queries run first.
+_HISTORY_MAX_PAGES = 32
+_HISTORY_WINDOW_MS = 6*86_400_000
+_HISTORY_MAX_AGE_MS = 90*86_400_000
 _CCXT_STATUS_MAP = {
     "open": "open",
     "closed": "closed",
@@ -556,6 +562,10 @@ class CCCXTTradeEngine(CTradeEngine):
                 f"下单失败 {code} {order_side} {amount}: {e}",
                 ErrCode.PLACE_ORDER_FAIL,
             ) from e
+        self._check_order_identity(order, code, intent, contract, partial=True)
+        self.chan_db.record_order_ack(intent["record"]["id"], intent["phase"], str(order["id"]))
+        if any(order.get(key) is None for key in ("symbol", "side", "type", "filled", "status")):
+            return self.query_order(code, str(order["id"]), client_order_id=client_order_id)
         return self._result_from_ccxt(
             order, code=code, intent=intent, contract=contract
         )
@@ -590,38 +600,125 @@ class CCCXTTradeEngine(CTradeEngine):
                 self._advance_sim_order(state)
             return state.result
         import ccxt
-        try:
-            exchange = self.get_exchange()
-            if order_id is not None:
-                order = exchange.fetch_order(order_id, code)
-            elif client_order_id:
-                matches = [
-                    item for item in exchange.fetch_orders(code)
-                    if (
-                        item.get("clientOrderId")
-                        or item.get("client_order_id")
-                    ) == client_order_id
-                ]
-                if len(matches) != 1:
-                    raise CChanException(
-                        f"客户端订单号匹配数量不是 1: {client_order_id}",
-                        ErrCode.LIST_ORDER_FAIL,
-                    )
-                order = matches[0]
-            else:
-                raise CChanException(
-                    "查单需要交易所订单号或客户端订单号",
-                    ErrCode.LIST_ORDER_FAIL,
-                )
-        except ccxt.BaseError as e:
-            identity = order_id or client_order_id
-            raise CChanException(f"查单失败 {code} {identity}: {e}", ErrCode.LIST_ORDER_FAIL) from e
         intent = (self.chan_db.get_order_intent(client_order_id) if client_order_id else
-                  self.chan_db.get_order_intent_by_order_id(code, str(order["id"])))
-        if intent is None or (order_id is not None and str(order.get("id")) != str(order_id)):
-            raise CChanException("交易所订单与持久化意图不匹配", ErrCode.LIST_ORDER_FAIL)
+                  self.chan_db.get_order_intent_by_order_id(code, str(order_id)) if order_id is not None else None)
+        if intent is None:
+            raise CChanException("查单缺少唯一持久化意图", ErrCode.LIST_ORDER_FAIL)
+        prefix = "open" if intent["phase"] == "open" else "cover"
+        record = intent["record"]
+        known_id = record.get(f"{prefix}_order_id")
+        if order_id is not None and known_id is not None and str(order_id) != str(known_id):
+            raise CChanException("查单不能替换已知交易所订单号", ErrCode.LIST_ORDER_FAIL)
+        known_id = known_id if known_id is not None else order_id
+        client_order_id = record[f"{prefix}_client_order_id"]
         contract = self._read_order_contract(code, intent)
-        return self._result_from_ccxt(order, code=code, intent=intent, contract=contract)
+        try:
+            order = self._fetch_persisted_order(code, known_id, client_order_id, record.get(f"{prefix}_intent_ms"))
+        except ccxt.BaseError as e:
+            identity = known_id or client_order_id
+            raise CChanException(f"查单失败 {code} {identity}: {e}", ErrCode.LIST_ORDER_FAIL) from e
+        try:
+            result = self._result_from_ccxt(order, code=code, intent=intent, contract=contract)
+        except CChanException as error:
+            raise CChanException("查单回报尚不能安全记账", ErrCode.LIST_ORDER_FAIL) from error
+        if known_id is not None and result.order_id != str(known_id):
+            raise CChanException("交易所订单与持久化意图不匹配", ErrCode.LIST_ORDER_FAIL)
+        if known_id is None:
+            # Client ids may be reused by a venue after completion. A client-only
+            # match must carry a creation clock from this UTC intent, not a local
+            # timezone string or an older same-client order.
+            at_ms, since = order.get("timestamp"), record.get(f"{prefix}_intent_ms")
+            if (type(since) is not int or type(at_ms) is not int or at_ms < since
+                    or at_ms > utc_now_ms() or self._order_client_id(order) != client_order_id):
+                raise CChanException("客户端匹配缺少本意图 UTC/身份依据", ErrCode.LIST_ORDER_FAIL)
+        self.chan_db.record_order_ack(record["id"], intent["phase"], result.order_id)
+        return result
+
+    def _fetch_persisted_order(self, code, order_id, client_id, since):
+        import ccxt
+        exchange = self.get_exchange()
+        if order_id is not None:
+            try:
+                return exchange.fetch_order(str(order_id), code)
+            except (ccxt.OrderNotFound, ccxt.NotSupported):
+                pass
+        venue = "binance" if exchange.id in {"binance", "binanceusdm"} else exchange.id
+        if venue not in {"binance", "okx"}:
+            raise CChanException("未支持该交易所恢复协议", ErrCode.LIST_ORDER_FAIL)
+        key = "origClientOrderId" if venue == "binance" else "clOrdId"
+        try:
+            return exchange.fetch_order(None, code, {key: client_id})
+        except (ccxt.OrderNotFound, ccxt.NotSupported):
+            return self._find_order_in_history(code, client_id, since, venue)
+
+    @staticmethod
+    def _order_client_id(order):
+        return order.get("clientOrderId") or order.get("client_order_id")
+
+    def _find_order_in_history(self, code, client_id, since, venue):
+        """Explicit bounded pagination; absence/expiry/ambiguity stays unresolved."""
+        until = utc_now_ms()
+        if type(since) is not int or since < 0 or not since <= until <= since+_HISTORY_MAX_AGE_MS:
+            raise CChanException("历史补查缺少有效 UTC 意图边界或超出恢复窗口", ErrCode.LIST_ORDER_FAIL)
+        exchange, pages, matches = self.get_exchange(), 0, {}
+
+        def fetch_page(fetch, limit, start, end, params, *, ascending, cursor=None, pending=False):
+            nonlocal pages
+            if pages >= _HISTORY_MAX_PAGES:
+                raise CChanException("历史补查页数预算耗尽，订单仍未知", ErrCode.LIST_ORDER_FAIL)
+            pages += 1
+            rows = fetch(code, None if pending else start, limit, params)
+            if not isinstance(rows, list) or len(rows) > limit:
+                raise CChanException("历史补查页结构无效", ErrCode.LIST_ORDER_FAIL)
+            ids = set()
+            for row in rows:
+                identity = row.get("id") if isinstance(row, dict) else None
+                at_ms = row.get("timestamp") if isinstance(row, dict) else None
+                if (not isinstance(identity, str) or not identity.isascii() or not identity.isdecimal()
+                        or str(int(identity)) != identity or type(at_ms) is not int
+                        or row.get("symbol") != code or at_ms > end
+                        or (not pending and at_ms < start)):
+                    raise CChanException("历史补查缺少精确 id/UTC/symbol", ErrCode.LIST_ORDER_FAIL)
+                value = int(identity)
+                if value in ids or (cursor is not None and (value < cursor if ascending else value >= cursor)):
+                    raise CChanException("历史补查游标无进展或重复 id", ErrCode.LIST_ORDER_FAIL)
+                ids.add(value)
+                if self._order_client_id(row) == client_id:
+                    if at_ms < since or (identity in matches and matches[identity] != row):
+                        raise CChanException("历史客户端号/回报身份冲突", ErrCode.LIST_ORDER_FAIL)
+                    matches[identity] = row
+            return len(rows), (max(ids)+1 if ascending else min(ids)) if ids else None
+
+        if venue == "binance":
+            start = since
+            while start <= until:
+                # Without orderId Binance returns the most recent page, even
+                # with a startTime. Start explicitly before all positive ids.
+                end, cursor = min(until, start+_HISTORY_WINDOW_MS-1), 1
+                while True:
+                    params = {"endTime": end, "orderId": str(cursor)}
+                    size, cursor = fetch_page(exchange.fetch_orders, 1000, start, end, params, ascending=True, cursor=cursor)
+                    if size < 1000:
+                        break
+                start = end+1
+        else:
+            # fetch_canceled_orders in CCXT 4.5.43 cannot route to Archive.
+            # fetch_closed_orders passes the explicit state through to the same
+            # native archive endpoint, including partially-filled cancellations.
+            for state in ("pending", "filled", "canceled"):
+                cursor = None
+                while True:
+                    params = {} if state == "pending" else {
+                        "method": "privateGetTradeOrdersHistoryArchive", "state": state, "until": until}
+                    if cursor is not None:
+                        params["after"] = str(cursor)
+                    fetch = exchange.fetch_open_orders if state == "pending" else exchange.fetch_closed_orders
+                    size, cursor = fetch_page(fetch, 100, since, until, params, ascending=False, cursor=cursor, pending=state == "pending")
+                    if size < 100:
+                        break
+        if len(matches) != 1:
+            raise CChanException("历史客户端订单号未得到唯一回报，禁止重下", ErrCode.LIST_ORDER_FAIL)
+        return next(iter(matches.values()))
 
     def get_balance(self) -> Dict[str, float]:
         if self.dry_run:
@@ -674,33 +771,43 @@ class CCCXTTradeEngine(CTradeEngine):
             )
         return side
 
+    def _check_order_identity(self, order, code, intent, contract, *, partial=False):
+        if (not isinstance(order, dict) or isinstance(order.get("id"), bool)
+                or not isinstance(order.get("id"), (str, int)) or not str(order["id"]).strip()):
+            raise CChanException("交易所回报缺少订单 id", ErrCode.LIST_ORDER_FAIL)
+        requested_value = _quantity(contract["exchange_amount"], positive=True)
+        if ((order.get("symbol") is not None or not partial) and order.get("symbol") != code
+                or (order.get("amount") is not None and _quantity(order["amount"]) != requested_value)):
+            raise CChanException("交易所订单 symbol/amount 与单位契约不一致", ErrCode.LIST_ORDER_FAIL)
+        if (contract["price"] is not None and (order.get("price") is not None or not partial)
+                and _quantity(order.get("price"), positive=True) != _quantity(contract["price"], positive=True)):
+            raise CChanException("交易所限价与冻结意图不一致", ErrCode.LIST_ORDER_FAIL)
+        record, phase = intent["record"], intent["phase"]
+        client_order_id = record["open_client_order_id" if phase == "open" else "cover_client_order_id"]
+        expected_id = record["open_order_id" if phase == "open" else "cover_order_id"]
+        is_buy = bool(record["is_buy"]) if phase == "open" else not bool(record["is_buy"])
+        if (((order.get("side") is not None or not partial) and order.get("side") != ("buy" if is_buy else "sell"))
+                or ((order.get("type") is not None or not partial) and order.get("type") != ("market" if contract["price"] is None else "limit"))
+                or (expected_id is not None and str(order["id"]) != str(expected_id))):
+            raise CChanException("交易所订单方向/类型/id 与持久化意图不一致", ErrCode.LIST_ORDER_FAIL)
+        client_value = self._order_client_id(order)
+        if ((client_value is not None and client_value != client_order_id)
+                or (partial and expected_id is None and client_value is None)):
+            raise CChanException("交易所客户端订单号与持久化意图不一致", ErrCode.LIST_ORDER_FAIL)
+
     def _result_from_ccxt(
         self,
         order: dict,
         *, code, intent, contract,
     ) -> COrderResult:
-        requested_value = _quantity(contract["exchange_amount"], positive=True)
-        if order.get("symbol") != code or (order.get("amount") is not None and _quantity(order["amount"]) != requested_value):
-            raise CChanException("交易所订单 symbol/amount 与单位契约不一致", ErrCode.LIST_ORDER_FAIL)
+        self._check_order_identity(order, code, intent, contract)
+        self._check_execution_report(order, contract)
         filled = _quantity(order.get("filled"))
         average = _quantity(order.get("average"), positive=True) if filled else None
-        if filled > requested_value or not order.get("id"):
-            raise CChanException("交易所累计成交量/id 无效", ErrCode.LIST_ORDER_FAIL)
-        record, phase = intent["record"], intent["phase"]
-        client_order_id = record["open_client_order_id" if phase == "open" else "cover_client_order_id"]
-        expected_id = record["open_order_id" if phase == "open" else "cover_order_id"]
-        is_buy = bool(record["is_buy"]) if phase == "open" else not bool(record["is_buy"])
-        if (order.get("side") != ("buy" if is_buy else "sell")
-                or order.get("type") != ("market" if contract["price"] is None else "limit")
-                or (expected_id is not None and str(order["id"]) != str(expected_id))):
-            raise CChanException("交易所订单方向/类型/id 与持久化意图不一致", ErrCode.LIST_ORDER_FAIL)
-        client_value = (
-            order.get("clientOrderId")
-            or order.get("client_order_id")
-            or client_order_id
-        )
-        if client_value != client_order_id:
-            raise CChanException("交易所客户端订单号与持久化意图不一致", ErrCode.LIST_ORDER_FAIL)
+        if filled > _quantity(contract["exchange_amount"], positive=True):
+            raise CChanException("交易所累计成交量超过请求量", ErrCode.LIST_ORDER_FAIL)
+        record = intent["record"]
+        client_value = self._order_client_id(order) or record["open_client_order_id" if intent["phase"] == "open" else "cover_client_order_id"]
         size = _quantity(contract["market"]["contractSize"], positive=True)
         with localcontext() as context:
             context.prec = 50
@@ -713,6 +820,34 @@ class CCCXTTradeEngine(CTradeEngine):
             status=_normalize_order_status(order.get("status")),
             client_order_id=(str(client_value) if client_value else None),
         )
+
+    @staticmethod
+    def _check_execution_report(order, contract):
+        if contract["schema"] != "chan-ccxt-order-v2":
+            return  # v1 remains read-only; it cannot authorize a new submission.
+        execution, info = contract["execution"], order.get("info")
+        if not isinstance(info, dict):
+            raise CChanException("交易所缺少原生执行回报", ErrCode.LIST_ORDER_FAIL)
+        swap = contract["market"]["type"] == "swap"
+        if execution["venue"] == "binance":
+            if (swap and info.get("positionSide") != execution["position_side"]
+                    or info.get("timeInForce") not in {"GTC", "IOC", "FOK", "GTX"}):
+                raise CChanException("Binance 回报缺少正确 leg/timeInForce", ErrCode.LIST_ORDER_FAIL)
+            post_only = info.get("timeInForce") == "GTX" or info.get("type") == "LIMIT_MAKER"
+        else:
+            side = "net" if execution["position_mode"] == "one_way" else execution["position_side"].lower()
+            if (info.get("tdMode") != execution["margin_mode"] or (swap and info.get("posSide") != side)
+                    or info.get("ordType") not in {"limit", "market", "post_only"}):
+                raise CChanException("OKX 回报缺少正确 leg/tdMode/ordType", ErrCode.LIST_ORDER_FAIL)
+            post_only = info["ordType"] == "post_only"
+        if post_only is not contract["post_only"]:
+            raise CChanException("服务端 post-only 与冻结意图不一致", ErrCode.LIST_ORDER_FAIL)
+        if swap and execution["position_mode"] == "one_way":
+            reduced = info.get("reduceOnly")
+            if isinstance(reduced, str) and reduced in {"true", "false"}:
+                reduced = reduced == "true"
+            if type(reduced) is not bool or reduced is not contract["reduce_only"]:
+                raise CChanException("服务端 reduce-only 与冻结意图不一致", ErrCode.LIST_ORDER_FAIL)
 
     @staticmethod
     def _quote_asset(code: str) -> str:
