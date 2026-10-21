@@ -37,7 +37,7 @@
 | C3 | 已完成离线实现与验收 | UTC purge/unknown、三模型身份、write-once 部署、三阶段评分与 SQLite 版本链；非实盘/外部认证 |
 | C4 | 已完成离线实现与验收 | 有界实际样本→三模型→搜索/独立验证→部署→全 trial 重放；93 项组合、608 项全仓离线通过，非经济采用 |
 | C5 | 进行中 | 单位/原生恢复/历史/来源、区间核对与持久冻结已离线验收；显式 cross/lot paper 接入原状态机，鲜活准入链、原生同义模型及进程级 E2E 仍待 |
-| C6 | 待开发 | 调度/API/离线 E2E |
+| C6 | 进行中（仍未完成） | 配置驱动运行壳/阶段失败传播/已有仓位独立管理/OS 锁；强制鲜活准入、API/离线进程级 E2E 与安装矩阵待完成 |
 | C7 | 待前置验收 | 公共行情与有准入后的外部认证；代码发布按阶段进行 |
 
 基线：前一审计在完全相同 `22a5a56`、依赖和环境上执行的所选离线功能集合为 116 passed / 1 skipped / 1 deselected，带一个 XGBoost 弃用警告和 pytest 临时目录清理提示；该证据仅覆盖列明集合，不称全仓或真实交易所验收。行为修改后补跑对应回归。
@@ -422,3 +422,24 @@ C1 收尾清理计划：迁移校验由两份全表内存列表改为有序逐�
 - 最终短组合 356 passed（47.69s）取得于最后模块说明/type annotation/清理 unused test import 与文档修改前，不冒称该结果覆盖后续字节。随后完整串行离线命令 python -m pytest tests -m 'not network' --basetemp <new-temp-directory> -q --tb=short -p no:cacheprovider：1283 passed / 8 expected skipped / 1 network deselected / 14 existing model warnings，570.06s。完整运行期间未编辑源代码、测试或文档。
 - compileall 与 git diff --check 通过。完整测试明确 exit=0 后，独立新解释器用 import finder 屏蔽 ccxt，实际临时 SQLite signal→intent→不利 fill→含费账本→重放 reader PASS；engine.exchange 为 None，ccxt 未导入，数据库随 TemporaryDirectory 回收。按串行约束由主代理自审，非独立审计。提交后须在精确提交复验短组合，通过才快进推送。
 - 剩余边界不隐藏：目前仅单 executor、保留同一 CSimExchangeState 的引擎重建；不是进程级服务器状态持久恢复或多进程 matcher 认证。pending orders 保证金预留、队列/深度/延迟、原生 pooled/isolated/保险/强平规则与实际费率均未认证；费用/成交拒绝不等于真实成交保证。C5 尚有 native 精度/所有账户通道与准入边界，C6 鲜活强制准入/配置/端到端与 C7 仍未完成，Goal 保持 active，不升级实盘/外部认证或触碰冻结研究绩效。
+
+### C5/C6 运行入口集成计划：失败传播先于新增风险
+
+- 前轮有效进展已在 clean/远端一致的 0c61e9693fb0dcb42bdc746d31fedeb1b24831c6：1283 全离线及精确提交后 356 项通过。继续串行，不重跑未变更 C5 数学/订单公式，不改真实账户、配置默认值、依赖、规则或冻结研究。
+- 按计划逐项核对 C5：合约单位/参数见 test_crypto_order_contract/test_crypto_venue_parameters；原生 ID/分页/失联 ACK/两进程 claim/撤单竞态见 test_crypto_order_recovery；区间钱包/逐腿核对与冻结见 test_account_reconciliation/test_account_risk_freeze；含费不利模拟见两个 linear_paper 测试。已有软件组件证据不补造外部认证，也不把 retained server state 视作进程级 E2E。后续运行入口鲜活准入未接通，整体 C5/C6 暂不关闭。
+- 清理范围仅调度壳：用一个配置驱动 Python 运行入口取代两个 shell 重复的 BTC/ETH/周期清单和无退出码检查命令链。复用 CEnv、CDeployment、C1 inspect_quality、已有交易脚本及恢复状态机；不重新实现模型、行情更新或订单生命周期。显式配置/报告路径，无 demo 配置回退；沿用仓库相对路径规则，子进程继承相同 CHANPY_CONFIG 与既有环境门禁。
+- 先 RED：缺运行入口、任一更新/质量/信号失败后不能开新仓但仍尝试原订单恢复/后验/降风险、管理阶段之间失败隔离、配置漂移、报告脱敏、运行锁以及两套 wrapper 的真实失败退出码。合成 SQLite 行情与 fake 子进程验证，不启动真实更新/下单。增加专用恢复 CLI 只调用旧 restore，未知保持未知，不重下。
+- 每次运行有唯一 ID、阶段结果/退出原因、来源/水位和模型身份；增量 JSONL 记录并 flush/fsync，报告已存在即拒绝。按交易 SQLite 路径持单实例 OS 锁，不能换报告路径绕过；不把这一入口的锁冒称覆盖所有旧单脚本或跨主机。配置指纹漂移时不把新配置用于旧账户管理。
+- 本子边界首先开放明确 dry-run 的软件调度；非 dry-run 新风险须在后续强制鲜活账户准入接通后再验收，目前显式阻断，不以不存在冻结当准入。原账户的查单/撤单/降风险仍保留既有 candidate/模式/环境/kill-switch 检查；不会为了管理成功而绕过这些门禁。C6 的模型/行情再验证、进程级 paper E2E、API schema 和双 Python 环境仍须完成。
+
+### C5/C6 第一运行壳子边界证据（整体验收仍未完成）
+
+- 先观察 RunTradeCycle 缺模块 RED；首组 13 项在真实配置/合成 SQLite 与 fake 子进程边界 GREEN。再观察四项行为 RED：成功 CLI 错误返回 1、SignalMonitor 明确报告计算失败却退出 0、PowerShell 吞掉原生命令失败、Bash 继续执行八条命令。分别在原入口修正；RestoreOrders 缺模块 RED 后只复用旧 engine.restore，区分已知 partial 与 unresolved，不添加订单重试/第二状态机。
+- 后续明确 RED→GREEN：报告磁盘失败须保留已有仓位管理，开仓 stage_started 落盘失败不得继续发送；300 秒子进程超时须闭锁且不得将异常原文/凭据落日志；坏 YAML 的 ParserError 不得回显配置行；质量观察不得为错误 SQLite 文件创建 kline 表；报告路径不得占用尚不存在的交易库；PowerShell Set-Location 与进程 cwd 不同也必须解析到调用者路径。只在对应传输/文件边界注入故障，不 mock 数据质量、模型 reader 或订单核算。
+- 新入口复用 CEnv/CDeployment 的 symbol/level/策略和模型版本，运行 ID、配置指纹、C1 的来源/质量/水位、阶段退出码逐步写 finite canonical JSONL 并 fsync。报告只描述命令完成，不是账户准入或发布证书；未落完成事件与报告 I/O 故障不得当成功。保留首个失败原因，独立尝试所有管理阶段；配置漂移则停用后续所有动作，不将新配置用于旧账户。默认 transport 不持久化任意 stdout/stderr，固定 300 秒超时不是研究参数。
+- 新增只读 CKLineDB 选项，使用 SQLite mode=ro/query_only 且不初始化 schema，默认写入行为不变。两套 update_data_signal 壳只剩显式参数、路径解析与一个 checked Python 命令；训练壳继续沿用原入口。单实例锁按实际交易 SQLite 路径：同进程重入及另一个真实 Python 进程换报告路径均拒绝；完成后 OS 句柄释放，后续运行可正常取得，不依赖 lock 文件的存在。POSIX fcntl 路径尚未在本 Windows 主机执行，不冒称 Linux 认证。
+- 适用数据/交易/训练组合 126 passed / 5 existing model warnings（138.55s）；后续新增实际 C3 部署范围/模型损坏和恢复 CLI 正例后，运行壳/恢复/部署组合 69 passed / 3 existing model warnings（36.05s）。实际模型只从小合成夹具生成，复制到独立临时目录后变异，未修改共享或历史模型。两套 wrapper 使用假的 python；未执行真实更新/快照/私有请求。
+- compileall、git diff --check、bash -n 通过。两个独立解释器 CPython 3.14.2 与 3.11.15 在主动屏蔽 ccxt/xgboost/lightgbm/sklearn/optuna/yaml 时，运行壳/恢复模块导入、实际临时 SQLite 只读质量及无会话 dry-run 空恢复 smoke PASS。py -3.11 的 launcher 别名不可用，按 py -0p 所列真实 3.11 路径验证；该解释器无 pytest/YAML/模型包，不能把 stdlib smoke 冒称完整依赖安装矩阵。
+- 按串行约束由主代理使用 code-review 清单自审，非独立审计。新风险 native_fresh_admission_not_integrated 保持显式闭锁，native_admission_verified 恒 false；完整纸面交易进程级服务器状态、输入到订单的强制鲜活准入、API schema、通知失败观测/安装矩阵/真实外部认证仍待后续。当前锁不覆盖旧单独脚本、跨主机或硬链接别名。C5/C6 与 Goal 不关闭；完整离线与精确提交验收后才快进推送。
+- 最终完整串行离线命令 python -m pytest tests -m 'not network' --basetemp <new-temp-directory> -q --tb=short -p no:cacheprovider：1317 passed / 8 expected skipped / 1 network deselected / 14 existing model warnings，575.49s。运行期间源码、测试与文档均未编辑；明确 exit=0 后仅补本记录与目录前提说明，提交前无其他行为变更。新旧 C5 的状态机/安全/单位/原生来源/核对/含费 paper 回归均包含在内，不将命令完成或 mock PASS 提升为外部认证。
+- 文件范围：新增 Trade/Script/RunTradeCycle.py、Trade/Script/RestoreOrders.py、tests/test_trade_cycle.py、tests/test_restore_orders_cli.py；接入 OfflineData/offline_data_util.py 的显式只读选项、SignalMonitor CLI 退出码与两套 update_data_signal 壳；补 tests/test_deployment_workflow.py，更新 README_FULL.md/本台账。无新依赖、用户配置/规则/权限变更、真实行情/私有 I/O、正式研究或绩效读取。Lore 后在精确提交复验适用短组合，再快进推送并核验远端/clean。

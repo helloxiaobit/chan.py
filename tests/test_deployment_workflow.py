@@ -521,3 +521,39 @@ def test_other_model_types_use_the_same_real_deployment_scores(deployment_model,
         assert entry["score"] == gen.predict_features(entry["features"])
     finally:
         db.close()
+
+
+def test_configured_cycle_uses_real_deployment_scope_and_blocks_a_corrupt_model(deployment_model, tmp_path):
+    import shutil
+    from Trade.Script.Deployment import publish_deployment
+    from Trade.Script.RunTradeCycle import run_trade_cycle
+    original = Path(deployment_model["model"].GetModelPath())
+    copied = tmp_path/"model-copy"
+    shutil.copytree(original.parent, copied)
+    model = copied/original.name
+    manifest = tmp_path/"deployment.json"
+    identity = publish_deployment(manifest, model, candidate_score=0, entry_score=0, post_score=0)
+    config = {"db": {"type": "sqlite", "sqlite_path": str(tmp_path/"trade.db")},
+        "ccxt": {"mode": "dry_run", "exchange": "binance", "default_type": "swap"},
+        "trade": {"deployment_manifest": str(manifest)},
+        "offline_data": {"sqlite_path": str(deployment_model["root"]/"kline.db"), "source_identity": SOURCE}}
+    path = tmp_path/"runtime.json"
+    path.write_text(json.dumps(config))
+    calls = []
+    def command(module, args, **kwargs):
+        calls.append((module, args))
+        return 0
+    now = deployment_model["rows"][-1][0]+HOUR
+    result = run_trade_cycle(path, report_path=tmp_path/"good.jsonl", command=command, now_ms=lambda: now)
+    assert result["status"] == "completed"
+    assert result["scope"]["deployment_id"] == identity
+    assert result["scope"]["model_artifact_id"] == deployment_model["model"].artifact_id
+    assert result["scope"]["code_list"] == [CODE] and result["scope"]["lv_list"] == ["K_60M"]
+    assert ("OfflineData.ccxt_update", [CODE, "K_60M"]) in calls
+    model.write_bytes(model.read_bytes()+b"broken")
+    calls.clear()
+    failed = run_trade_cycle(path, report_path=tmp_path/"bad.jsonl", command=command, now_ms=lambda: now)
+    assert failed["reason"] == "scope_or_model_unavailable"
+    assert not any(module in {"OfflineData.ccxt_update", "Trade.Script.SignalMonitor", "Trade.Script.MakeOpenTrade"}
+                   for module, args in calls)
+    assert len(calls) == 5  # restore plus all independent management attempts

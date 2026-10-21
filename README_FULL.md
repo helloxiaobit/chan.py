@@ -56,7 +56,7 @@ migrate_legacy_source(
 )
 ```
 
-该入口拒绝覆盖备份，保留全部原表，逐行比较备份与原库后才绑定来源；发现错误需更换独立库，不能改写已有来源。`CKLineDB.inspect_quality(..., now_ms=...)` 会返回 `ready/no_data/stale/gap/inactive/unknown_source` 等状态，C6 将把该结果接入开新仓门禁。
+该入口拒绝覆盖备份，保留全部原表，逐行比较备份与原库后才绑定来源；发现错误需更换独立库，不能改写已有来源。`CKLineDB.inspect_quality(..., now_ms=...)` 会返回 `ready/no_data/stale/gap/inactive/unknown_source` 等状态；下文 `RunTradeCycle` 已用显式只读连接接入运行壳，完整 C6 准入/E2E 仍未完成。
 
 已有本地 csv 历史数据可先明确来源再灌库：
 
@@ -134,7 +134,7 @@ Python API 为 `ModelStrategy.training_pipeline.run_crypto_training_pipeline(dat
 `verify_crypto_training_pipeline(output_dir, data)` 从实际数据重放核验，目录移动后仍可验证，
 不依赖已删除的 staging 绝对路径。状态为 `offline_training_and_window_checks_passed`，
 始终 `candidate_authorized=false`；不是测试网、实盘或策略经济采用授权。
-PS1/SH 共用一个 Python 调用并传递非零退出码；完整调度、单实例锁、安装矩阵和跨环境验收仍在 C6。
+PS1/SH 共用一个 Python 调用并传递非零退出码；交易运行壳与单实例锁见下文，完整调度、安装矩阵和跨环境验收仍在 C6。
 正式参数搜索继续受独立研究门禁约束，不能将本软件入口作为绕过入口。
 
 低级接口继续兼容，用于单独检查样本、模型和逐笔统计；不能替代上述完整流水线收据：
@@ -275,13 +275,42 @@ trade:
 pytest tests/test_trade_safety.py tests/test_trade_state_machine.py -q
 ```
 
-日常例行仍可在 `mode: dry_run` 下运行；行情快照是否联网由
-`snapshot_engine` 决定，但下单侧不会建立交易所会话：
+显式 `mode: dry_run` 的配置驱动运行壳（不是无网络 E2E 演练）如下。
+更新器会访问公共行情，快照是否联网由 `snapshot_engine` 决定；dry-run 下单侧不建立交易所会话。
+以下仅为使用示例，本开发验收没有运行真实更新或下单：
 
 ```bash
-# 单轮例行:更新数据→信号入库→突破开仓→后验→跟踪止损止盈(可放任务计划每小时跑)
-bash Trade/Script/update_data_signal.sh    # Windows: pwsh Trade/Script/update_data_signal.ps1
+# 显式配置；报告及交易库父目录预先存在，每轮报告文件名必须从未存在。
+python -m Trade.Script.RunTradeCycle --config Config/config.yaml --report runs/cycle-001.jsonl
+# 两个壳只转发同一个 Python 入口和真实退出码，参数可以包含空格。
+bash Trade/Script/update_data_signal.sh Config/config.yaml runs/cycle-002.jsonl
+pwsh -File Trade/Script/update_data_signal.ps1 Config/config.yaml runs/cycle-003.jsonl
 ```
+
+此入口不回退 demo 配置或内置 BTC/ETH 池，要求显式 SQLite `db.sqlite_path`、
+`offline_data.sqlite_path/source_identity` 与一致的 `ccxt.exchange/default_type/mode`。
+未配置模型时必须明确 `trade.code_list`、`lv_list`（或单一 `lv`）、`strategy`；
+配置 `trade.deployment_manifest` 时复用 C3 的真实模型/部署 reader，其冻结 symbol/level/策略优先，
+同时核对行情来源。要求模型却没有部署，或模型/清单损坏时不继续生成新订单。
+
+顺序为原订单恢复→配置/模型→逐 symbol 更新→只读来源/缺 K/水位检查→信号→新开仓。
+任一输入失败就停止新增风险，但分别尝试后验、错误仓位关闭、止损跟踪、平仓查单/重试；
+这些操作仍受原账户/订单证据、candidate、模式、环境与 kill-switch 约束，不保证操作一定成功。
+未知恢复结果退出非零，不能猜测重下；SignalMonitor 的部分计算失败也会返回非零。
+管理阶段本身失败不跳过后续管理。配置指纹改变属于账户/目录授权漂移，后续动作全部停止，
+不会将新配置用于旧仓管理。
+
+同一交易 SQLite 路径使用 OS 单实例锁，换报告名不能绕过；句柄退出即释放，残留 lock 文件不是运行证明。
+此锁尚不覆盖直接运行旧单脚本、跨主机或物理库的硬链接别名。JSONL 逐阶段写唯一运行 ID、
+退出码/脱敏原因、行情来源/水位及模型身份，并 flush/fsync；中断时保留已写前缀，缺少完成事件不能视作成功。
+报告已存在或误指交易库时启动前拒绝。报告 I/O 失败阻断新风险，但仍尝试原账户管理；
+磁盘故障可能使最终事件无法落盘，须以非零退出码与原 DB/订单恢复核验，不能把日志当准入收据。
+子进程每阶段最多 300 秒，超时视作未知/失败而非“没有成交”，不回显可能包含凭据的任意子进程日志。
+
+当前运行壳对非 dry-run 新风险明确返回 `native_fresh_admission_not_integrated`，
+`native_admission_verified` 恒为 false；历史上没有冻结并不等于鲜活账户准入。
+已有仓位管理仍可按原门禁尝试。完整经济 paper 的进程级状态绑定、强制鲜活账户/报价准入、
+通知失败观测、API schema、逐事件 E2E 和安装矩阵仍待 C6；本入口的命令完成状态不是完整验收或生产授权。
 
 非 dry-run 还必须同时满足以下门禁：
 
@@ -427,7 +456,7 @@ leg；v2/v3 还核对原生 post-only、one-way reduce-only，以及 OKX 的 tdM
 尚未写入 DB 的订单号只是查询提示，仍须通过 client echo 与 UTC 创建时间发现校验；有完整证据的提示号可正常恢复。
 
 提交权的双进程争抢、成交的双 SQLite 连接确定性交错及原生 CCXT/fake I/O 验证均为离线证明，
-不是完整交易所认证。区间核对/持久冻结见下文；完整准入与含费用的模拟账户、C6/C7 仍待完成。
+不是完整交易所认证。区间核对/持久冻结与显式含费 paper 见下文；完整准入和进程级 E2E、C6/C7 仍待完成。
 
 #### C5 追加式尝试历史（SQLite 离线子边界）
 

@@ -32,11 +32,16 @@ def default_db_path() -> str:
 
 
 class CKLineDB:
-    def __init__(self, db_path: Optional[str] = None):
+    def __init__(self, db_path: Optional[str] = None, *, read_only: bool = False):
         self.db_path = db_path or default_db_path()
-        os.makedirs(os.path.dirname(os.path.abspath(self.db_path)), exist_ok=True)
-        self.conn = sqlite3.connect(self.db_path)
-        self.ensure_table()
+        if read_only:
+            # 运行准入的观察不能为错误路径/旧库暗中创建或升级任何表。
+            self.conn = sqlite3.connect(Path(self.db_path).resolve().as_uri()+"?mode=ro", uri=True)
+            self.conn.execute("PRAGMA query_only=ON")
+        else:
+            os.makedirs(os.path.dirname(os.path.abspath(self.db_path)), exist_ok=True)
+            self.conn = sqlite3.connect(self.db_path)
+            self.ensure_table()
 
     def ensure_table(self):
         self.conn.execute(

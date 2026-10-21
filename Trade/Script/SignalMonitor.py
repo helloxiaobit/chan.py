@@ -85,4 +85,9 @@ def run_signal_monitor(
 
 
 if __name__ == "__main__":
-    run_signal_monitor(CChanDB())
+    chan_db = CChanDB()
+    try:
+        result = run_signal_monitor(chan_db)
+    finally:
+        chan_db.close()
+    sys.exit(1 if result["failed"] else 0)
