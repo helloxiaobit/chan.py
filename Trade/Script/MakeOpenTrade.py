@@ -133,7 +133,7 @@ def main():
             raise CChanException("开仓 CLI 需要配置运行壳提供原输入时代", ErrCode.TRADE_UNLOCK_FAIL)
         expected = {key: os.environ.get("CHANPY_CYCLE_"+key.upper())
                     for key in ("config_sha256", "scope_sha256", "inputs_sha256")}
-        guard = COpeningInputs(config, expected=expected, now_ms=utc_now_ms)
+        guard = COpeningInputs(config, expected=expected, now_ms=utc_now_ms, require_quotes=True)
         if guard.env.ccxt_conf.get("mode") != "dry_run":
             raise CChanException("原生账户鲜活准入尚未集成，非 dry-run 新风险继续闭锁", ErrCode.TRADE_UNLOCK_FAIL)
         notional = guard.env.get_section("trade").get("bench_price", 1000.0)
@@ -141,10 +141,20 @@ def main():
             raise CChanException("运行名义金额必须有限且为正", ErrCode.PARA_ERROR)
         chan_db = CChanDB(db_conf=guard.env.db_conf)
         try:
+            scope = guard.scope
+            eligible = any(record["stock_code"] in scope["code_list"] and record["lv"] == scope["trade_lv"]
+                for record in chan_db.get_watching_signals())
+            prices = {}
+            if eligible:
+                max_age = guard.env.get_section("trade").get("quote_max_age_ms")
+                if (guard.env.snapshot_engine != "ccxt" or type(max_age) is not int or not 0 < max_age < 2**63):
+                    raise CChanException("配置开仓需要显式 CCXT 来源与报价年龄上限", ErrCode.SNAPSHOT_ERR)
+                from DataAPI.SnapshotAPI.CCXTSnapshot import CCCXTSnapshot
+                prices = guard.bind_quotes(CCCXTSnapshot.query_quotes(scope["code_list"], now_ms=utc_now_ms), max_age_ms=max_age)
             engine = CCCXTTradeEngine(chan_db, quota_gen=CBenchPriceQuotaGen(float(notional)),
                 ccxt_conf=guard.env.ccxt_conf, trade_conf=guard.env.get_section("trade"), opening_inputs=guard)
             failures = []
-            opened = make_open_trade(chan_db, engine, failures=failures, now_ms=utc_now_ms)
+            opened = make_open_trade(chan_db, engine, price_map=prices, failures=failures, now_ms=utc_now_ms)
             print(f"MakeOpenTrade: opened={len(opened)} blocked={len(failures)}")
             return 1 if failures else 0
         finally:

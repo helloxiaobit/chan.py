@@ -118,12 +118,32 @@ def _identity(table, record, prefix):
         if isinstance(snapshot, dict) and "opening_inputs" in snapshot:
             proof = snapshot["opening_inputs"]
             hashes = ("config_sha256", "scope_sha256", "inputs_sha256", "signal_event_id")
-            if (not isinstance(proof, dict) or set(proof) != {"schema", "checked_at_ms", "native_admission_verified", *hashes}
-                    or proof["schema"] != "chan-opening-input-check-v1" or proof["native_admission_verified"] is not False
+            version = proof.get("schema") if isinstance(proof, dict) else None
+            extra = {"quote"} if version == "chan-opening-input-check-v2" else set()
+            if (not isinstance(proof, dict) or set(proof) != {"schema", "checked_at_ms", "native_admission_verified", *hashes, *extra}
+                    or type(version) is not str or version not in {"chan-opening-input-check-v1", "chan-opening-input-check-v2"}
+                    or proof["native_admission_verified"] is not False
                     or type(proof["checked_at_ms"]) is not int or not 0 <= proof["checked_at_ms"] < 2**63
                     or any(not isinstance(proof[key], str) or len(proof[key]) != 64
                         or set(proof[key])-set("0123456789abcdef") for key in hashes)):
                 _fail()
+            if extra:
+                from Common.MarketQuote import read_quote_batch
+                from CustomBuySellPoint.Decision import read_decision
+                quote = proof["quote"]
+                if not isinstance(quote, dict) or set(quote) != {"batch", "max_age_ms"}:
+                    _fail()
+                signal = read_decision(record["signal_decision"].encode())
+                batch = read_quote_batch(quote["batch"], source=signal["identity"]["market"],
+                    symbols=[row["symbol"] for row in quote["batch"]["payload"]["quotes"]],
+                    now_ms=proof["checked_at_ms"], max_age_ms=quote["max_age_ms"])
+                prices = {row["symbol"]: row["price"] for row in batch["payload"]["quotes"]}
+                if (signal["event_id"] != proof["signal_event_id"] or signal["identity"]["kind"] != "signal"
+                        or signal["identity"]["code"] != record["stock_code"]
+                        or signal["identity"]["level"] != record["lv"] or signal["identity"]["bs_type"] != record["bstype"]
+                        or record["stock_code"] not in prices or type(snapshot.get("price")) not in (int, float)
+                        or snapshot["price"] != prices[record["stock_code"]]):
+                    _fail()
             identity["opening_inputs"] = proof
     return identity
 

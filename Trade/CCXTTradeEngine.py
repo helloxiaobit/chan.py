@@ -193,9 +193,9 @@ class CCCXTTradeEngine(CTradeEngine):
             if type(opening_inputs) is not COpeningInputs:
                 raise CChanException("开仓输入必须由实际配置/来源 reader 构造，不能传 passed 标志", ErrCode.PARA_ERROR)
 
-    def check_open_inputs(self, record):
+    def check_open_inputs(self, record, *, price=None):
         if self.opening_inputs is not None:
-            return self.opening_inputs.check(record, engine=self)
+            return self.opening_inputs.check(record, engine=self, price=price)
         return None
 
     def get_exchange(self):
@@ -1102,6 +1102,8 @@ class CCCXTTradeEngine(CTradeEngine):
             base_step = Decimal(contract["market"]["contractSize"])*Decimal(contract["market"]["precision"]["amount"])
             if any(Fraction(Decimal(str(value)))/Fraction(base_step) % 1 for value in plan):
                 raise CChanException("paper 累计计划不符合冻结合约步长", ErrCode.PARA_ERROR)
+        if not reduce_only:
+            self.check_open_inputs(intent["record"])
         if not self.chan_db.claim_order_submission(intent["record"]["id"], intent["phase"]):
             raise CChanException("paper 意图已由其他进程提交", ErrCode.TRADE_UNLOCK_FAIL)
         if not reduce_only:

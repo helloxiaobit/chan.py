@@ -589,6 +589,10 @@ def test_real_model_opening_inputs_reach_intent_and_recheck_the_artifact_before_
     monkeypatch.setenv("CHANPY_CONFIG", str(path))
     CEnv.reset_instance()
     guard = COpeningInputs(path, now_ms=lambda: now)
+    from Common.MarketQuote import make_quote_batch
+    price = signal.open_thred*(1.001 if signal.is_buy else 0.999)
+    guard.bind_quotes(make_quote_batch([{"symbol": CODE, "price": price, "timestamp_ms": now}],
+        source=SOURCE, started_ms=now, finished_ms=now), max_age_ms=1000)
     open_path = tmp_path/"open.json"
     open_path.write_text("{}")
     db = CChanDB(db_conf=conf["db"])
@@ -600,7 +604,6 @@ def test_real_model_opening_inputs_reach_intent_and_recheck_the_artifact_before_
         if damage_after_intent:
             monkeypatch.setattr(engine, "rate_limit", lambda: model.write_bytes(model.read_bytes()+b"changed"))
         failures = []
-        price = signal.open_thred*(1.001 if signal.is_buy else 0.999)
         opened = make_open_trade(db, engine, COpenConfig(str(open_path)), deployment=deployed,
             now_ms=lambda: now, price_map={CODE: price}, failures=failures)
         record = db.get_record(key)

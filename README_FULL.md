@@ -315,11 +315,37 @@ scope、配置、策略/输入检查代码与 Python 身份生成摘要；相同
 缺行情、非有限/非正价格、模型损坏或检查失败令配置开仓 CLI 非零退出，不再把拒绝表现为成功的空结果。
 明确提供完整 paper 时沿用调用者的 UTC/bid/ask/mark，不用单一 last price 补造 mark。
 
+配置开仓 CLI 有待开信号时，还要求用户配置 `snapshot_engine: ccxt`，并为
+`trade.quote_max_age_ms` 明确指定正整数毫秒上限；没有默认秒数，缺失/非法即阻断新风险。
+不会修改用户配置或退回 sina/裸价格读取；无本轮标的/级别信号时不请求新风险报价。
+旧库调用的 `price_map` 与旧 `CCCXTSnapshot.query` 保持兼容，但不能据此声称报价有来源/年龄证明。
+
+`CCCXTSnapshot.query_quotes(codes)` 保留实际 exchange/options 来源、请求起止 UTC 毫秒、
+ticker 的原 symbol/last/timestamp，形成有限 canonical `chan-market-quotes-v1` 与 payload SHA。
+未知/缺失/未来时钟、错 symbol、非正或非有限价格、来源变化和不完整批次全部拒绝，
+不把接收时间补成交易所时间，不保留 raw info、凭据或任意网络异常正文。
+`Common.MarketQuote.read_quote_batch(..., source=..., symbols=..., now_ms=..., max_age_ms=...)`
+按调用时钟重新核验，摘要/曾经读过/ready 标志不能代替当前年龄检查。
+
+程序库可显式 `prices = guard.bind_quotes(batch, max_age_ms=policy)`，然后用该 `prices`
+调用实际开仓。每个 guard 只绑定一份原批次；已声明的配置年龄策略不能被调用方放宽。
+v2 `snapshot_before.opening_inputs` 同时保存原 batch 与年龄策略，原 v1 历史仍原样读取，不补造过去报价。
+已有 v2 意图的数据库必须保留支持 v2 的恢复 reader；不能为回退旧代码而删除证明或改写为 v1。
+原始价格必须与本次信号使用的报价相等；限价/张数仍由已有 precision 契约处理，实际成交价格不作保证。
+意图前、等待后、claim 前/后及发送前继续重验，且在重读行情/模型/历史**结束后**再读当前时钟，
+避免把检查开始时仍有效的旧报价当作检查结束时仍新鲜。新 guard/报价不能重标已取得的意图；
+过期时只保留 created/submitting 的实际边界，不自动重下，原单 query/cancel/reduce 不受新报价年龄限制。
+原 journal reader 会再验来源、信号身份/级别/类型、原价、策略与时钟，不能只重封 JSON SHA。
+
+这个时间仅是 `clock_kind=exchange_ticker_timestamp`；不声称它是 bid/ask 或 mark 的生成时间，
+也不是服务器签名、完整盘口、账户风险准入或交易所真实性认证。Common/输入检查代码身份改变后，
+旧模型须重生成并重新部署；不能重封旧模型契约。本开发只运行合成数据/fake I/O。
+
 SignalMonitor 仅在重复信号的完整 frozen bytes 相等时记录为 existed；同一 SQL 目标却内容不同则
 报告失败并保留原记录，不忽略时间/评分字段来制造一致。重复观察产生新候选时钟等内容时仍会闭锁，
 后续显式信号换代/失效工作流尚待验收。此输入版本检查会全量重读相关已收盘历史与文件身份，容量未认证；
 行情库、交易库和网络没有全局原子事务，检查后的外部变异/in-flight 不能声称已被消除。
-只检查价格有限不代表 ticker 有可靠年龄，原生账户完整通道/鲜活准入、进程级 paper 与 C6 其余要求仍待。
+上述 ticker 来源/年龄检查不是完整原生账户或 mark/book 时钟证明；原生账户鲜活准入、进程级 paper 与 C6 其余要求仍待。
 
 同一交易 SQLite 路径使用 OS 单实例锁，换报告名不能绕过；句柄退出即释放，残留 lock 文件不是运行证明。
 此锁尚不覆盖直接运行旧单脚本、跨主机或物理库的硬链接别名。JSONL 逐阶段写唯一运行 ID、
@@ -330,7 +356,7 @@ SignalMonitor 仅在重复信号的完整 frozen bytes 相等时记录为 existe
 
 当前运行壳对非 dry-run 新风险明确返回 `native_fresh_admission_not_integrated`，
 `native_admission_verified` 恒为 false；历史上没有冻结并不等于鲜活账户准入。
-已有仓位管理仍可按原门禁尝试。完整经济 paper 的进程级状态绑定、强制鲜活账户/报价准入、
+已有仓位管理仍可按原门禁尝试。完整经济 paper 的进程级状态绑定、强制鲜活账户及独立 mark/book 来源准入、
 通知失败观测、逐事件 E2E 和安装矩阵仍待 C6；版本化 API 见下文，本入口的命令完成状态不是完整验收或生产授权。
 
 非 dry-run 还必须同时满足以下门禁：

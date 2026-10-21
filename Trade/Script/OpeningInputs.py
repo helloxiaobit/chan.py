@@ -35,7 +35,8 @@ def _evaluator_identity():
     paths = ("Trade/Script/OpeningInputs.py", "Trade/Script/RunTradeCycle.py", "Trade/Script/MakeOpenTrade.py",
         "Trade/Script/SignalMonitor.py", "Trade/TradeEngine.py", "Trade/CCXTTradeEngine.py", "Trade/OrderAudit.py",
         "Trade/Script/StaticsChanConfig.py", "Trade/Script/OpenConfig.py", "Trade/Script/Deployment.py", "Config/EnvConfig.py",
-        "OfflineData/offline_data_util.py", "CustomBuySellPoint/Decision.py", "CustomBuySellPoint/Signal.py")
+        "OfflineData/offline_data_util.py", "CustomBuySellPoint/Decision.py", "CustomBuySellPoint/Signal.py",
+        "DataAPI/SnapshotAPI/CCXTSnapshot.py", "DataAPI/ccxt.py")
     files = {name: hashlib.sha256((root/name).read_text(encoding="utf-8").replace("\r\n", "\n").encode()).hexdigest()
              for name in paths}
     return _sha({"input_code": files, "strategy_features": feature_code_identity()["sha256"],
@@ -109,8 +110,11 @@ def inspect_opening_inputs(env, *, now_ms):
 
 
 class COpeningInputs:
-    def __init__(self, config_path, *, expected=None, now_ms=None):
+    def __init__(self, config_path, *, expected=None, now_ms=None, require_quotes=False):
         self.path, self.now_ms = Path(config_path).resolve(), now_ms or utc_now_ms
+        if type(require_quotes) is not bool:
+            _fail()
+        self._require_quotes, self._quotes = require_quotes, None
         try:
             raw = self.path.read_bytes()
             self._env = CEnv(str(self.path))
@@ -137,6 +141,25 @@ class COpeningInputs:
     def snapshot(self):
         return dict(self._expected)
 
+    def bind_quotes(self, document, *, max_age_ms):
+        """One original batch per input epoch, never refresh an old intent."""
+        from Common.MarketQuote import read_quote_batch
+        try:
+            self.assert_current()
+            trade = self._env.get_section("trade")
+            if "quote_max_age_ms" in trade and (type(trade["quote_max_age_ms"]) is not int
+                    or trade["quote_max_age_ms"] <= 0 or max_age_ms != trade["quote_max_age_ms"]):
+                _fail()
+            batch = read_quote_batch(document, source=self._scope["source"], symbols=self._scope["code_list"],
+                now_ms=self.now_ms(), max_age_ms=max_age_ms)
+            raw = canonical_bytes({"batch": batch, "max_age_ms": max_age_ms})
+            if self._quotes is not None and self._quotes != raw:
+                _fail()
+            self._quotes, self._require_quotes = raw, True
+            return {quote["symbol"]: quote["price"] for quote in batch["payload"]["quotes"]}
+        except Exception:
+            _fail()
+
     def assert_current(self):
         try:
             if hashlib.sha256(self.path.read_bytes()).hexdigest() != self._config_sha:
@@ -148,11 +171,22 @@ class COpeningInputs:
         except Exception:
             _fail()
 
-    def check(self, record, *, engine=None):
+    def check(self, record, *, engine=None, price=None):
         try:
             checked = _clock(self.now_ms())
             self.assert_current()
             scope = self._scope
+            quote_proof, quote_price = None, None
+            if self._quotes is not None:
+                from Common.MarketQuote import read_quote_batch
+                quote_proof = json.loads(self._quotes)
+                batch = read_quote_batch(quote_proof["batch"], source=scope["source"], symbols=scope["code_list"],
+                    now_ms=checked, max_age_ms=quote_proof["max_age_ms"])
+                quote_price = next(quote["price"] for quote in batch["payload"]["quotes"] if quote["symbol"] == record["stock_code"])
+                if price is not None and (type(price) not in (int, float) or price != quote_price):
+                    _fail()
+            elif self._require_quotes:
+                _fail()
             if (record["stock_code"] not in scope["code_list"] or record["lv"] != scope["trade_lv"]
                     or record.get("deployment_id") != scope["deployment_id"]
                     or record.get("model_version") != scope["model_artifact_id"]):
@@ -202,10 +236,20 @@ class COpeningInputs:
                 if (not isinstance(stamp, dict) or not history["attempts"]
                         or history["attempts"][0]["identity"].get("opening_inputs") != stamp
                         or any(stamp.get(key) != value for key, value in self._expected.items())
+                        or stamp.get("schema") != ("chan-opening-input-check-v2" if quote_proof is not None else "chan-opening-input-check-v1")
+                        or stamp.get("quote") != quote_proof
+                        or (quote_proof is not None and json.loads(actual["snapshot_before"])["price"] != quote_price)
                         or stamp.get("signal_event_id") != decision["event_id"]
                         or not identity["decision_ms"] <= _clock(stamp.get("checked_at_ms")) <= checked):
                     _fail()
-            return {"schema": "chan-opening-input-check-v1", **self.snapshot(), "checked_at_ms": checked,
-                    "signal_event_id": decision["event_id"], "native_admission_verified": False}
+            finished = _clock(self.now_ms())
+            if finished < checked:
+                _fail()
+            if quote_proof is not None:
+                read_quote_batch(quote_proof["batch"], source=scope["source"], symbols=scope["code_list"],
+                    now_ms=finished, max_age_ms=quote_proof["max_age_ms"])
+            return {"schema": "chan-opening-input-check-v2" if quote_proof is not None else "chan-opening-input-check-v1",
+                    **self.snapshot(), "checked_at_ms": finished, "signal_event_id": decision["event_id"],
+                    "native_admission_verified": False, **({"quote": quote_proof} if quote_proof is not None else {})}
         except Exception:
             _fail()

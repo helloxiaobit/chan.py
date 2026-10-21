@@ -8,7 +8,7 @@
 - 开始时本地：`22a5a56ed1b38c2145106230c70256d4b7bc7bb5`，领先远端 44 提交。远端为本地祖先，可快进，不重写历史。
 - 通用安全实现：`b04d2a6` 至 `5a0d25a` 的模式门禁、持久化意图、累计成交、恢复与离线安全验收继续复用，随后文档/验收提交保留。
 - 已在本分支的研究模块及拒绝证据随既有历史保留，不重新执行、不修改冻结资产；其他研究 worktree 不合并。
-- 配置迁移：默认仍为 dry-run，股票与现有用户配置保持兼容。C1 行情身份迁移需显式声明旧库来源；C5 订单数据库升级需保留旧表及恢复语义。
+- 配置迁移：默认仍为 dry-run，股票与旧库配置读取保持兼容；新 C6 配置开仓需本文列出的显式 CCXT 报价/年龄策略。C1 行情身份迁移需显式声明旧库来源；C5 订单数据库升级需保留旧表及恢复语义。
 
 ## 支持矩阵（初始状态，不等于验收通过）
 
@@ -37,7 +37,7 @@
 | C3 | 已完成离线实现与验收 | UTC purge/unknown、三模型身份、write-once 部署、三阶段评分与 SQLite 版本链；非实盘/外部认证 |
 | C4 | 已完成离线实现与验收 | 有界实际样本→三模型→搜索/独立验证→部署→全 trial 重放；93 项组合、608 项全仓离线通过，非经济采用 |
 | C5 | 进行中 | 单位/原生恢复/历史/来源、区间核对与持久冻结已离线验收；显式 cross/lot paper 接入原状态机，鲜活准入链、原生同义模型及进程级 E2E 仍待 |
-| C6 | 进行中（仍未完成） | 配置运行壳/失败传播/管理/OS 锁与逐笔输入版本重验、版本化 API 已离线验收；原生账户/报价鲜活准入、离线进程级 E2E 与安装矩阵待完成 |
+| C6 | 进行中（仍未完成） | 配置运行壳/失败传播/管理/OS 锁、逐笔输入版本与 ticker 来源/年龄重验、版本化 API 已离线验收；原生账户及 mark/book 证明、离线进程级 E2E 与安装矩阵待完成 |
 | C7 | 待前置验收 | 公共行情与有准入后的外部认证；代码发布按阶段进行 |
 
 基线：前一审计在完全相同 `22a5a56`、依赖和环境上执行的所选离线功能集合为 116 passed / 1 skipped / 1 deselected，带一个 XGBoost 弃用警告和 pytest 临时目录清理提示；该证据仅覆盖列明集合，不称全仓或真实交易所验收。行为修改后补跑对应回归。
@@ -483,3 +483,24 @@ C1 收尾清理计划：迁移校验由两份全表内存列表改为有序逐�
 - 文件范围限 Chan.py、新 Common/ChanExport.py、新 tests/test_chan_api_contract.py、README_FULL.md 与本台账；不改段算法、配置、规则、依赖、冻结资产或交易状态机。Chan/Common 参与已有模型指纹，旧模型须重生成并重新部署，不能重封旧契约。C5/C6/C7 与 Goal 保持未完成。
 - compileall 与 git diff --check 通过。独立 CPython 3.14.2/3.11.15 主动屏蔽 ccxt/xgboost/lightgbm/sklearn/optuna/yaml 后，实际已收盘合成行情的 v1/v2 导出、完整 SHA 与非有限拒绝均 PASS；不读取配置或网络。这是核心 optional-free smoke，不是 3.11 完整依赖安装认证。当前结构对象须由调用者串行使用；没有跨线程原子快照、全历史输出容量或历史首次结构确认时钟认证。
 - 最终完整命令 python -m pytest tests -m 'not network' --basetemp <new-temp-directory> -q --tb=short -p no:cacheprovider：1402 passed / 8 expected skipped / 1 network deselected / 14 existing model warnings，571.61s。运行期间源码、测试、文档均未编辑；明确 exit=0 后仅补本最终数字与状态，不冒称旧输出丢失时的结果。按 Lore 提交后，精确提交短组合须通过才快进推送并核验远端与 clean；不将 mock/离线通过提高为交易所外部认证。
+
+### C6 开仓报价实施/清理计划：原来源和时钟保留到实际发送边界
+
+- 前轮 48e6df0506946914284f1a18286c6834241c09f4 已推送，精确提交 97 项复验通过；本轮起始 clean，属于有效进展。按批准计划 C6 输入失效阻断继续，不修改用户配置、依赖、规则或冻结研究。AccountReconcile/AccountRiskStore 的 matched_observations 只有区间观察，mark 生成时间仍未知，不能把无冻结或一次相等变成原生账户准入。
+- 实际缺口：CCCXTSnapshot 的普通 dict 丢失 ticker 时间/来源，MakeOpenTrade 进一步压为裸价格；此前只能拒绝 NaN/非法价格，不能证明报价新鲜或同市场。本轮先补实际开仓路径这个依赖，不把组件通过当整个鲜活账户准入完成。
+- 复用 exchange_source_identity、UTC/finite canonical、COpeningInputs 和原 CAS/journal；保留旧 query/裸 price_map 的兼容库路径。新增严格 quote batch 只记录实际 ticker symbol/last/timestamp 与请求起止时间、实际 exchange/options 来源，不保留 raw info/凭据或把接收时间补成交易所时间。ticker 时间不冒称 bid/ask、mark 生成时钟或服务器签名。
+- 配置运行开仓须显式提供正整数 trade.quote_max_age_ms，不发明固定秒数，不修改默认配置文件。实际 configured CLI 只接 CCXT 同源完整报价，先冻结一次，再在意图前、频控后、claim 后/真实发送前重验年龄/来源/原价格；过期只阻断新增风险，原单 query/cancel/reduce 不依赖新报价。
+- 新输入证明显式 v2 携带原 quote batch 与年龄策略，v1 历史原样保留；实际 journal reader 重验 finite/摘要/来源/信号/原价/时钟，不能将新报价重标到旧意图。不重新实现订单状态机或替换原 native_account 门禁。
+- 先 RED 缺严格 producer/reader，再小 fake exchange 的真实来源/时钟、失效/重封/错误脱敏、部分/缺失批次；接真实 SQLite 意图/发送边界和完整 paper/实际小模型函数。现有低层兼容检查保留，完整离线/compileall/diff/双 Python 核心 smoke/Lore/精确提交复验通过才推送。原生完整账户/未知外部订单、信号换代、进程级 paper E2E、通知/安装矩阵与 C7 仍为后续，Goal 不关闭。
+
+### C6 开仓报价离线证据（仅该输入子项，不是原生账户准入）
+
+- 严格 producer/reader 缺失的 23 RED→GREEN；原数据/快照组合 81 passed/1 network deselected，但一次未指定 basetemp 的调用尾部出现既有 pytest-current 清理 PermissionError，不删除共享 Temp 路径、不算 pristine。后续每次独立 basetemp，真实 guard/意图/旧恢复组合 71 passed，无该清理问题。
+- 默认 CLI 的 7 项实际 RED：原入口会读取裸价、接受缺失/非法 age policy 和 sina。改为有本轮候选时必须显式 ccxt/quote_max_age_ms，保留无候选不查询；读取/绑定一份原批次，COpeningInputs 与 journal 显式 v2，旧 v1 原样可读。旧 notional CLI 测试缺新策略而失败，补临时配置与实际 fake ticker transport，未放宽正整数/来源要求；112 项运行/开仓组合通过。
+- 后续真实 RED→GREEN：调用方放大固定年龄上限、最后一次检查扫描期间报价已过期却仍发送、paper 检查结束后先 claim 再拒绝，以及损坏 version 导致原始 TypeError。按实际请求链补结束时钟重验、paper pre-claim、类型检查；raw ticker 时间从未以本地接收时间代替。另两项 RED 证明 journal 投影的 lv/bstype 可脱离原 signal，v2 reader 现在与原 C2 信号匹配。
+- 当前 52 项新报价用例含原来源/年龄/hash/重封、写一次/不重标、真实 SQLite 在 before-intent/after-intent/after-claim 的失败边界、过期后 query/cancel/reduce、完整 paper 含费成功及零成交失败。Binance/OKX 实际 CCXT 原生参数构造器＋fake private I/O 的 4 项新检查通过；临时 fake candidate 仅为软件门禁夹具，非正式候选或真实测试网证明，native_admission_verified 始终 false。
+- 将真实小模型的成功与意图后损坏两条集成路径接入报价 v2，不 mock reader/评分/订单账本。最终关键组合 actual opening/CLI/cycle/deployment/history/units/native parameters/recovery/sticky freeze/paper：407 passed / 3 existing model warnings，94.19s。复用已有 source/UTC/canonical/C2/C3/CAS/journal，只加一次 quote adapter/reader，没有第二套订单状态机；删除未使用的新 property，保持差异可审阅。
+- 按 code-review 清单主代理串行自审，非独立审计。检查和网络发送仍无全局原子性；ticker 时间不是盘口/mark 生成时钟，REST/account 完整通道、native 舍入/isolated、信号显式换代、进程级纸面恢复、容量/安装/通知与 C7 仍未验收。未连接真实行情/账户，未触碰冻结研究、用户配置/规则/权限或新增依赖。
+- compileall/diff 通过。CPython 3.14.2/3.11.15 主动屏蔽 ccxt/xgboost/lightgbm/sklearn/optuna/yaml 后，实际 strict quote producer/reader（仅 fake 公开 transport）、过期拒绝、缺配置闭锁与交易/输入模块核心导入均 PASS；不是完整依赖安装矩阵认证。
+- 最终完整命令 python -m pytest tests -m 'not network' --basetemp <new-temp-directory> -q --tb=short -p no:cacheprovider：1454 passed / 8 expected skipped / 1 network deselected / 14 existing model warnings，577.16s。整个运行没有源码/测试/文档编辑，明确 exit=0 后只补本数字与阶段状态，不冒称既有清理提示那次 pristine 或将离线结果升格为外部认证。Lore 后精确提交短组合须通过才快进推送，并核验远端/clean；Goal 保持 active。
+- 文件范围：新增 Common/MarketQuote.py、tests/test_opening_quotes.py；接入 DataAPI/SnapshotAPI/CCXTSnapshot.py、Trade/Script/OpeningInputs.py、MakeOpenTrade.py、Trade/TradeEngine.py、CCXTTradeEngine.py、OrderAudit.py；补 tests/test_opening_inputs.py、test_deployment_workflow.py 与 README_FULL.md/本台账。旧 quote/price_map 库调用、v1 历史和原管理路径保留；默认配置文件不变，配置 CLI 的新风险现在需要用户显式声明报价年龄策略。新的 Common/输入工作流指纹要求重生成模型/部署，不修改旧清单来迁就。

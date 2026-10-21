@@ -251,7 +251,8 @@ def test_default_opening_cli_uses_parent_epoch_and_configured_notional(inputs, c
     import yaml
     from Trade.Script import MakeOpenTrade as module
     guard, db = inputs
-    cycle[2]["trade"]["bench_price"] = 7
+    cycle[2]["trade"].update(bench_price=7, quote_max_age_ms=1000)
+    cycle[2]["snapshot_engine"] = "ccxt"
     cycle[0].write_text(yaml.safe_dump(cycle[2]), encoding="utf-8")
     from Config.EnvConfig import CEnv
     CEnv.reset_instance()
@@ -262,7 +263,13 @@ def test_default_opening_cli_uses_parent_epoch_and_configured_notional(inputs, c
     monkeypatch.setattr(module, "utc_now_ms", lambda: NOW)
     conf = explicit_open_conf(cycle)
     monkeypatch.setattr(module, "COpenConfig", lambda: conf)
-    monkeypatch.setattr(module, "get_price_map", lambda codes: {code: 100.5 for code in codes})
+    from DataAPI.SnapshotAPI.CCXTSnapshot import CCCXTSnapshot
+    class CQuoteTransport:
+        id = "binance"
+        options = {"defaultType": "swap"}
+        def fetch_tickers(self, codes):
+            return {code: {"symbol": code, "last": 100.5, "timestamp": NOW-100} for code in codes}
+    monkeypatch.setattr(CCCXTSnapshot, "exchange", CQuoteTransport())
     record = add_signal(db)
     assert module.main() == 0
     current = db.get_record(record["id"])

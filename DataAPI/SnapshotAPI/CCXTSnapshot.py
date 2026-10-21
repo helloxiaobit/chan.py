@@ -18,6 +18,36 @@ class CCCXTSnapshot(CCommSnapshot):
         return cls.exchange
 
     @classmethod
+    def query_quotes(cls, code_list: List[str], *, now_ms=None):
+        """Strict opening quotes; never fill missing venue time with local now."""
+        from Common.ChanException import CChanException, ErrCode
+        from Common.KLineTime import utc_now_ms
+        from Common.MarketQuote import make_quote_batch
+        from DataAPI.ccxt import exchange_source_identity
+        try:
+            if (not isinstance(code_list, list) or not code_list or len(set(code_list)) != len(code_list)
+                    or any(not isinstance(code, str) or not code for code in code_list)):
+                raise ValueError()
+            clock = now_ms or utc_now_ms
+            started = clock()
+            exchange = cls.get_exchange()
+            source = exchange_source_identity(exchange, code_list[0])
+            if any(exchange_source_identity(exchange, code) != source for code in code_list):
+                raise ValueError()
+            tickers = exchange.fetch_tickers(code_list)
+            quotes = []
+            for code in code_list:
+                ticker = tickers[code]
+                if ticker["symbol"] != code or type(ticker["last"]) not in (str, int, float):
+                    raise ValueError()
+                quotes.append({"symbol": code, "price": float(ticker["last"]), "timestamp_ms": ticker.get("timestamp")})
+            if any(exchange_source_identity(exchange, code) != source for code in code_list):
+                raise ValueError()
+            return make_quote_batch(quotes, source=source, started_ms=started, finished_ms=clock())
+        except Exception:
+            raise CChanException("完整同源 ticker 报价不可用，禁止新增风险", ErrCode.SNAPSHOT_ERR) from None
+
+    @classmethod
     def query(cls, code_list: List[str], return_klu: bool = False) -> T_SNAPSHOT_RES:
         res: T_SNAPSHOT_RES = {code: None for code in code_list}
         try:
