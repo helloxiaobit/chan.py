@@ -382,8 +382,26 @@ leg；v2 还核对原生 post-only、one-way reduce-only，以及 OKX 的 tdMode
 部分平仓的剩余数量用固定 Decimal 计算后精确经过 DB 数值边界；无法表示则拒绝写入，
 不向上补量，也不使用 epsilon 把小仓位抹成零。
 
-两进程提交权 CAS 已验证只产生一个赢家；尚未完成的跨进程累计回报原子性、
-逐腿余额/现金流对账与持久化风险冻结仍是 C5 剩余工作。C6/C7 也未完成。
+#### C5 绑定成交 CAS 与终态管理（离线子边界）
+
+实际 add/restore/partial-exit/poll 路径现以一次 SQL CAS 同时提交 server id、订单状态、
+累计成交和仓位，不再先写 raw status 再写 fill。比较当前 client、尝试次数、server id 与关键账本快照；
+其他连接已改行时保留赢家、重新查询，不把旧回报重算到后来尝试上。相同累计量不能改均价，
+开仓重复回报不能恢复已经退出的仓位，迟到的 open 不能回绕已处理终态。
+撤单/重试依据同一尝试的已应用 DB 状态，不用已被更晚证据淘汰的网络快照驱动订单。
+
+新合约记录的底层 `apply_open_fill/apply_close_fill`、ACK 和兼容 submission API 必须显式携带
+原 `client_order_id`、`order_id`、`expected_attempt`；ACK 的订单号仍是原有位置参数。
+准备平仓后调用 `acquire_close_intent` 还须给准备时的 `previous_attempt`，首次为 0。
+过期 snapshot 不能自动刷新成下一次平仓；即使客户端号被重用，查询期间的 attempt 切换也不能让旧 ACK 串单。
+普通用户继续使用 `CTradeEngine` 入口，由它传递原意图；不要自行拼接或读取更新后的 counter 贴给旧报告。
+
+旧无规格的股票/兼容 DB API 保留，但不作为新 crypto 认证。已有 `order_contract` 的记录禁用
+`mark_open/mark_cover_order/mark_cover_done` 手工猜量接口。非有限/布尔成交均价、closed 与未完成请求量矛盾时拒绝记账和重试。
+尚未写入 DB 的订单号只是查询提示，仍须通过 client echo 与 UTC 创建时间发现校验；有完整证据的提示号可正常恢复。
+
+提交权的双进程争抢、成交的双 SQLite 连接确定性交错及原生 CCXT/fake I/O 验证均为离线证明，
+不是完整交易所认证。逐腿余额/现金流对账、持久化风险冻结和含费用的模拟账户仍待完成；C6/C7 也未完成。
 
 当前只完成了离线可证明的安全边界，尚未完成交易所逐一测试网认证。待验证项包括：
 沙盒支持与市场映射、客户端订单号历史查询窗口/分页、post-only/reduce-only/

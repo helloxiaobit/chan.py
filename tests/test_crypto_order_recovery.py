@@ -31,17 +31,18 @@ class CRecoveryExchange(CVenueExchange):
             self.builder.privateGetTradeOrdersHistory = lambda request: pytest.fail("must use archive, including canceled orders")
 
     def native_row(self, row):
+        price = "0" if row["price"] is None else str(row["price"])
         if self.id == "binance":
             return {"symbol": self.market(CODE)["id"], "orderId": row["id"], "clientOrderId": row["clientOrderId"],
                     "origQty": str(row["amount"]), "executedQty": str(row["filled"]), "avgPrice": str(row["average"]),
-                    "price": str(row["price"]), "side": row["side"].upper(), "type": row["type"].upper(),
+                    "price": price, "side": row["side"].upper(), "type": row["type"].upper(),
                     "positionSide": row["info"]["positionSide"], "reduceOnly": row["info"]["reduceOnly"],
                     "timeInForce": row["info"]["timeInForce"],
                     "status": {"open": "PARTIALLY_FILLED", "closed": "FILLED", "canceled": "CANCELED"}[row["status"]],
                     "time": row["timestamp"], "updateTime": row["timestamp"]}
         return {"instId": self.market(CODE)["id"], "instType": "SWAP", "ordId": row["id"], "clOrdId": row["clientOrderId"],
                 "sz": str(row["amount"]), "accFillSz": str(row["filled"]), "avgPx": str(row["average"]),
-                "px": str(row["price"]), "side": row["side"], "ordType": row["type"], "posSide": "net", "tdMode": "cross",
+                "px": price, "side": row["side"], "ordType": row["type"], "posSide": "net", "tdMode": "cross",
                 "reduceOnly": str(row["info"]["reduceOnly"]).lower(),
                 "state": {"open": "partially_filled", "closed": "filled", "canceled": "canceled"}[row["status"]],
                 "cTime": str(row["timestamp"]), "uTime": str(row["timestamp"])}
@@ -165,13 +166,13 @@ def test_ack_saves_only_identity_and_never_replaces_the_known_server_id(order_db
     trade = recovery_engine(order_db, tmp_path, "okx")
     record_id = lose_open(trade)
     before = order_db.get_record(record_id)
-    order_db.record_order_ack(record_id, "open", "1")
-    order_db.record_order_ack(record_id, "open", "1")
+    order_db.record_order_ack(record_id, "open", "1", client_order_id=before["open_client_order_id"], expected_attempt=before["open_attempt"])
+    order_db.record_order_ack(record_id, "open", "1", client_order_id=before["open_client_order_id"], expected_attempt=before["open_attempt"])
     after = order_db.get_record(record_id)
     assert after["open_order_status"] == before["open_order_status"] == "submitting"
     assert after["open_filled_qty"] == before["open_filled_qty"] == 0
     with pytest.raises(CChanException):
-        order_db.record_order_ack(record_id, "open", "other")
+        order_db.record_order_ack(record_id, "open", "other", client_order_id=before["open_client_order_id"], expected_attempt=before["open_attempt"])
     assert order_db.get_record(record_id)["open_order_id"] == "1"
 
 
@@ -332,7 +333,7 @@ def test_missing_legacy_utc_clock_stays_null_on_reopen_and_cannot_start_a_guesse
         assert reopened.get_record(record_id)["open_intent_ms"] is None
         assert trade.exchange.pages == []
         # A known immutable exchange id still works; no timestamp is invented.
-        reopened.record_order_ack(record_id, "open", "1")
+        reopened.record_order_ack(record_id, "open", "1", client_order_id=reopened.get_record(record_id)["open_client_order_id"], expected_attempt=1)
         trade.exchange.direct_not_found = False
         trade.restore()
         assert reopened.get_record(record_id)["open_filled_qty"] == 0.01

@@ -172,6 +172,19 @@ class CTradeEngine(metaclass=abc.ABCMeta):
             client_order_id=client_id,
         )
 
+    def _apply_order_report(self, record_id, phase, order, client_id, attempt):
+        """One attempt-bound DB CAS, not submission-status then fill writes."""
+        if order.client_order_id is not None and order.client_order_id != client_id:
+            raise CChanException("回报客户端号与查询/提交意图不一致", ErrCode.LIST_ORDER_FAIL)
+        apply = self.chan_db.apply_open_fill if phase == "open" else self.chan_db.apply_close_fill
+        try:
+            return apply(record_id, order.filled, order.avg_price, order.status,
+                         client_order_id=client_id, order_id=str(order.order_id), expected_attempt=attempt)
+        except CChanException as error:
+            if error.errcode == ErrCode.PARA_ERROR:
+                raise CChanException("成交回报不满足单调/金额契约，禁止重新提交", ErrCode.LIST_ORDER_FAIL) from error
+            raise
+
     def add_trade(self, trade_info: dict, price: float) -> COrderResult:
         """先持久化开仓意图，再提交并应用交易所累计成交量。"""
         record_id = trade_info["id"]
@@ -216,12 +229,7 @@ class CTradeEngine(metaclass=abc.ABCMeta):
             client_order_id=client_id,
             position_side=position_side,
         )
-        self.chan_db.record_open_submission(
-            record_id, order.order_id, order.status
-        )
-        self.chan_db.apply_open_fill(
-            record_id, order.filled, order.avg_price, order.status
-        )
+        self._apply_order_report(record_id, "open", order, client_id, int(record.get("open_attempt") or 0)+1)
         if self.push_msg:
             bs = "买开" if record["is_buy"] else "卖开"
             send_msg(
@@ -246,26 +254,19 @@ class CTradeEngine(metaclass=abc.ABCMeta):
             )
 
         def apply_snapshot(order: COrderResult) -> dict:
-            state = self.chan_db.get_record(record_id)
-            if state["status"] in {"submitted", "partially_filled"}:
-                self.chan_db.record_open_submission(
-                    record_id, order.order_id, order.status
-                )
-            self.chan_db.apply_open_fill(
-                record_id, order.filled, order.avg_price, order.status
-            )
+            self._apply_order_report(record_id, "open", order, current.get("open_client_order_id"), current.get("open_attempt"))
             return self.chan_db.get_record(record_id)
 
         self.rate_limit()
         order = self._query_persisted_order(current, "open")
         current = apply_snapshot(order)
-        if order.status == "open":
+        if current["open_order_status"] == "open":
             if not self.cancel_order(current["stock_code"], order.order_id):
                 return None
             confirmed = self._query_persisted_order(current, "open")
-            if confirmed.status == "open":
-                return None
             current = apply_snapshot(confirmed)
+            if current["open_order_status"] == "open":
+                return None
         if current["status"] == "open" and float(current["current_qty"] or 0) > 0:
             return self.cover_trade(current, price, reason)
         return None
@@ -273,7 +274,13 @@ class CTradeEngine(metaclass=abc.ABCMeta):
     def cover_trade(self, record: dict, price: Optional[float], reason: str) -> COrderResult:
         """先持久化平仓意图，再以 reduce-only 提交当前剩余数量。"""
         record_id = record["id"]
+        previous_attempt = record.get("cover_attempt")
         record = self.chan_db.get_record(record_id)
+        if (previous_attempt is not None and previous_attempt != (record.get("cover_attempt") or 0)):
+            raise CChanException("平仓快照已跨越另一次尝试，必须重查而非刷新重试", ErrCode.SIGNAL_TRADED)
+        if previous_attempt is None and record.get("open_order_contract") is not None:
+            raise CChanException("合约平仓缺少原尝试快照", ErrCode.SIGNAL_TRADED)
+        previous_attempt = record.get("cover_attempt") or 0
         code = record["stock_code"]
         quota = float(record.get("current_qty") or 0)
         if quota <= 0:
@@ -288,6 +295,7 @@ class CTradeEngine(metaclass=abc.ABCMeta):
             client_order_id=client_id,
             reason=reason,
             order_contract=order_contract,
+            previous_attempt=previous_attempt,
         )
         if not acquired:
             raise CChanException(
@@ -304,12 +312,7 @@ class CTradeEngine(metaclass=abc.ABCMeta):
             reduce_only=True,
             position_side=self._position_side(record),
         )
-        self.chan_db.record_close_submission(
-            record_id, order.order_id, order.status
-        )
-        self.chan_db.apply_close_fill(
-            record_id, order.filled, order.avg_price, order.status
-        )
+        self._apply_order_report(record_id, "close", order, client_id, previous_attempt+1)
         if self.push_msg:
             bs = "卖平" if record["is_buy"] else "买平"
             profit = None
@@ -339,40 +342,34 @@ class CTradeEngine(metaclass=abc.ABCMeta):
                 self.rate_limit()
                 try:
                     order = self._query_persisted_order(rec, "close")
+                    self._apply_order_report(rec["id"], "close", order, rec.get("cover_client_order_id"), rec.get("cover_attempt"))
                 except CChanException as exc:
                     if exc.errcode == ErrCode.LIST_ORDER_FAIL:
                         continue
                     raise
-                self.chan_db.record_close_submission(
-                    rec["id"], order.order_id, order.status
-                )
-                self.chan_db.apply_close_fill(
-                    rec["id"], order.filled, order.avg_price, order.status
-                )
                 current = self.chan_db.get_record(rec["id"])
+                if (current.get("cover_client_order_id") != rec.get("cover_client_order_id")
+                        or current.get("cover_attempt") != rec.get("cover_attempt")):
+                    continue
                 if current["status"] == "closed":
                     continue
                 if not adjust_price or index != times - 1:
                     continue
 
-                confirmed = order
-                if order.status == "open":
+                if current["cover_order_status"] == "open":
                     if not self.cancel_order(rec["stock_code"], order.order_id):
                         continue
-                    confirmed = self._query_persisted_order(current, "close")
-                    if confirmed.status == "open":
-                        continue
-                    self.chan_db.record_close_submission(
-                        rec["id"], confirmed.order_id, confirmed.status
-                    )
-                    self.chan_db.apply_close_fill(
-                        rec["id"],
-                        confirmed.filled,
-                        confirmed.avg_price,
-                        confirmed.status,
-                    )
+                    try:
+                        confirmed = self._query_persisted_order(current, "close")
+                        self._apply_order_report(rec["id"], "close", confirmed, rec.get("cover_client_order_id"), rec.get("cover_attempt"))
+                    except CChanException as exc:
+                        if exc.errcode == ErrCode.LIST_ORDER_FAIL:
+                            continue
+                        raise
                 current = self.chan_db.get_record(rec["id"])
-                if confirmed.status != "open" and current["status"] == "open":
+                if (current["cover_order_status"] in {"closed", "canceled", "rejected"} and current["status"] == "open"
+                        and current.get("cover_client_order_id") == rec.get("cover_client_order_id")
+                        and current.get("cover_attempt") == rec.get("cover_attempt")):
                     self.cover_trade(
                         current,
                         None,
@@ -388,23 +385,11 @@ class CTradeEngine(metaclass=abc.ABCMeta):
             phase = "close" if rec["status"] == "closing" else "open"
             try:
                 order = self._query_persisted_order(rec, phase)
+                prefix = "open" if phase == "open" else "cover"
+                self._apply_order_report(rec["id"], phase, order, rec.get(f"{prefix}_client_order_id"), rec.get(f"{prefix}_attempt"))
             except CChanException as exc:
                 if exc.errcode == ErrCode.LIST_ORDER_FAIL:
                     continue
                 raise
-            if phase == "open":
-                self.chan_db.record_open_submission(
-                    rec["id"], order.order_id, order.status
-                )
-                self.chan_db.apply_open_fill(
-                    rec["id"], order.filled, order.avg_price, order.status
-                )
-            else:
-                self.chan_db.record_close_submission(
-                    rec["id"], order.order_id, order.status
-                )
-                self.chan_db.apply_close_fill(
-                    rec["id"], order.filled, order.avg_price, order.status
-                )
             restored.append(self.chan_db.get_record(rec["id"]))
         return restored

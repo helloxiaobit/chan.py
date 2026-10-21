@@ -563,7 +563,8 @@ class CCCXTTradeEngine(CTradeEngine):
                 ErrCode.PLACE_ORDER_FAIL,
             ) from e
         self._check_order_identity(order, code, intent, contract, partial=True)
-        self.chan_db.record_order_ack(intent["record"]["id"], intent["phase"], str(order["id"]))
+        self.chan_db.record_order_ack(intent["record"]["id"], intent["phase"], str(order["id"]), client_order_id=client_order_id,
+            expected_attempt=intent["record"]["open_attempt" if intent["phase"] == "open" else "cover_attempt"])
         if any(order.get(key) is None for key in ("symbol", "side", "type", "filled", "status")):
             return self.query_order(code, str(order["id"]), client_order_id=client_order_id)
         return self._result_from_ccxt(
@@ -607,6 +608,7 @@ class CCCXTTradeEngine(CTradeEngine):
         prefix = "open" if intent["phase"] == "open" else "cover"
         record = intent["record"]
         known_id = record.get(f"{prefix}_order_id")
+        identity_was_persisted = known_id is not None
         if order_id is not None and known_id is not None and str(order_id) != str(known_id):
             raise CChanException("查单不能替换已知交易所订单号", ErrCode.LIST_ORDER_FAIL)
         known_id = known_id if known_id is not None else order_id
@@ -623,7 +625,7 @@ class CCCXTTradeEngine(CTradeEngine):
             raise CChanException("查单回报尚不能安全记账", ErrCode.LIST_ORDER_FAIL) from error
         if known_id is not None and result.order_id != str(known_id):
             raise CChanException("交易所订单与持久化意图不匹配", ErrCode.LIST_ORDER_FAIL)
-        if known_id is None:
+        if not identity_was_persisted:
             # Client ids may be reused by a venue after completion. A client-only
             # match must carry a creation clock from this UTC intent, not a local
             # timezone string or an older same-client order.
@@ -631,7 +633,8 @@ class CCCXTTradeEngine(CTradeEngine):
             if (type(since) is not int or type(at_ms) is not int or at_ms < since
                     or at_ms > utc_now_ms() or self._order_client_id(order) != client_order_id):
                 raise CChanException("客户端匹配缺少本意图 UTC/身份依据", ErrCode.LIST_ORDER_FAIL)
-        self.chan_db.record_order_ack(record["id"], intent["phase"], result.order_id)
+        self.chan_db.record_order_ack(record["id"], intent["phase"], result.order_id, client_order_id=client_order_id,
+            expected_attempt=record.get(f"{prefix}_attempt"))
         return result
 
     def _fetch_persisted_order(self, code, order_id, client_id, since):
@@ -806,6 +809,9 @@ class CCCXTTradeEngine(CTradeEngine):
         average = _quantity(order.get("average"), positive=True) if filled else None
         if filled > _quantity(contract["exchange_amount"], positive=True):
             raise CChanException("交易所累计成交量超过请求量", ErrCode.LIST_ORDER_FAIL)
+        status = _normalize_order_status(order.get("status"))
+        if status == "closed" and filled != _quantity(contract["exchange_amount"], positive=True):
+            raise CChanException("交易所 closed 与累计成交量矛盾，禁止据此重下", ErrCode.LIST_ORDER_FAIL)
         record = intent["record"]
         client_value = self._order_client_id(order) or record["open_client_order_id" if intent["phase"] == "open" else "cover_client_order_id"]
         size = _quantity(contract["market"]["contractSize"], positive=True)
@@ -817,7 +823,7 @@ class CCCXTTradeEngine(CTradeEngine):
             requested=float(_quantity(contract["quantity"], positive=True)),
             filled=filled_base,
             avg_price=None if average is None else _float_exact(average),
-            status=_normalize_order_status(order.get("status")),
+            status=status,
             client_order_id=(str(client_value) if client_value else None),
         )
 

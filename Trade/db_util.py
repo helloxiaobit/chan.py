@@ -22,6 +22,15 @@ def now_str() -> str:
 
 
 ORDER_STATUSES = {"open", "closed", "canceled", "rejected"}
+_FILL_CAS_FIELDS = {
+    "status": "", "is_open": 0, "watching": 0, "quota": 0, "current_qty": 0,
+    "open_client_order_id": "", "open_order_id": "", "open_order_status": "", "open_attempt": 0,
+    "open_requested_qty": 0, "open_filled_qty": 0, "open_price": 0, "open_date": "",
+    "peak_price_after_open": 0,
+    "cover_client_order_id": "", "cover_order_id": "", "cover_order_status": "", "cover_attempt": 0,
+    "cover_requested_qty": 0, "cover_order_filled_qty": 0, "cover_order_avg_price": 0,
+    "cover_filled_qty": 0, "cover_avg_price": 0,
+}
 
 
 def _positive_qty(value: float, name: str) -> float:
@@ -49,6 +58,10 @@ def _order_status(value: str) -> str:
     if value not in ORDER_STATUSES:
         raise CChanException(f"未知订单状态: {value}", ErrCode.PARA_ERROR)
     return value
+
+
+def _has_order_contract(record):
+    return any(record.get(f"{side}_order_contract") is not None for side in ("open", "cover"))
 
 
 def _illegal_transition(record_id: int, current: str, action: str):
@@ -138,6 +151,53 @@ class CChanDB:
         return self.db.query(sql, args)
 
     # ===== 可恢复订单状态机 =====
+    def _write_fill(self, record, assignments, values):
+        # Compare the complete read/write ledger snapshot, including both
+        # attempts. One SQL statement is atomic across independent connections;
+        # never recompute a stale report against whichever attempt happens next.
+        guards = " AND ".join(f"COALESCE({name}, ?)=?" for name in _FILL_CAS_FIELDS)
+        observed = tuple(value for name, default in _FILL_CAS_FIELDS.items()
+                         for value in (default, record[name] if record.get(name) is not None else default))
+        changed = self.db.execute(
+            f"UPDATE {self.table} SET {assignments} WHERE id=? AND {guards}",
+            (*values, record["id"], *observed),
+        )
+        if changed != 1:
+            raise CChanException("成交行已并发改变，保留赢家并重新查单，禁止重下", ErrCode.LIST_ORDER_FAIL)
+
+    def _finish_duplicate_fill(self, record, prefix, raw_status):
+        saved_status = record.get(f"{prefix}_order_status")
+        if saved_status == raw_status or (saved_status in {"closed", "canceled", "rejected"} and raw_status == "open"):
+            return 0.0
+        if saved_status in {"closed", "canceled", "rejected"}:
+            raise CChanException("已应用终态与回报矛盾，禁止回绕", ErrCode.LIST_ORDER_FAIL)
+        # A fully filled order may report its final status later. Confirm it
+        # without resetting current_qty after an actual partial/final exit.
+        self._write_fill(record, f"{prefix}_order_status=?, order_last_update=?", (raw_status, now_str()))
+        return 0.0
+
+    @staticmethod
+    def _fill_identity(record, prefix, client_order_id, order_id, expected_attempt):
+        known = record.get(f"{prefix}_order_id")
+        has_contract = _has_order_contract(record)
+        if has_contract and (client_order_id is None or expected_attempt is None):
+            raise CChanException("合约回报必须绑定当前 client/attempt/id", ErrCode.LIST_ORDER_FAIL)
+        if (expected_attempt is not None and (type(expected_attempt) is not int or expected_attempt <= 0
+                or record.get(f"{prefix}_attempt") != expected_attempt)):
+            raise CChanException("回报不属于当前尝试次数，禁止 ABA 串单", ErrCode.LIST_ORDER_FAIL)
+        if client_order_id is None:
+            # Compatibility for old non-contract DB callers, not certification
+            # of a client-less crypto execution path.
+            if order_id is not None and known is not None and str(known) != str(order_id):
+                raise CChanException("回报不能替换已知订单号", ErrCode.LIST_ORDER_FAIL)
+            return known if order_id is None else str(order_id)
+        if (not isinstance(client_order_id, str) or not client_order_id
+                or not isinstance(order_id, str) or not order_id
+                or record.get(f"{prefix}_client_order_id") != client_order_id
+                or (known is not None and str(known) != order_id)):
+            raise CChanException("回报不属于当前 client/id，禁止串单", ErrCode.LIST_ORDER_FAIL)
+        return order_id
+
     def acquire_open_intent(
         self,
         record_id: int,
@@ -190,19 +250,29 @@ class CChanDB:
         )
         return changed == 1
 
-    def record_order_ack(self, record_id: int, phase: str, order_id: str) -> None:
+    def record_order_ack(self, record_id: int, phase: str, order_id: str, *, client_order_id: Optional[str] = None,
+                         expected_attempt: Optional[int] = None) -> None:
         """ACK 只证明 id；不伪造 status/零成交，也不允许替换已知 id。"""
         if phase not in {"open", "close"} or not isinstance(order_id, str) or not order_id.strip():
             raise CChanException("ACK 阶段/交易所订单号无效", ErrCode.LIST_ORDER_FAIL)
         prefix = "open" if phase == "open" else "cover"
+        record = self.get_record(record_id)
+        self._fill_identity(record, prefix, client_order_id, order_id, expected_attempt)
+        observed_client = record.get(f"{prefix}_client_order_id") or ""
+        observed_attempt = record.get(f"{prefix}_attempt") or 0
         states = "('submitted', 'partially_filled')" if phase == "open" else "('closing')"
         changed = self.db.execute(
             f"UPDATE {self.table} SET {prefix}_order_id=?, order_last_update=? WHERE id=? "
-            f"AND status IN {states} AND {prefix}_order_status='submitting' AND {prefix}_order_id IS NULL",
-            (order_id, now_str(), record_id),
+            f"AND status IN {states} AND {prefix}_order_status='submitting' AND {prefix}_order_id IS NULL "
+            f"AND COALESCE({prefix}_client_order_id, '')=? AND COALESCE({prefix}_attempt, 0)=?",
+            (order_id, now_str(), record_id, observed_client, observed_attempt),
         )
-        if changed != 1 and self.get_record(record_id).get(f"{prefix}_order_id") != order_id:
-            raise CChanException("ACK 不能替换已知订单号或越过提交边界", ErrCode.LIST_ORDER_FAIL)
+        if changed != 1:
+            fresh = self.get_record(record_id)
+            if (fresh.get(f"{prefix}_order_id") != order_id
+                    or (fresh.get(f"{prefix}_client_order_id") or "") != observed_client
+                    or (fresh.get(f"{prefix}_attempt") or 0) != observed_attempt):
+                raise CChanException("ACK 不能换单/串到其他意图或越过提交边界", ErrCode.LIST_ORDER_FAIL)
 
     def get_recoverable_records(self) -> List[dict]:
         return self.db.query(
@@ -257,20 +327,28 @@ class CChanDB:
         return changed == 1
 
     def record_open_submission(
-        self, record_id: int, order_id: str, order_status: str
+        self, record_id: int, order_id: str, order_status: str, *, client_order_id: Optional[str] = None,
+        expected_attempt: Optional[int] = None,
     ) -> None:
+        self._record_submission(record_id, "open", order_id, order_status, client_order_id, expected_attempt)
+
+    def _record_submission(self, record_id, prefix, order_id, order_status, client_order_id, expected_attempt):
+        """Compatibility API. Normal execution commits status and fills together."""
         raw_status = _order_status(order_status)
         if not order_id:
-            raise CChanException("开仓交易所订单号不能为空", ErrCode.PARA_ERROR)
+            raise CChanException("交易所订单号不能为空", ErrCode.PARA_ERROR)
+        record = self.get_record(record_id)
+        self._fill_identity(record, prefix, client_order_id, order_id, expected_attempt)
+        states = "('submitted', 'partially_filled')" if prefix == "open" else "('closing')"
         changed = self.db.execute(
-            f"UPDATE {self.table} SET open_order_id=?, open_order_status=?, "
-            "order_last_update=? WHERE id=? "
-            "AND status IN ('submitted', 'partially_filled') AND (open_order_id IS NULL OR open_order_id=?)",
-            (order_id, raw_status, now_str(), record_id, order_id),
+            f"UPDATE {self.table} SET {prefix}_order_id=?, {prefix}_order_status=?, order_last_update=? WHERE id=? "
+            f"AND status IN {states} AND ({prefix}_order_id IS NULL OR {prefix}_order_id=?) "
+            f"AND COALESCE({prefix}_client_order_id, '')=? AND COALESCE({prefix}_attempt, 0)=?",
+            (order_id, raw_status, now_str(), record_id, order_id, record.get(f"{prefix}_client_order_id") or "",
+             record.get(f"{prefix}_attempt") or 0),
         )
         if changed != 1:
-            rec = self.get_record(record_id)
-            _illegal_transition(record_id, rec["status"], "记录开仓提交")
+            raise CChanException("提交回报意图/状态已改变，需重新核验", ErrCode.LIST_ORDER_FAIL)
 
     def apply_open_fill(
         self,
@@ -278,23 +356,32 @@ class CChanDB:
         cumulative_filled: float,
         avg_price: Optional[float],
         order_status: str,
+        *, client_order_id: Optional[str] = None, order_id: Optional[str] = None,
+        expected_attempt: Optional[int] = None,
     ) -> float:
         filled = _cumulative_qty(cumulative_filled)
         raw_status = _order_status(order_status)
         rec = self.get_record(record_id)
+        server_id = self._fill_identity(rec, "open", client_order_id, order_id, expected_attempt)
         current_status = rec["status"]
-        if current_status not in {"submitted", "partially_filled", "open"}:
+        if current_status not in {"submitted", "partially_filled", "open", "closing", "closed", "canceled", "rejected"}:
             _illegal_transition(record_id, current_status, "应用开仓成交")
         previous = float(rec["open_filled_qty"] or 0)
         requested = float(rec["open_requested_qty"] or 0)
-        if current_status == "open" and filled != previous:
+        if current_status not in {"submitted", "partially_filled"} and filled != previous:
             _illegal_transition(record_id, current_status, "增加开仓成交")
         if filled < previous:
             raise CChanException("开仓累计成交量不能回退", ErrCode.PARA_ERROR)
         if requested <= 0 or filled > requested:
             raise CChanException("开仓累计成交量超过请求量", ErrCode.PARA_ERROR)
-        if filled and (avg_price is None or float(avg_price) <= 0):
+        if raw_status == "closed" and filled != requested and _has_order_contract(rec):
+            raise CChanException("合约 closed 与未完成请求量矛盾", ErrCode.PARA_ERROR)
+        if filled and (avg_price is None or isinstance(avg_price, bool) or not math.isfinite(float(avg_price)) or float(avg_price) <= 0):
             raise CChanException("开仓成交均价无效", ErrCode.PARA_ERROR)
+        if filled == previous and filled and float(avg_price) != rec.get("open_price"):
+            raise CChanException("同一累计开仓量不能改写成交均价", ErrCode.PARA_ERROR)
+        if current_status not in {"submitted", "partially_filled"}:
+            return self._finish_duplicate_fill(rec, "open", raw_status)
         with localcontext(Context(prec=50)) as context:
             delta = _exact_qty_float(Decimal(str(filled))-Decimal(str(previous)))
             if context.flags[Inexact]:
@@ -318,11 +405,11 @@ class CChanDB:
         peak = rec.get("peak_price_after_open")
         if filled and peak is None:
             peak = open_price
-        self.db.execute(
-            f"UPDATE {self.table} SET status=?, is_open=?, watching=?, "
+        self._write_fill(rec,
+            "status=?, is_open=?, watching=?, "
             "open_filled_qty=?, current_qty=?, quota=?, open_price=?, "
-            "open_date=?, peak_price_after_open=?, open_order_status=?, "
-            "order_last_update=? WHERE id=?",
+            "open_date=?, peak_price_after_open=?, open_order_status=?, open_order_id=?, "
+            "order_last_update=?",
             (
                 next_status,
                 is_open,
@@ -334,8 +421,8 @@ class CChanDB:
                 open_date,
                 peak,
                 raw_status,
+                server_id,
                 now_str(),
-                record_id,
             ),
         )
         return delta
@@ -347,11 +434,20 @@ class CChanDB:
         client_order_id: str,
         reason: str,
         order_contract: Optional[dict] = None,
+        *, previous_attempt: Optional[int] = None,
     ) -> bool:
         requested = _positive_qty(requested_qty, "平仓请求量")
         if not client_order_id:
             raise CChanException("平仓客户端订单号不能为空", ErrCode.PARA_ERROR)
         rec = self.get_record(record_id)
+        observed_attempt = rec.get("cover_attempt") or 0
+        if order_contract is not None and previous_attempt is None:
+            raise CChanException("合约平仓意图缺少准备时的尝试次数", ErrCode.LIST_ORDER_FAIL)
+        if previous_attempt is not None:
+            if type(previous_attempt) is not int or previous_attempt < 0:
+                raise CChanException("平仓意图尝试次数无效", ErrCode.PARA_ERROR)
+            if previous_attempt != observed_attempt:
+                return False
         current = float(rec["current_qty"] or 0)
         if requested > current:
             raise CChanException("平仓请求量超过当前仓位", ErrCode.PARA_ERROR)
@@ -367,7 +463,7 @@ class CChanDB:
             "cover_attempt=COALESCE(cover_attempt, 0)+1, "
             "cover_quota=?, cover_date=?, cover_reason=?, "
             "order_last_update=?" + contract_clause + " WHERE id=? AND status='open' "
-            "AND is_open=1 AND current_qty>=?",
+            "AND is_open=1 AND current_qty>=? AND COALESCE(cover_attempt, 0)=?",
             (
                 client_order_id,
                 requested,
@@ -378,24 +474,16 @@ class CChanDB:
                 *contract_args,
                 record_id,
                 requested,
+                observed_attempt,
             ),
         )
         return changed == 1
 
     def record_close_submission(
-        self, record_id: int, order_id: str, order_status: str
+        self, record_id: int, order_id: str, order_status: str, *, client_order_id: Optional[str] = None,
+        expected_attempt: Optional[int] = None,
     ) -> None:
-        raw_status = _order_status(order_status)
-        if not order_id:
-            raise CChanException("平仓交易所订单号不能为空", ErrCode.PARA_ERROR)
-        changed = self.db.execute(
-            f"UPDATE {self.table} SET cover_order_id=?, cover_order_status=?, "
-            "order_last_update=? WHERE id=? AND status='closing' AND (cover_order_id IS NULL OR cover_order_id=?)",
-            (order_id, raw_status, now_str(), record_id, order_id),
-        )
-        if changed != 1:
-            rec = self.get_record(record_id)
-            _illegal_transition(record_id, rec["status"], "记录平仓提交")
+        self._record_submission(record_id, "cover", order_id, order_status, client_order_id, expected_attempt)
 
     def apply_close_fill(
         self,
@@ -403,10 +491,13 @@ class CChanDB:
         cumulative_filled: float,
         avg_price: Optional[float],
         order_status: str,
+        *, client_order_id: Optional[str] = None, order_id: Optional[str] = None,
+        expected_attempt: Optional[int] = None,
     ) -> float:
         filled = _cumulative_qty(cumulative_filled)
         raw_status = _order_status(order_status)
         rec = self.get_record(record_id)
+        server_id = self._fill_identity(rec, "cover", client_order_id, order_id, expected_attempt)
         current_status = rec["status"]
         if current_status not in {"closing", "open", "closed"}:
             _illegal_transition(record_id, current_status, "应用平仓成交")
@@ -418,8 +509,14 @@ class CChanDB:
             raise CChanException("平仓累计成交量不能回退", ErrCode.PARA_ERROR)
         if requested <= 0 or filled > requested:
             raise CChanException("平仓累计成交量超过请求量", ErrCode.PARA_ERROR)
-        if filled and (avg_price is None or float(avg_price) <= 0):
+        if raw_status == "closed" and filled != requested and _has_order_contract(rec):
+            raise CChanException("合约 closed 与未完成请求量矛盾", ErrCode.PARA_ERROR)
+        if filled and (avg_price is None or isinstance(avg_price, bool) or not math.isfinite(float(avg_price)) or float(avg_price) <= 0):
             raise CChanException("平仓成交均价无效", ErrCode.PARA_ERROR)
+        if filled == previous_order and filled and float(avg_price) != rec.get("cover_order_avg_price"):
+            raise CChanException("同一累计平仓量不能改写成交均价", ErrCode.PARA_ERROR)
+        if current_status in {"open", "closed"}:
+            return self._finish_duplicate_fill(rec, "cover", raw_status)
         previous_current = float(rec["current_qty"] or 0)
         previous_total = float(rec["cover_filled_qty"] or 0)
         with localcontext(Context(prec=50)) as context:
@@ -456,11 +553,11 @@ class CChanDB:
             next_status = "open"
             is_open = 1
             watching = 1
-        self.db.execute(
-            f"UPDATE {self.table} SET status=?, is_open=?, watching=?, "
+        self._write_fill(rec,
+            "status=?, is_open=?, watching=?, "
             "current_qty=?, cover_order_filled_qty=?, "
             "cover_order_avg_price=?, cover_filled_qty=?, cover_avg_price=?, "
-            "cover_order_status=?, order_last_update=? WHERE id=?",
+            "cover_order_status=?, cover_order_id=?, order_last_update=?",
             (
                 next_status,
                 is_open,
@@ -471,8 +568,8 @@ class CChanDB:
                 total,
                 total_avg,
                 raw_status,
+                server_id,
                 now_str(),
-                record_id,
             ),
         )
         return delta
@@ -490,6 +587,7 @@ class CChanDB:
                   order_id: str = "", score_before: Optional[float] = None,
                   snapshot: Optional[dict] = None, image_url: str = ""):
         rec = self.get_record(record_id)
+        self._require_legacy_manual_record(rec)
         if rec["is_open"]:
             raise CChanException(f"记录已开仓 id={record_id}", ErrCode.RECORD_ALREADY_OPENED)
         if not rec["watching"]:
@@ -549,6 +647,7 @@ class CChanDB:
     # ===== 平仓 =====
     def mark_cover_order(self, record_id: int, cover_order_id: str, cover_quota: float, reason: str):
         rec = self.get_record(record_id)
+        self._require_legacy_manual_record(rec)
         if not rec["is_open"]:
             raise CChanException(f"记录未开仓 id={record_id}", ErrCode.RECORD_NOT_OPENED)
         if rec["status"] in {"cover", "closed"}:
@@ -572,6 +671,7 @@ class CChanDB:
 
     def mark_cover_done(self, record_id: int, avg_price: float, image_url: str = ""):
         rec = self.get_record(record_id)
+        self._require_legacy_manual_record(rec)
         if rec["status"] in {"cover", "closed"}:
             return
         requested = float(rec["cover_requested_qty"] or rec["current_qty"] or rec["quota"] or 0)
@@ -588,6 +688,11 @@ class CChanDB:
             f"UPDATE {self.table} SET cover_image_url=? WHERE id=?",
             (image_url, record_id),
         )
+
+    @staticmethod
+    def _require_legacy_manual_record(record):
+        if _has_order_contract(record):
+            raise CChanException("新合约必须用绑定成交回报，不可手工猜测开平仓", ErrCode.TRADE_UNLOCK_FAIL)
 
     def get_uncovered_orders(self) -> List[dict]:
         # 已提交平仓单但未确认成交(修复用)

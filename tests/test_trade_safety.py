@@ -490,11 +490,10 @@ def test_contract_order_passes_explicit_intent_and_queries_positions(
         position_side="LONG",
         order_contract=opening_contract,
     )
-    trade_db.record_open_submission(record_id, "old-open", "closed")
-    trade_db.apply_open_fill(record_id, 2.0, 100.0, "closed")
+    trade_db.apply_open_fill(record_id, 2.0, 100.0, "closed", client_order_id="open-contract-1", order_id="old-open", expected_attempt=1)
     quantity, price, order_contract = engine.prepare_order("BTC/USDT:USDT", 2.0, 101.0, reduce_only=True, post_only=True)
     assert trade_db.acquire_close_intent(
-        record_id, quantity, "close-42", "test", order_contract=order_contract
+        record_id, quantity, "close-42", "test", order_contract=order_contract, previous_attempt=0
     )
 
     result = engine.place_order(

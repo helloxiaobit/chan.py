@@ -146,7 +146,8 @@ def test_post_only_reduce_limit_uses_the_native_maker_flag(order_db, tmp_path, v
     record = order_db.get_record(record_id)
     quantity, price, contract = trade.prepare_order(CODE, 0.03, 101, reduce_only=True, record=record, post_only=True)
     client_id = trade.make_client_order_id(record, "close")
-    assert order_db.acquire_close_intent(record_id, quantity, client_id, "maker exit", order_contract=contract)
+    assert order_db.acquire_close_intent(record_id, quantity, client_id, "maker exit", order_contract=contract,
+                                        previous_attempt=record["cover_attempt"])
     trade.place_order(CODE, False, quantity, price, reduce_only=True, post_only=True,
                       client_order_id=client_id, position_side="BOTH")
     native = trade.exchange.native_requests[-1]

@@ -256,3 +256,22 @@ C1 收尾清理计划：迁移校验由两份全表内存列表改为有序逐�
 - 最新关键组合 218 passed / 3 expected small-model warnings（53.08s），覆盖 63 recovery、36 units、47 venues、trade state/safety/M6、35 deployment。完整离线回归 `python -m pytest tests -m 'not network' --basetemp <new-temp-directory> -q --tb=short -p no:cacheprovider`：754 passed / 7 expected skipped / 1 network deselected / 14 existing model warnings，494.26s。运行期间未改源码、未启动第二套测试；最后只补充本记录及文档措辞，未重标旧树结果。
 - 文件：`Trade/CCXTTradeEngine.py`、`Trade/db_util.py`、`Trade/SqliteDB.py`、`tests/test_crypto_order_recovery.py`、`tests/test_crypto_order_contract.py`、`tests/test_trade_safety.py`、`README_FULL.md` 与本台账。清理掉单页通用查单、重复身份校验及 epsilon 抹零，未加新依赖/第二套订单状态机，未改配置或冻结研究资产。
 - 下一 C5 子边界先保护跨进程累计成交：raw report 绑定当前 client attempt/id，fill 的 read→write 增加乐观 CAS，旧终态回报不得回绕；用确定性交错与双 DB 连接先观察 RED，拒绝冲突且保留已知仓位。之后继续逐腿账户/持久化风险冻结/模拟账本。C6/C7 与真实交易所认证仍未完成，Goal active。
+
+### C5 第四子边界实施与清理计划：绑定回报与原子成交 CAS
+
+- 起始 clean `8fdc5233f1aac127b01bff46ff6bcaa97e5e9978`；上一 Goal turn 为有效进展。继续 Inline 串行，无外部账户、无正式研究、无新依赖。
+- 用两条真实 SQLite 连接在 fill 的 read→write 间插入更晚回报，先复现丢失更新和终态回绕；再复现旧 close client/id 回报污染下一次 close intent，以及开仓重复回报重置部分退出后的仓位。不以提交权 CAS 的单赢家替代成交事务证明。
+- 沿用现有 apply_open_fill/apply_close_fill 公式和生命周期。新合约回报必须携带原 client/id；在同一 SQL UPDATE 内提交 server id、raw status、累计成交及仓位，WHERE 比较原意图和关键账本快照。冲突不重下、不重算到另一个尝试，保留赢家。ACK 也绑定原 client，不能在查询期间换到后来 close attempt。
+- 清理 CTradeEngine 的多处 record_submission→apply 两次写入，所有实际下单/恢复/撤单确认用一个绑定 helper；旧无 contract 的股票/兼容 DB API 不冒称新合约认证。已处理终态的重复回报不能恢复成 active，重复 opening 回报不能抹掉真实退出；同量均价变异拒绝，不默默重写已知成交。
+- 先短小确定性交错 RED/GREEN，再覆盖真实 CCXT/fake I/O 的进程重启、取消/重试和安全/部署链。同一测试未结束前不编辑源码或启动其他测试；完成适用组合、compileall/diff/Lore 与授权快进推送后，仍继续账户/风险冻结和模拟账本，不关闭整个 Goal。
+
+### C5 第四子边界证据：同一尝试的原子成交和单调终态（C5 未完成）
+
+- 首组 9 RED：两条实际 SQLite 连接在 read→write 间插入更晚 fill/terminal，旧数据会覆盖赢家；已处理终态又被 open 重开；opening 重复回报把真实 partial exit 的 current_qty 从 6 恢复为 10；同量不同均价可重写。最小 CAS/终态修复后 32 项通过，再接身份与实际运行路径，不把单线程顺序幂等称作跨进程证明。
+- 新合约 apply/ACK/submission 写入均要求原 client/attempt/id；普通 TradeEngine 调用一个绑定 helper，删除各处 status→fill 的两次提交。fill 单 SQL 比较关键账本与双方尝试快照，连 id/status/数量一起提交；失配抛 LIST_ORDER_FAIL，restore/poll 保留赢家而不重下。旧 raw open 不能回绕已应用终态，opening 重复不改退出后仓位，full fill 后的晚到终态只补状态、不重置数量。
+- 两项真实 Native GET 交错 RED 证实旧 ACK 会附到新的 close attempt；再加同 client 重用的 ABA RED。ACK 比较 source attempt，即使 client 相同也不能串单。平仓准备前/中有另一次 zero-fill 尝试完成的 RED 后，输入 snapshot 与 intent CAS 都绑定 previous_attempt。旧手工 mark_open/mark_cover_order/mark_cover_done 对新规格记录在任何写入前拒绝；旧无规格兼容行为保留，未据此认证股票或 MySQL。
+- canonical 状态控制的 4 RED：DB 已知 canceled 时，旧 REST open 原本仍触发失败的重复撤单，阻断剩余仓位退出；现从已应用的同尝试 DB 状态决策。另 4 Native + 2 DB RED 证实 closed/不足量矛盾会被接收，现拒绝且不重试。6 项 NaN/Inf/bool 均价 RED 在写入前拒绝；已知单量不允许静默改价。
+- review 清单串行自审发现未持久化的 order-id 提示可绕过 discovery 证据；4 RED 后统一要求 client echo 与 UTC 创建时间，两个正例保留有完整证据的提示号恢复。按用户要求没有审查子代理，不能冒称独立审计。原有 maker 手动 intent 夹具补明确 previous_attempt；新市价重试夹具曾把 None 误编码成字面字符串，按实际原生数值修正，仅为夹具修复、不计生产 RED。
+- 最新适用组合：271 passed / 3 expected small-model warnings，58.73s；其中 53 新 report CAS、63 recovery、36 units、47 venue、trade state/safety/M6 与 35 deployment 全部通过。当前完整离线回归 `python -m pytest tests -m 'not network' --basetemp <new-temp-directory> -q --tb=short -p no:cacheprovider`：807 passed / 7 expected skipped / 1 network deselected / 14 existing model warnings，498.97s。同一进程结束前未改源码或启动第二套回归；此后仅补本文验收数字。
+- 文件范围：`Trade/db_util.py`、`Trade/TradeEngine.py`、`Trade/CCXTTradeEngine.py`、`tests/test_order_report_cas.py`、三处既有交易夹具、`README_FULL.md` 与本台账。没有新依赖或 schema，复用已有 counters/状态和 apply 公式，合并兼容 submission 实现并删除分步写入/旧 raw 状态决策。费用/资金费逐笔来源、每个历史 attempt 的持久证据、逐腿账户对账/风险冻结、完整模拟账户仍是后续 C5；不据此关闭整个 Goal。
+- 后续先检查 C4 `CCryptoAccount` 的可复用范围：它是独立成交 lot、固定费率/不利滑点的模拟账户，不能把已经执行的真实价再套一次滑点或把缺 fee 当 0。逐笔真实 trade/fee/funding 与每个历史 attempt 的不可变证据必须先落地，不能靠当前最后一个 cover 槽和 legacy 汇总均价完成现金流证明；旧来源不全时 fail closed，保留可证明的管理路径。仍未连接任何真实交易账户。
