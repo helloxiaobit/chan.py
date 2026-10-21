@@ -40,14 +40,15 @@ def test_a_later_fill_between_read_and_write_cannot_be_overwritten(databases, mo
     record_id = opening(db) if phase == "open" else closing(db)
     apply = db.apply_open_fill if phase == "open" else db.apply_close_fill
     apply_peer = peer.apply_open_fill if phase == "open" else peer.apply_close_fill
-    execute = db.db.execute
+    get_record = db.get_record
     winner = []
-    def interleave(sql, args=()):
-        if "SET status=?" in sql and not winner:
+    def interleave(key):
+        observed = get_record(key)
+        if not winner:
             apply_peer(record_id, 6, 101, "open")
             winner.append(peer.get_record(record_id))
-        return execute(sql, args)
-    monkeypatch.setattr(db.db, "execute", interleave)
+        return observed
+    monkeypatch.setattr(db, "get_record", interleave)
     with pytest.raises(CChanException) as caught:
         apply(record_id, 4, 101, "open")
     assert caught.value.errcode == ErrCode.LIST_ORDER_FAIL
@@ -61,14 +62,15 @@ def test_a_terminal_report_between_read_and_write_cannot_be_reopened(databases, 
     record_id = opening(db) if phase == "open" else closing(db)
     apply = db.apply_open_fill if phase == "open" else db.apply_close_fill
     apply_peer = peer.apply_open_fill if phase == "open" else peer.apply_close_fill
-    execute = db.db.execute
+    get_record = db.get_record
     winner = []
-    def interleave(sql, args=()):
-        if "SET status=?" in sql and not winner:
+    def interleave(key):
+        observed = get_record(key)
+        if not winner:
             apply_peer(record_id, 6, 101, "canceled")
             winner.append(peer.get_record(record_id))
-        return execute(sql, args)
-    monkeypatch.setattr(db.db, "execute", interleave)
+        return observed
+    monkeypatch.setattr(db, "get_record", interleave)
     with pytest.raises(CChanException):
         apply(record_id, 6, 101, "open")
     assert db.get_record(record_id) == winner[0]
@@ -145,6 +147,7 @@ def test_runtime_publishes_order_status_and_fill_in_one_atomic_update(databases,
         trade.add_trade(db.get_record(record_id), 100)
     else:
         trade.cover_trade(db.get_record(record_id), 101, "atomic close")
+    snapshots.append(peer.get_record(record_id))  # Include the transaction's committed projection.
     filled = "open_filled_qty" if phase == "open" else "cover_order_filled_qty"
     assert snapshots and snapshots[-1][filled] == 0.03
     assert all(row[filled] == row[f"{prefix}_requested_qty"] for row in snapshots if row[f"{prefix}_order_status"] == "closed")
@@ -186,9 +189,15 @@ def test_ack_from_a_query_cannot_attach_to_the_next_close_attempt(databases, tmp
     def advance_attempt_during_get():
         peer.apply_close_fill(record_id, 0.01, 101, "canceled", client_order_id=old_client, order_id=old.order_id, expected_attempt=1)
         quantity, _, contract = trade.prepare_order(CODE, 0.02, 102, reduce_only=True, record=peer.get_record(record_id))
-        assert peer.acquire_close_intent(record_id, quantity, old_client if reuse_client else "nextclose", "new attempt",
+        assert peer.acquire_close_intent(record_id, quantity, "nextclose", "new attempt",
                                          order_contract=contract, previous_attempt=1)
-        assert peer.claim_order_submission(record_id, "close")
+        if reuse_client:
+            # The public CAS now prohibits historical client reuse. Deliberately
+            # corrupt only the temp projection to retain the counter/ABA regression;
+            # no claim or journal write is permitted for this damaged identity.
+            peer.db.execute("UPDATE chan_trade SET cover_client_order_id=? WHERE id=?", (old_client, record_id))
+        else:
+            assert peer.claim_order_submission(record_id, "close")
         exchange.orders[old.order_id]["status"] = "canceled"
         winner.append(peer.get_record(record_id))
     exchange.before_read = advance_attempt_during_get

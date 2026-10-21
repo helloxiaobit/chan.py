@@ -275,3 +275,22 @@ C1 收尾清理计划：迁移校验由两份全表内存列表改为有序逐�
 - 最新适用组合：271 passed / 3 expected small-model warnings，58.73s；其中 53 新 report CAS、63 recovery、36 units、47 venue、trade state/safety/M6 与 35 deployment 全部通过。当前完整离线回归 `python -m pytest tests -m 'not network' --basetemp <new-temp-directory> -q --tb=short -p no:cacheprovider`：807 passed / 7 expected skipped / 1 network deselected / 14 existing model warnings，498.97s。同一进程结束前未改源码或启动第二套回归；此后仅补本文验收数字。
 - 文件范围：`Trade/db_util.py`、`Trade/TradeEngine.py`、`Trade/CCXTTradeEngine.py`、`tests/test_order_report_cas.py`、三处既有交易夹具、`README_FULL.md` 与本台账。没有新依赖或 schema，复用已有 counters/状态和 apply 公式，合并兼容 submission 实现并删除分步写入/旧 raw 状态决策。费用/资金费逐笔来源、每个历史 attempt 的持久证据、逐腿账户对账/风险冻结、完整模拟账户仍是后续 C5；不据此关闭整个 Goal。
 - 后续先检查 C4 `CCryptoAccount` 的可复用范围：它是独立成交 lot、固定费率/不利滑点的模拟账户，不能把已经执行的真实价再套一次滑点或把缺 fee 当 0。逐笔真实 trade/fee/funding 与每个历史 attempt 的不可变证据必须先落地，不能靠当前最后一个 cover 槽和 legacy 汇总均价完成现金流证明；旧来源不全时 fail closed，保留可证明的管理路径。仍未连接任何真实交易账户。
+
+### C5 第五子边界实施与清理计划：不可变尝试历史和事务性证据
+
+- 起始 clean `3b8de16144aa24cd6cb962f455c4846720d726f4`，上一轮为有效进展。继续串行、SQLite/fake I/O，不调用真实账户或正式研究。
+- 先为 SQLite 显式事务、内层 savepoint 和失败回滚写 RED。已有 execute 的单语句提交保持兼容；事务内不得提前 commit，日志追加失败时投影与历史一同回滚。将既有交错夹具放在实际 read→transaction 边界，不在已持写锁的 SQL 内伪造另一个同步写者。
+- 增加只记录事实的 order attempt/event 历史，而非第二套生命周期。新 intent 与不可变身份在同一事务登记，client 在整个历史中唯一；claim、ACK、已应用回报随当前投影原子追加。finite canonical、SHA/链、重复幂等及只追加约束由实际 SQLite 验证，读取时重新核验，不依赖 Python 缓存。
+- 历史只允许指定白名单字段，不记录密钥/请求头/任意错误响应。旧记录不回填“过去创建”事件；首次有合法观察或在覆盖前保存为 legacy_snapshot，保留未知时间/单位，不声称历史完整。所有 counter 的缺项和 legacy 来源在 reader 中显式暴露。这里仍无真实 trade/fee/funding 证明，不计算或开放正式研究绩效。
+- 替换 close 槽覆盖前的证据丢失，保留现有 intent/CAS/apply 公式和 MySQL disabled 边界；完成短夹具、原 trade/recovery/部署回归及 Lore 推送后，再接逐笔经济来源、逐腿账户、风险冻结和完整模拟账户。C5/C6/C7 未完成，Goal active。
+
+### C5 第五子边界证据：追加式尝试历史和同事务投影（C5 未完成）
+
+- SQLite 事务首轮 5 RED / 1 compatibility PASS：缺 transaction，以及失败单语句留下悬挂事务。显式 BEGIN IMMEDIATE、嵌套 savepoint、失败 rollback 后 6 GREEN；原单语句 execute 仍提交。初始化把原表补列与新增历史 schema 放在同一事务，同名异构表失败不遗留半次迁移，也不改动外来表。
+- 历史层首批 19 RED：覆盖 intent/claim/ACK/report、重复/失败 CAS 无追加、历史 client 跨 phase/attempt 重用、追加失败回滚投影、旧快照/缺项、重启和只追加约束。新增 OrderAudit 只记录白名单事实，依附原状态机而非第二套决策；新意图与不可变身份同时登记，旧 close 被覆盖前归档。当前执行查询仍只返回当前 intent，不把历史单当新单恢复入口。
+- 完整性追加测试确认并修复两个 RED：最后一条回报被离线删除、当前 client 被改写后，单看 SHA/尝试链不足；现同时核对历史尾部、当前身份和投影。串行自审再用 RED 证明下一回报会掩盖已有投影损坏，写入事务先验证原历史/投影，再执行 CAS。只追加 UPDATE/DELETE/REPLACE、canonical/链/序号损坏、规格漂移、不缓存返回对象、非有限值失败和双连接不可见性均有实际 SQLite 检查。哈希不冒称交易所签名或整体文件重写防护。
+- 真实 CCXT/fake I/O 的 Binance/OKX 部分平仓→终态→下一尝试保留完整旧规格与回报；新增两项 RED 找到白名单遗漏 CCXT precision.base/quote/cost 的显式 null，补齐后与完整 v2 字节一致。first-seen 时间与原 intent_ms 分开，旧 null 不猜 UTC；未知规格只保留安全字段/原 SHA 与 contract_complete=false。任意错误响应与 snapshot 不复制入历史，费用/资金费尚未接入，economics_complete 始终 false。
+- 两个既有“旧单”夹具原本在新意图已持久后原地清时钟/降 v1，现在准确视为身份损坏。改用共享临时 helper：仅复制旧主表且没有历史表，实际走迁移；验证旧时钟仍 null、已知 server id 可只读恢复、缺 v2 执行证据仍不能自动平仓。未为这项夹具修正计生产 RED，也未放宽新单身份。双进程 claim 检查只产生一条 claim 事件；原 CAS 交错移到 read→transaction 边界，避免在持写锁时伪造同步写者。
+- 最新定向验证：151 passed（20.37s），覆盖全部 35 history、6 transaction、63 recovery、47 venues。最终 trade/state/safety/recovery/部署组合 312 passed / 3 existing small-model warnings，60.40s。完整离线回归 `python -m pytest tests -m 'not network' --basetemp <new-temp-directory> -q --tb=short -p no:cacheprovider`：848 passed / 7 expected skipped / 1 network deselected / 14 existing model warnings，517.96s。此前 38 history/transaction（5.21s）适用于补写入前检查之前，未当作当前组合验收；一次错误部署测试文件名导致 0 tests，仅为命令错误。运行中未改源码、未启动第二套测试；之后只补本文数字和 README 迁移语义。
+- 文件范围：`Trade/OrderAudit.py`（新增）、`Trade/SqliteDB.py`、`Trade/db_util.py`，新增 `tests/test_order_audit_history.py` / `tests/test_trade_sqlite_transaction.py`，以及 `tests/test_order_report_cas.py`、`tests/test_crypto_order_contract.py`、`tests/test_crypto_order_recovery.py`、`tests/test_crypto_venue_parameters.py`、`README_FULL.md` 与本台账。复用一处事务写入入口和一个旧库复制夹具，不新增订单状态机或依赖；旧 binary 不维护新历史，回退先停写，禁止新旧写者混跑。
+- 本次仍没有真实 trade/fee/funding、逐腿账户对账/新风险持久冻结或完整 dry-run 账户，也没有真实交易所调用、正式研究/绩效读取。后续 C5 从每笔成交/手续费/资金费的独立来源接入和对账开始，再处理风险冻结/模拟链；C6/C7 与外部认证仍未完成。无新依赖、配置/权限/研究修改；按串行约束由主代理自审，不冒称独立审计。

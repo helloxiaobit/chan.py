@@ -7,7 +7,7 @@ import pytest
 from Common.ChanException import CChanException, ErrCode
 from Common.KLineTime import utc_now_ms
 from Trade.db_util import CChanDB
-from .test_crypto_order_contract import CODE, order_db
+from .test_crypto_order_contract import CODE, open_pre_journal_copy, order_db
 from .test_crypto_venue_parameters import CVenueExchange, venue_engine
 from .test_m6_trade import make_signal
 
@@ -323,9 +323,10 @@ def test_binance_history_windows_do_not_skip_the_original_intent_or_the_next_win
 def test_missing_legacy_utc_clock_stays_null_on_reopen_and_cannot_start_a_guessed_history(order_db, tmp_path):
     trade = recovery_engine(order_db, tmp_path, "okx")
     record_id = lose_open(trade)
-    order_db.db.execute(f"UPDATE {order_db.table} SET open_intent_ms=NULL WHERE id=?", (record_id,))
-    order_db.close()
-    reopened = CChanDB(db_conf={"type": "sqlite", "sqlite_path": str(tmp_path/"orders.db")})
+    # A genuine pre-journal store, not a damaged identity already recorded as new.
+    record = order_db.get_record(record_id)
+    record["open_intent_ms"] = None
+    reopened = open_pre_journal_copy(tmp_path, record)
     try:
         trade.chan_db = reopened
         trade.exchange.direct_not_found = True
@@ -338,6 +339,10 @@ def test_missing_legacy_utc_clock_stays_null_on_reopen_and_cannot_start_a_guesse
         trade.restore()
         assert reopened.get_record(record_id)["open_filled_qty"] == 0.01
         assert reopened.get_record(record_id)["open_intent_ms"] is None
+        history = reopened.get_order_history(record_id)
+        assert history["attempts"][0]["origin"] == "legacy_snapshot"
+        assert history["attempts"][0]["identity"]["intent_ms"] is None
+        assert history["gaps"]
     finally:
         reopened.close()
 
@@ -479,6 +484,9 @@ def test_two_processes_cannot_claim_the_same_submission(order_db, tmp_path):
         assert sorted([result.get(timeout=5), result.get(timeout=5)]) == [False, True]
         assert order_db.get_record(record_id)["open_order_status"] == "submitting"
         assert not order_db.claim_order_submission(record_id, "open")
+        history = order_db.get_order_history(record_id)
+        assert history["gaps"] == []
+        assert [event["kind"] for event in history["attempts"][0]["events"]] == ["intent", "claim"]
     finally:
         for process in processes:
             if process.is_alive():

@@ -1,5 +1,6 @@
 """交易库 sqlite 后端(默认;文件路径来自 config.yaml db.sqlite_path)"""
 import sqlite3
+from contextlib import contextmanager
 from typing import List, Optional, Tuple
 
 CREATE_TABLE_SQL = """
@@ -107,12 +108,23 @@ MIGRATION_COLUMNS = {
 
 class CSqliteDB:
     def __init__(self, db_path: str, table_name: str = "chan_trade"):
+        from .OrderAudit import SCHEMA, initialize_schema
+        if table_name in SCHEMA:
+            raise ValueError("Reserved order audit table")
         self.table_name = table_name
         self.conn = sqlite3.connect(db_path)
         self.conn.row_factory = sqlite3.Row
-        self.conn.execute(CREATE_TABLE_SQL.format(table_name=table_name))
-        self._migrate_state_machine()
-        self.conn.commit()
+        self._transaction_depth = 0
+        self.conn.execute("PRAGMA foreign_keys=ON")
+        self.conn.execute("PRAGMA recursive_triggers=ON")
+        try:
+            with self.transaction():
+                self.conn.execute(CREATE_TABLE_SQL.format(table_name=table_name))
+                self._migrate_state_machine()
+                initialize_schema(self.conn)
+        except BaseException:
+            self.conn.close()
+            raise
 
     def _migrate_state_machine(self) -> None:
         existing = {
@@ -159,9 +171,43 @@ class CSqliteDB:
 
     def execute(self, sql: str, args: Tuple = ()) -> int:
         # 返回 lastrowid(INSERT)或影响行数
-        cur = self.conn.execute(sql, args)
-        self.conn.commit()
+        try:
+            cur = self.conn.execute(sql, args)
+            if not self._transaction_depth:
+                self.conn.commit()
+        except BaseException:
+            if not self._transaction_depth:
+                self.conn.rollback()
+            raise
         return cur.lastrowid if sql.strip().upper().startswith("INSERT") else cur.rowcount
+
+    @contextmanager
+    def transaction(self):
+        """Publish related writes together; nested calls own only a savepoint."""
+        depth = self._transaction_depth
+        savepoint = f"chanpy_sp_{depth}"
+        if depth:
+            self.conn.execute(f"SAVEPOINT {savepoint}")
+        else:
+            if self.conn.in_transaction:
+                raise RuntimeError("Cannot adopt an unowned SQLite transaction")
+            self.conn.execute("BEGIN IMMEDIATE")
+        self._transaction_depth += 1
+        try:
+            yield
+            if depth:
+                self.conn.execute(f"RELEASE SAVEPOINT {savepoint}")
+            else:
+                self.conn.commit()
+        except BaseException:
+            if depth:
+                self.conn.execute(f"ROLLBACK TO SAVEPOINT {savepoint}")
+                self.conn.execute(f"RELEASE SAVEPOINT {savepoint}")
+            else:
+                self.conn.rollback()
+            raise
+        finally:
+            self._transaction_depth = depth
 
     def query(self, sql: str, args: Tuple = ()) -> List[dict]:
         return [dict(row) for row in self.conn.execute(sql, args)]

@@ -151,14 +151,33 @@ class CChanDB:
         return self.db.query(sql, args)
 
     # ===== 可恢复订单状态机 =====
-    def _write_fill(self, record, assignments, values):
+    def _order_write(self, record_id, prefix, kind, sql, args):
+        if self.db_type != "sqlite":
+            return self.db.execute(sql, args)  # Legacy only; no crypto migration certification.
+        from .OrderAudit import read_history, record_transition
+        with self.db.transaction():
+            before = self.get_record(record_id)
+            read_history(self.db, self.table, before)
+            changed = self.db.execute(sql, args)
+            if changed == 1:
+                record_transition(self.db, self.table, before, self.get_record(record_id), prefix, kind)
+        return changed
+
+    def get_order_history(self, record_id):
+        if self.db_type != "sqlite":
+            raise CChanException("MySQL 订单历史迁移/事务未认证", ErrCode.LIST_ORDER_FAIL)
+        from .OrderAudit import read_history
+        with self.db.transaction():
+            return read_history(self.db, self.table, self.get_record(record_id))
+
+    def _write_fill(self, record, prefix, assignments, values):
         # Compare the complete read/write ledger snapshot, including both
         # attempts. One SQL statement is atomic across independent connections;
         # never recompute a stale report against whichever attempt happens next.
         guards = " AND ".join(f"COALESCE({name}, ?)=?" for name in _FILL_CAS_FIELDS)
         observed = tuple(value for name, default in _FILL_CAS_FIELDS.items()
                          for value in (default, record[name] if record.get(name) is not None else default))
-        changed = self.db.execute(
+        changed = self._order_write(record["id"], prefix, "report",
             f"UPDATE {self.table} SET {assignments} WHERE id=? AND {guards}",
             (*values, record["id"], *observed),
         )
@@ -173,7 +192,7 @@ class CChanDB:
             raise CChanException("已应用终态与回报矛盾，禁止回绕", ErrCode.LIST_ORDER_FAIL)
         # A fully filled order may report its final status later. Confirm it
         # without resetting current_qty after an actual partial/final exit.
-        self._write_fill(record, f"{prefix}_order_status=?, order_last_update=?", (raw_status, now_str()))
+        self._write_fill(record, prefix, f"{prefix}_order_status=?, order_last_update=?", (raw_status, now_str()))
         return 0.0
 
     @staticmethod
@@ -223,7 +242,7 @@ class CChanDB:
             raise CChanException("MySQL 订单单位契约迁移尚未验收", ErrCode.TRADE_UNLOCK_FAIL)
         contract_clause = ", open_order_contract=?, open_intent_ms=?" if self.db_type == "sqlite" else ""
         contract_args = (canonical_bytes(order_contract).decode() if order_contract is not None else None, utc_now_ms()) if contract_clause else ()
-        changed = self.db.execute(
+        changed = self._order_write(record_id, "open", "intent",
             f"UPDATE {self.table} SET status='submitted', "
             "open_client_order_id=?, open_requested_qty=?, "
             "open_filled_qty=0, current_qty=0, "
@@ -261,7 +280,7 @@ class CChanDB:
         observed_client = record.get(f"{prefix}_client_order_id") or ""
         observed_attempt = record.get(f"{prefix}_attempt") or 0
         states = "('submitted', 'partially_filled')" if phase == "open" else "('closing')"
-        changed = self.db.execute(
+        changed = self._order_write(record_id, prefix, "ack",
             f"UPDATE {self.table} SET {prefix}_order_id=?, order_last_update=? WHERE id=? "
             f"AND status IN {states} AND {prefix}_order_status='submitting' AND {prefix}_order_id IS NULL "
             f"AND COALESCE({prefix}_client_order_id, '')=? AND COALESCE({prefix}_attempt, 0)=?",
@@ -308,7 +327,7 @@ class CChanDB:
 
     def claim_order_submission(self, record_id: int, phase: str) -> bool:
         if phase == "open":
-            changed = self.db.execute(
+            changed = self._order_write(record_id, "open", "claim",
                 f"UPDATE {self.table} SET open_order_status='submitting', "
                 "order_last_update=? WHERE id=? "
                 "AND status IN ('submitted', 'partially_filled') "
@@ -316,7 +335,7 @@ class CChanDB:
                 (now_str(), record_id),
             )
         elif phase == "close":
-            changed = self.db.execute(
+            changed = self._order_write(record_id, "cover", "claim",
                 f"UPDATE {self.table} SET cover_order_status='submitting', "
                 "order_last_update=? WHERE id=? AND status='closing' "
                 "AND cover_order_status='created' AND cover_order_id IS NULL",
@@ -340,7 +359,7 @@ class CChanDB:
         record = self.get_record(record_id)
         self._fill_identity(record, prefix, client_order_id, order_id, expected_attempt)
         states = "('submitted', 'partially_filled')" if prefix == "open" else "('closing')"
-        changed = self.db.execute(
+        changed = self._order_write(record_id, prefix, "submission",
             f"UPDATE {self.table} SET {prefix}_order_id=?, {prefix}_order_status=?, order_last_update=? WHERE id=? "
             f"AND status IN {states} AND ({prefix}_order_id IS NULL OR {prefix}_order_id=?) "
             f"AND COALESCE({prefix}_client_order_id, '')=? AND COALESCE({prefix}_attempt, 0)=?",
@@ -405,7 +424,7 @@ class CChanDB:
         peak = rec.get("peak_price_after_open")
         if filled and peak is None:
             peak = open_price
-        self._write_fill(rec,
+        self._write_fill(rec, "open",
             "status=?, is_open=?, watching=?, "
             "open_filled_qty=?, current_qty=?, quota=?, open_price=?, "
             "open_date=?, peak_price_after_open=?, open_order_status=?, open_order_id=?, "
@@ -455,7 +474,7 @@ class CChanDB:
             raise CChanException("MySQL 订单单位契约迁移尚未验收", ErrCode.TRADE_UNLOCK_FAIL)
         contract_clause = ", cover_order_contract=?, cover_intent_ms=?" if self.db_type == "sqlite" else ""
         contract_args = (canonical_bytes(order_contract).decode() if order_contract is not None else None, utc_now_ms()) if contract_clause else ()
-        changed = self.db.execute(
+        changed = self._order_write(record_id, "cover", "intent",
             f"UPDATE {self.table} SET status='closing', "
             "cover_client_order_id=?, cover_requested_qty=?, "
             "cover_order_filled_qty=0, cover_order_avg_price=NULL, "
@@ -553,7 +572,7 @@ class CChanDB:
             next_status = "open"
             is_open = 1
             watching = 1
-        self._write_fill(rec,
+        self._write_fill(rec, "cover",
             "status=?, is_open=?, watching=?, "
             "current_qty=?, cover_order_filled_qty=?, "
             "cover_order_avg_price=?, cover_filled_qty=?, cover_avg_price=?, "

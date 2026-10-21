@@ -11,7 +11,7 @@ from CustomBuySellPoint.Decision import canonical_bytes
 from Common.ChanException import CChanException
 from Trade.CCXTTradeEngine import CCCXTTradeEngine
 from Trade.OpenQuotaGen import CBenchPriceQuotaGen
-from .test_crypto_order_contract import CODE, COfflineExchange, market, order_db
+from .test_crypto_order_contract import CODE, COfflineExchange, market, open_pre_journal_copy, order_db
 from .test_m6_trade import make_signal
 from .test_trade_safety import enabled_trade_conf, write_candidate_receipt
 
@@ -207,11 +207,18 @@ def test_v1_units_remain_readable_but_cannot_silently_supply_missing_execution_s
     contract = json.loads(order_db.get_record(record_id)["open_order_contract"])
     contract["schema"] = "chan-ccxt-order-v1"
     del contract["execution"], contract["account_observation"], contract["post_only"]
-    replace_contract(order_db, record_id, contract)
-    assert trade.query_order(CODE, order.order_id).filled == pytest.approx(0.03)
-    with pytest.raises(CChanException):
-        trade.cover_trade(order_db.get_record(record_id), 101, "v1 needs explicit execution migration")
-    assert len(trade.exchange.created) == 1
+    contract["contract_id"] = hashlib.sha256(canonical_bytes({k: v for k, v in contract.items() if k != "contract_id"})).hexdigest()
+    record = order_db.get_record(record_id)
+    record["open_order_contract"] = canonical_bytes(contract).decode()
+    legacy = open_pre_journal_copy(tmp_path, record)
+    try:
+        trade.chan_db = legacy
+        assert trade.query_order(CODE, order.order_id).filled == pytest.approx(0.03)
+        with pytest.raises(CChanException):
+            trade.cover_trade(legacy.get_record(record_id), 101, "v1 needs explicit execution migration")
+        assert len(trade.exchange.created) == 1
+    finally:
+        legacy.close()
 
 
 @pytest.mark.parametrize("method", ["fetch_position_mode", "fetch_leverage"])

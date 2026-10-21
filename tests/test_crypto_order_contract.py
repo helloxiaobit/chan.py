@@ -1,6 +1,7 @@
 """真实 CCXT precision + fake 交易 I/O + SQLite；无网络请求。"""
 import copy
 import json
+import sqlite3
 from decimal import localcontext
 
 import ccxt
@@ -15,6 +16,16 @@ from .test_m6_trade import make_signal
 from .test_trade_safety import enabled_trade_conf, write_candidate_receipt
 
 CODE = "TEST/USDT:USDT"
+
+
+def open_pre_journal_copy(tmp_path, record):
+    """Only a temp legacy main table, with no synthetic past audit records."""
+    from Trade.SqliteDB import CREATE_TABLE_SQL
+    path = str(tmp_path/"pre-journal-orders.db")
+    with sqlite3.connect(path) as conn:
+        conn.execute(CREATE_TABLE_SQL.format(table_name="chan_trade"))
+        conn.execute(f"INSERT INTO chan_trade({','.join(record)}) VALUES({','.join('?' for _ in record)})", tuple(record.values()))
+    return CChanDB(db_conf={"type": "sqlite", "sqlite_path": path})
 
 
 def market(*, spot=False):
