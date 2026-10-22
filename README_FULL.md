@@ -309,6 +309,14 @@ pwsh -File Trade/Script/update_data_signal.ps1 Config/config.yaml runs/cycle-003
 同一次 SQLite 只读事务检查全部配置 symbol/level 的 closed rows，并对完整 OHLCV（含 volume）、
 scope、配置、策略/输入检查代码与 Python 身份生成摘要；相同水位但数据已修订也必须拒绝复用。
 信号生成后再次核验，开仓子进程必须接收原运行的三个摘要，不能以新有效数据替换旧批次的输入。
+
+开仓输入的质量检查和 raw OHLCV 摘要使用逐行 SQLite cursor；旧 `query_klines` 仍返回列表，
+新 `iter_klines` 保留相同排序及 `[begin_ts,end_ts)` 区间，提前停止时调用 `close()`。
+核验仍扫描全部历史，不截断、缓存或只比较水位；每个 closed row 的 canonical 字节加原数组分隔符
+增量送入 SHA256，结果必须与旧整数组摘要完全相同，同一只读事务内保持质量/摘要快照一致。
+仅该输入核验的常驻 Python 内存不随行数增长；不是全引擎、完整账本重验或运行时延的容量认证。
+本次检查代码身份改变，旧模型/部署须按原发布流程评估兼容性，不能重封旧产物冒充原身份。
+
 `MakeOpenTrade` 命令入口现在要求运行壳元数据，不再支持无上下文的独立命令开仓；
 程序库的原直接调用与股票路径保留兼容，但没有检查器就不能宣称已通过本输入检查。
 

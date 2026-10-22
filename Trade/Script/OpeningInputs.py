@@ -5,6 +5,7 @@ import math
 import re
 import copy
 import platform
+from contextlib import closing
 from pathlib import Path
 
 from Common.CEnum import KL_TYPE
@@ -101,9 +102,18 @@ def inspect_opening_inputs(env, *, now_ms):
                     item = market.inspect_quality(code, level, now_ms=now_ms)
                     if not item["ready"]:
                         _fail()
-                    rows = [row for row in market.query_klines(code, level) if bar_close_ms(row[0], level) <= now_ms]
-                    manifests.append({"code": code, "level": name, "rows_sha256": _sha(rows),
-                        "count": len(rows), "latest_close_ms": item["latest_close_ms"]})
+                    # Exactly canonical_bytes(all_closed_raw_rows), hashed without retaining the array.
+                    digest, count = hashlib.sha256(b"["), 0
+                    with closing(market.iter_klines(code, level)) as rows:
+                        for row in rows:
+                            if bar_close_ms(row[0], level) <= now_ms:
+                                if count:
+                                    digest.update(b",")
+                                digest.update(canonical_bytes(row))
+                                count += 1
+                    digest.update(b"]")
+                    manifests.append({"code": code, "level": name, "rows_sha256": digest.hexdigest(),
+                        "count": count, "latest_close_ms": item["latest_close_ms"]})
                     quality.append(item)
         return {"scope": scope, "quality": quality, "scope_sha256": _sha(scope),
                 "inputs_sha256": _sha({"scope": scope, "manifests": manifests})}

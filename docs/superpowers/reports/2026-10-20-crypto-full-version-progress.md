@@ -611,3 +611,17 @@ C1 收尾清理计划：迁移校验由两份全表内存列表改为有序逐�
 - 文件范围为 tests/test_deployment_workflow.py、tests/test_configured_paper_workflow.py、README_FULL.md 与本台账；无生产源码/依赖/配置/权限/规则/冻结研究变更，也不增加可选包。独立 PaperRehearsal 仍固定 Binance，当前通过只扩充默认软件路径的实际适用证据。主代理串行审查，不称独立审计；编译/差异/精确提交后复验与远端核验通过才推送。
 - C5 原生完整账户/mark/book/交易所语义、C6 多币/更多策略/双向完整整轮、候选换代（待确认）/容量/迁移，以及 C7 外部认证均保留未完成，Goal active；不因软件通用路径直接通过而降低真实账户门槛。
 - 终局 JUnit 复核：3.14 适用组合 364 tests、3.11 双 venue 8 tests，均 failures=errors=skipped=0；XML SHA 分别 `8cbecd5b2c01f00366ebc87da2b05438b0dc2a7f649148536aeb35ca6fee64ed` / `f54af4bbb11985f0332c379d91abe440c48a616e606c6c89541864c51053f916`。两解释器 compileall 与 git diff --check 通过，生产目录与 928fecf 的 diff 为空；本轮没有改变模型/部署代码指纹，不需为了测试复用重封或迁移旧资产。
+
+### C6 全历史输入有界内存核验：实施与清理计划
+
+- 起始 dc5a7c9e12b611ecdb8abdede5b52fef9843a72b 已推送/clean，无活测试进程。确认 inspect_quality 先 query_klines 全量列表、再 closed 列表，inspect_opening_inputs 随后再次全量加载；本轮只去掉这些重复常驻历史列表，不缩短历史、采样或跳过任何字段。
+- 复用 CKLineDB 原 SQL 排序/区间和 validate_ohlcv_page 单行＋previous_open 验证；新增可关闭的逐行 cursor，旧 query_klines 仍返回同样的 list。质量收据形状、来源/停牌/缺口/陈旧优先级、UTC 月/周线与完整尾 K 判定保留。
+- 输入摘要仍在同一只读 SQLite 事务扫描全部 closed raw rows，用现有 canonical_bytes 逐行加原数组括号/逗号送入 SHA256，必须逐字节等于旧 canonical 整数组摘要，原 count/latest_close/scope/receipt 不变。不新增通用 JSON 框架、依赖、配置预算或缓存；代码身份正常变化，旧模型/部署不得重封伪装兼容。
+- 先以真实临时 SQLite 观察缺 iterator/拒绝 bulk query 的 RED，再最小改动；固定小夹具对照旧算法的质量与整份输入摘要，覆盖区间、全部 OHLCV 字段、月线闰年/跨年、partial tail、历史坏行与来源。以合成大历史的实际 tracemalloc 增量约束防止 list(iterator) 回归，不以墙钟耗时作不稳定门槛。
+- 适用数据/输入/报价/调度与真实默认 paper 回归、双解释器、compileall/diff、主代理串行自审、Lore/精确提交/快进远端核验；测试活进程不编辑任何文件。不接真实行情/账户/通知、冻结研究或用户配置。原生准入、待批候选换代和 C7 仍保持门禁，完成本子项不关闭 Goal。
+- 已观察 15 个预期 RED（缺 iter_klines；旧核验调用整历史 query_klines 被明确拒绝），不是环境失败。最小实现保留旧 list API，质量逐行复用原验证器；摘要只加原 canonical 数组括号/逗号，无第二套 JSON 编码或金融公式。
+- 新增 22 项真实 SQLite 回归：原区间排序/提前关闭；ready/no_data/gap/stale/unknown_source/inactive 与坏价/非有限量/错位/partial 的旧收据全字节相同；小时跨日、周/月闰年和跨年、原始 nullable volume 均与旧整数组摘要相等；所有 OHLCV 列的历史修改仍必漂移。WAL 并发修订发生在质量与摘要之间时，同一只读事务不混入后来的值。
+- 首轮 3.14 数据/输入/调度组合 148 passed（24.21s）；随后 3.11.15 同组合加原 M5 数据路径 160 passed / 1 network deselected（24.45s），均明确 exit=0。后者 JUnit 160 tests、0 failures/errors/skipped；24→50,000 行实际 tracemalloc 峰值 448810→448909 bytes，增长 99 bytes，旧列表最低会占数 MiB。此数字只覆盖 Python 输入核验分配，不代表 SQLite native cache、整引擎 RAM 或时延预算；大历史早期坏行依旧拒绝，未截历史。
+- 最后隔离 CPython 3.14.2 完整命令 `python -m pytest tests -m 'not network' --basetemp <new-temp-directory> -p no:cacheprovider --junitxml <temp-report.xml> -q --tb=short`：1608 passed / 8 skipped / 1 network deselected / 19 existing model/LibSVM warnings，867.95s，明确 exit=0。运行中无源/测试/文档编辑、无并发长任务；包含 Binance/OKX 实际默认 CLI/模型/paper 重启路径与原 C4 账本，并未执行正式研究或真实交易所 I/O。
+- 完整 JUnit 确认 1616 tests、0 failures/errors、8 skipped，SHA `3ddedbe7de15c8b215ef29e7f9c58ebc013d5ea3e71ce2cec45050aa6becbc03`；3.11 组合 XML SHA `2d56f44dccff908cf488221985318bead0f6a51375ac550e5dcdbe0931d7e220`。3.14 同一容量断言峰值 572193→572316 bytes，仅增长 123 bytes；不同解释器/测试上下文的绝对常量不作横向性能比较。8 skip 为六项外部正式研究、未安装可选 PyQt 和 Binance isolated 缺原生现金通道，仍不提升为认证。
+- 两解释器主动屏蔽 ccxt/xgboost/lightgbm/sklearn/optuna/yaml/PyQt6 后，核心导入与真实内存 SQLite iterator/quality 均 PASS。文件范围仅 OfflineData/offline_data_util.py、Trade/Script/OpeningInputs.py、tests/test_streaming_opening_inputs.py、README_FULL.md 与本台账；没有用户配置/规则/权限/依赖或冻结研究变更。主代理按清单串行自审，不称独立审计；原状态机/账本/公式不变，无缓存/历史裁剪，C5/C6/C7 尚未整体完成，Goal active。

@@ -10,7 +10,7 @@ from pathlib import Path
 from contextlib import closing
 from itertools import zip_longest
 from datetime import datetime, timezone
-from typing import Iterable, List, Optional, Tuple, Union
+from typing import Iterable, Iterator, List, Optional, Tuple, Union
 
 from Common.CEnum import KL_TYPE
 from Common.ChanException import CChanException, ErrCode
@@ -97,6 +97,16 @@ class CKLineDB:
         begin_ts: Optional[int] = None,
         end_ts: Optional[int] = None,
     ) -> List[ROW_TYPE]:
+        return list(self.iter_klines(symbol, lv, begin_ts, end_ts))
+
+    def iter_klines(
+        self,
+        symbol: str,
+        lv: Union[KL_TYPE, str],
+        begin_ts: Optional[int] = None,
+        end_ts: Optional[int] = None,
+    ) -> Iterator[ROW_TYPE]:
+        """Ordered raw rows without a retained history; close on exhaustion or iterator.close()."""
         sql = "SELECT ts, o, h, l, c, v FROM kline WHERE symbol=? AND lv=?"
         args: list = [symbol, lv_name(lv)]
         if begin_ts is not None:
@@ -106,7 +116,8 @@ class CKLineDB:
             sql += " AND ts<?"
             args.append(end_ts)
         sql += " ORDER BY ts ASC"
-        return list(self.conn.execute(sql, args))
+        with closing(self.conn.execute(sql, args)) as cursor:
+            yield from cursor
 
     def last_ts(self, symbol: str, lv: Union[KL_TYPE, str]) -> Optional[int]:
         row = self.conn.execute(
@@ -123,25 +134,30 @@ class CKLineDB:
         return list(self.conn.execute("SELECT DISTINCT symbol, lv FROM kline"))
 
     def inspect_quality(self, symbol, lv, *, now_ms, market_active=None):
-        rows = self.query_klines(symbol, lv)
-        closed = [r for r in rows if bar_close_ms(r[0], lv) <= now_ms]
-        status = "ready"
-        if not self.source_identity:
-            status = "unknown_source"
-        elif market_active is False:
-            status = "inactive"
-        elif not closed:
-            status = "no_data"
-        else:
-            try:
-                validate_ohlcv_page(closed, lv)
-            except CChanException:
-                status = "gap"
-            if status == "ready" and bar_close_ms(bar_close_ms(closed[-1][0], lv), lv) <= now_ms:
+        source = self.source_identity
+        status = "unknown_source" if not source else "inactive" if market_active is False else "ready"
+        count, latest_close, previous_open = 0, None, None
+        with closing(self.iter_klines(symbol, lv)) as rows:
+            for row in rows:
+                close_ms = bar_close_ms(row[0], lv)
+                if close_ms > now_ms:
+                    continue
+                count += 1
+                latest_close = close_ms
+                if status == "ready":
+                    try:
+                        validate_ohlcv_page((row,), lv, previous_open=previous_open)
+                    except CChanException:
+                        status = "gap"
+                previous_open = row[0]
+        if status == "ready":
+            if not count:
+                status = "no_data"
+            elif bar_close_ms(latest_close, lv) <= now_ms:
                 status = "stale"
-        return {"status": status, "ready": status == "ready", "source": self.source_identity,
-                "symbol": symbol, "timeframe": lv_name(lv), "closed_count": len(closed),
-                "latest_close_ms": bar_close_ms(closed[-1][0], lv) if closed else None}
+        return {"status": status, "ready": status == "ready", "source": source,
+                "symbol": symbol, "timeframe": lv_name(lv), "closed_count": count,
+                "latest_close_ms": latest_close}
 
     def close(self):
         self.conn.close()
