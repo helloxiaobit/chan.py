@@ -412,6 +412,12 @@ minio/txcos SDK 或签名 URL 失败会抛固定脱敏异常，缺可选依赖�
 调用者须保证只读身份 GET 在 DB 写锁外，不能把 helper 没有创建事务理解成它能检测外部持有的锁。
 新增 149 项政策/使用用例，连同来源及原账户/订单/壳/报价适用组合，两版 Python 各 886 passed / 1 既有 isolated 通道 skip；
 真实 I/O、C7 认证及完整 S2/S3/S4 尚未完成，默认非 dry-run 开仓阻断仍保留。
+后续 `assert_native_persisted_interval` 只按原持久 check ID，在原 SQLite transaction/savepoint 内重读原来源、
+全部 trade-shaped 历史/投影及 sticky freeze；已有更新账户快照或同钟不同快照时，旧检查失效，不按 SHA 选择来源。
+当前 after、wallet 原采集窗口与 execution 原 manifest 的 native observation 共同计龄，不用历史覆盖区间或较晚 DB 导入时间刷新来源。
+独立 mark 必须与非零原持仓 mark 精确相等；事务释放/最终字节核验耗时也在使用预算内。
+新增 56 项，两版适用回归各 1103 passed / 1 既有 isolated 通道 skip；这是 DB-only 检查，不做网络或新写入、仍仅返回 None。
+未决原生单/余额预占、完整当前金融闭合、每单原 CAS/HTTP 消费和容量验证仍待，不能将其当成 fresh-admission 或用来删除常量阻断。
 版本化 API 见下文，本入口的命令完成状态不是完整验收或生产授权。
 
 非 dry-run 还必须同时满足以下门禁：

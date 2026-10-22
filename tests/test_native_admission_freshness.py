@@ -114,7 +114,7 @@ def test_explicit_zero_bounds_are_preserved_as_strict_zero_not_replaced_with_def
 NOW = 1_800_000_000_000
 
 
-def source_bundle(monkeypatch, venue, *, mode="testnet", legs="hedged", exchange_id=None):
+def source_bundle(monkeypatch, venue, *, mode="testnet", legs="hedged", exchange_id=None, capture=True):
     """Original collectors, complete native wire structures, two actual markets."""
     client, positions, account, settings, requests, profiles = snapshot_client(monkeypatch, venue)
     if exchange_id == "binanceusdm":
@@ -192,9 +192,11 @@ def source_bundle(monkeypatch, venue, *, mode="testnet", legs="hedged", exchange
     for module in ("Trade.AccountSources", "Trade.NativeMarketEvidence", "Trade.NativeAdmission"):
         monkeypatch.setattr(module+".utc_now_ms", lambda: clock["now"], raising=False)
     unit_keys = ("exchange", "id", "symbol", "type", "base", "quote", "settle", "contractSize")
-    snapshot = collect_account_snapshot(client, [{k: m[k] for k in unit_keys} for m in markets], mode=mode)
-    evidence = collect_native_market_evidence(client, markets, mode=mode)
-    clock["now"] = NOW
+    snapshot = evidence = None
+    if capture:
+        snapshot = collect_account_snapshot(client, [{k: m[k] for k in unit_keys} for m in markets], mode=mode)
+        evidence = collect_native_market_evidence(client, markets, mode=mode)
+        clock["now"] = NOW
     return {"client": client, "mode": mode, "markets": markets, "account_snapshot": snapshot, "market_evidence": evidence,
             "policy": explicit_policy(), "clock": clock, "requests": requests, "profiles": profiles,
             "native_positions": positions, "native_account": account}

@@ -120,3 +120,11 @@ JUnit：154 tests，0 failures/errors/skipped；SHA256 `979105764da300cdbc9669d1
 
 [NativeAdmission](../../../Trade/NativeAdmission.py) 已实现完整显式毫秒政策 reader，以及原账户/S1 市场观察的当前身份/metadata/年龄/跨度/时差断言。测试仍沿原 collectors＋fake native 运输，不把 raw summary 的重封 SHA 当来源认证；输入在读取 profile 期间变化会拒绝，最终字节核验耗时也计入使用预算。
 新增 149 项，两版 Python 的适用原账户/订单/门禁组合各 886 passed / 1 既有 Binance isolated 通道 skip。该断言只返回 None，未接入开仓，不验证 wallet/execution 覆盖、原全账本/冻结、未决原生预占或 CAS；需要由后续完整消费者自己采集/关联，不接受外部 passed 布尔值。旧常量门禁、原 evidence flags=false 与候选/实盘/研究审批均不变，Goal 尚未完成。
+
+## 10. S2b1 原持久区间来源的 DB-only 使用检查
+
+`assert_native_persisted_interval` 接受原 check ID，在原 SQLite transaction/savepoint 的同一视图重读 check/source/history 与完整当前 trade-shaped 投影，检查 sticky freeze；不信 caller 的 report/PASS，不增加表或改写原 v1 证据。扫描年龄来自 wallet 原采集起止与 execution 原 manifest.native_account，历史覆盖范围、导入时刻不能代替原生观察起点。before 仍为历史锚点，after 才是当前账户点；所有当前来源共同检查预算，非零持仓 mark 与独立 mark 使用原 Fraction 数值规则精确比较，无金额容差。
+
+TTL 未过也不能重用被同一稳定原生账户的新 snapshot 取代的旧 current 点；尚未组成 report 的新来源也不能忽略。同 finished 的完整 snapshot 不同则歧义拒绝，不按 ID/导入顺序择优。原 reader 在完整行核验后才关联账户，受损索引不能隐藏新来源。事务释放及最终输入字节核验耗时计入预算；释放后数据库当然还可能变化，未来原 CAS 内必须重新校验，不能把本次 None 当可携带的授权。
+
+新增 56 项离线用例，原政策/使用 149 项保持通过；两版解释器各 1103 passed / 1 既有 Binance isolated 通道 skip（适用组合，不是新全仓结果）。核心子进程屏蔽 ccxt/模型/yaml/GUI/图床依赖仍可读原持久检查；其路径环境为显式临时注入，不读取实际配置。无网络、订单或冻结新写入；金融失败仍须通过原 reconcile_account 持久发布。原报告对 unresolved_attempt 的 incomplete 与所有 flags=false 均不放宽；此步未认证原生未决单/余额预占、完整金融闭合、CAS/HTTP 或真实服务。全历史重读容量尚未验证，S2/S3/S4、C7 和 Goal 均未完成。

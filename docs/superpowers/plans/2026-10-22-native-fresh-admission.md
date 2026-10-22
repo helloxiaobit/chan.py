@@ -48,6 +48,19 @@
 
 下一依赖仍是 S2b：原 wallet/execution 的观察窗口与覆盖、全 trade-shaped 历史/持久冻结及当前账户经济闭合、原生未决单/预占归属；不得把 S2a 的 None 或完整政策格式代替这些证据。之后才是 S3 原 CAS 每单消费与 S4 默认入口 E2E。
 
+### S2b1 原持久区间来源的使用检查（已实现，限 DB-only 子边界）
+
+- 在原 NativeAdmission 内新增 `assert_native_persisted_interval(chan, *, account_context, check_id, market_evidence, policy)`，只接受原持久 check ID，不接受 caller 的 passed/report 或换写 source IDs。成功仍返回 None，不发布新证明，也不写冻结/订单/账本；完整失败发布继续由原 reconcile_account 负责，不能将此 helper 作为完整消费者接入。
+- 复用 AccountRiskStore.read_check/risk_state/_ledger 和 ExecutionStore.read_scan_with_account；沿原 SQLite transaction/savepoint，在同一个 DB 视图核原报告 raw 重算、原来源/完整历史、当前所有 trade-shaped 表及 sticky freeze。原报告必须 matched_observations；当前整份 histories/projections 与所选原 check 不同就失效，不能靠旧 PASS 覆盖后来变更。其他账户活动可能使该全 DB 证明失效，需要重新对账，不自动排除未知归属。
+- 账户当前点为 after；before 是已验证历史锚点，不把其历史年龄、扫描历史 start/end 或 DB 导入 observed_ms 当成当前来源时钟。wallet 年龄/跨度取原 receipt.started/finished，execution 取原 manifest.native_account.started/finished，缺 native observation 不回填。两种扫描仍须按原报告覆盖完整 [before.started, after.finished+1) 及所有市场，不能只核候选。
+- 当前 after/market/wallet/execution 的年龄、自身跨度、联合使用跨度及来源时差使用同一显式政策；mark/book 同时核原 native 时钟和请求开始。原持仓非零时，其 after mark 与独立 mark 要精确相等，不提供容差或修改原 mark_ms=None。环境共用字段、venue/mode/完整市场单位保持原身份；实际当前 SDK/profile 仍由锁外 S2a 与未来每单消费核验，此 DB-only 检查绝不做网络。
+- 清理/复用计划：把 S2a 已有纯时间/盘口使用检查最小提取为私有 helper，S2a 明确传空 wallet/execution（不宣称检查它们），S2b1 必须传原 check 中完整扫描；不复制 raw/金融公式、不改旧 schema/字段/交易或失败发布语义。149 项现有使用回归保护非行为提取，新增 DB-only 阶段先缺函数 RED。
+- 用原真实 collectors、原订单状态机和 SQLite 构造两币非空仓位（contractSize .01/.1、单双向），扫描事实区间无新增交易但覆盖真实历史锚点；并验证源窗口缺失/原生观察缺失、DB 导入不能刷新年龄、当前表/历史/跨连接冻结、重启、嵌套事务、零行写入、核心无 SDK及原门禁。原金融 v1 对未决单的 incomplete 保持不变；原生未决单/预占及新消费者还未完成，不能把本步骤包装成它们通过。
+- 补充当前性回归：TTL 内旧检查也不能覆盖同一稳定原生账户已持久保存的更新 snapshot；更新来源即使尚未组成 report 也要失效旧检查。同一 finished 时刻存在不同完整 snapshot 字节时拒绝歧义，不按 SHA 或导入顺序择优；不自动选择/批准最新检查。沿原 AccountStore reader 校验完整行后再按原 account_key 关联，不能只筛可能被篡改的索引。更晚/同钟证据的测试沿实际 collectors/store/reconcile，未变经济值也不能续用旧 current 点。
+- 测试复用计划：最小提取已有 fixture 的执行/钱包真实采集管线用于第二段区间，原用例继续保护；为父/子测试进程显式注入无文件的 CEnv 路径环境，避免旧 CChanDB 构造器尝试默认 YAML，不修改原构造器或任何实际配置，也不放宽无 SDK/可选依赖的断言。
+
+实施证据：原缺函数 RED→最小实现；两项真实事务释放延时 RED→将最终时间/字节检查移到所拥有的 transaction/savepoint 退出后。随后 8 项真实 RED 证明 TTL 内新 snapshot（含未组成报告者）、同 finished 时刻的不同 snapshot 及受损索引不能被旧检查忽略，补原 AccountStore reader 的完整校验后 GREEN。新增 56 项＋149 原政策/使用项共 205 passed；CPython 3.14.2 / 3.11.15 的扩展适用组合各 1103 passed / 1 既有 isolated 通道 skip，详见台账。不声称全仓重跑或独立审核。后续仍须原生未决单/预占、完整当前金融消费者、原 CAS/HTTP 与默认入口，不能围绕此无未决成交的区间 fixture 缩减主计划。
+
 ## S3 原 intent/CAS 与 HTTP 每单消费
 
 文件：CCXTTradeEngine、OrderAudit、db_util 及对应原状态机回归。
