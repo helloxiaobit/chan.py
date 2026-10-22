@@ -134,3 +134,11 @@ TTL 未过也不能重用被同一稳定原生账户的新 snapshot 取代的旧
 新增 NativePendingOrders，独立读取 Binance fapi 普通/conditional 与 OKX 普通/八种 algo 通道；后者精确 native ID after 分页，缺页、重复、不前进、预算耗尽整批失败。每页前后原 typed profile 与当前 route/TLS/SDK 相同，保留原响应允许字段、请求/本地窗口和订单 mutation 时间。数据不是原子全账户快照，普通单列表为空也不意味着无预占。
 
 复用原市场/单位/Decimal/身份边界；普通单归一化数量，未知市场、算法 closeFraction/条件量与复杂原生条款不猜为普通已归属订单。Binance orderId/algoId 按 symbol 自增，必须保留市场维度，不能以全账户 ID 去重。具体覆盖及未认证 bot/copy、经济预占等保留在 schema disclosures，两个 flags 始终 false。251 项新测试、两解释器各 779 项适用组合通过；主线程串行审查，无独立审计或真实服务认证。下一步仍为原历史归属、独立 native 保证金/余额观察及原 CAS/HTTP 消费，不能删常量阻断。
+
+## 12. S2b2 原挂单/预留数量归属（经济闭合仍待）
+
+NativePendingOwnership 复用原完整历史 reader、原 typed account、原订单纯校验和 transaction/savepoint；不接受 caller 的历史/PASS，不写订单、ACK、冻结或余额。每个同账户本地非终态 attempt 保留 requested-minus-filled 的 base/contracts 数量及是否匹配 native 普通单。真实 fake 接单后丢响应仍保持 submitting，空列表也不释放剩余量；重启后读取相同，所有 trade-shaped 表都纳入。
+
+同账户同市场的多原 attempt 拒绝最佳匹配；Binance 跨市场同号可独立归属，可证明的其他账户可排除，未知历史与环境漂移保留问题。原生量/累计量、方向/腿、reduce-only、限价/post-only/GTC 等条款核验；算法/附件/外国市场不会被普通记录认领。原 DB 投影/事件链、单位/执行设置错误与倒退/晚于来源的本地事件拒绝。
+
+这仍是数量与身份观察。两个 flags=false、native_margin_amount=None、未接原 CAS/HTTP；没有可用资金或原生冻结保证金结论，也不能替代原 sticky freeze/current-state/freshness 检查。下一依赖为独立原生余额/保证金/账户模式来源与原金融核算复用；完整 S2/S3/S4、C5/C6/C7、外部容量和 Goal 均未通过本子边界完成。

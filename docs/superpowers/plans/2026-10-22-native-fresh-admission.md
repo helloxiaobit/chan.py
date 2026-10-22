@@ -75,6 +75,10 @@
 
 来源层已完成离线实现：新增 251 项通过，CPython 3.14.2 / 3.11.15 的来源/账户/原鲜活性组合各 779 passed。Binance 普通和算法 ID 都按 symbol 自增，重复检测使用通道类型＋symbol＋ID；不同市场同号保留，同市场重复拒绝。原生类别、必需时钟、部分成交状态/累计量及 bool/模式字段矛盾不发布。详见台账；此阶段没有未决归属、余额预占或准入消费者，S2b2 整体仍未完成。
 
+归属实施接口：新增 DB-only `observe_native_pending_ownership(chan, *, pending_orders)`，沿原 transaction/savepoint 和 AccountRiskStore._ledger 读取所有 trade-shaped 表/完整 attempt/events；不接受调用者提供 histories/owned 标志，不写订单/ACK 或释放 reservation。复用 ExecutionReconcile 的原契约/账户/市场/side/leg/请求量归属检查，再核本次原始订单 created_ms、完整 server/client ID、普通类型/限价/post-only、原累计成交、reduce-only 与模式。缺 ACK/created/submitting/unknown 不因列表出现/消失就修复；每个本地非终态保留原 requested-minus-filled 双单位和是否真实匹配，孤儿/复杂单、缺原历史、跨市场/环境/账户歧义均显式记录。这里的 reservation 仅是原意图未成交数量，不虚构交易所冻结金额；新 native 经济观察和完整消费者仍是后续依赖。成功报告仍两个 flags=false，无开仓授权。先用原 fake 订单引擎/SQLite、多市场 partial/close/restart 与原 native collector 的非空夹具 RED，再实现；不复制 financial engine 或修改原状态机。
+
+归属层离线实现已落地：仅可证明的不同 stable account 排除；同账户/市场多个原 server ID 候选拒绝歧义，不能靠 client ID 选优。原 CCCXTTradeEngine 的纯执行设置/限额检查直接复用，单位与 requested/contractSize 精确核验；post-only/market 原条款独立匹配。读取来源期间输入变化、历史投影篡改、事件时钟倒退或晚于本次来源 finished 均拒绝。原报告不表示最新或来源真实，未来消费者仍须自己采集、检查年龄与范围并在原 CAS 内重读。native_margin_amount=None 不是零，未查资金余额/原生 margin 字段，S2b2 整体仍未完成。
+
 ## S3 原 intent/CAS 与 HTTP 每单消费
 
 文件：CCXTTradeEngine、OrderAudit、db_util 及对应原状态机回归。
