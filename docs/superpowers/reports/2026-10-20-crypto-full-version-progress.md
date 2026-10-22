@@ -557,3 +557,14 @@ C1 收尾清理计划：迁移校验由两份全表内存列表改为有序逐�
 - 最终完整命令 python -m pytest tests -m 'not network' --basetemp <new-temp-directory> -q --tb=short -p no:cacheprovider：1529 passed / 8 expected skipped / 1 network deselected / 18 model/LibSVM warnings，741.18s，明确 exit=0。其中新增默认流程小模型的单类 AUC 告警未隐藏；不将软件功能测试当作经济有效。全程没有源码、测试或文档编辑，收到退出结果后仅补本证据。
 - CPython 3.14.2 与实际 3.11.15 主动屏蔽 ccxt/xgboost/lightgbm/sklearn/optuna/yaml 后，实际临时 SQLite/软件 reader/v3 paper 部分成交→原 server 重开→无 reader 不推进→有效 reader 恢复完整成交→退出→原 C4 账本复核均 PASS；TradeRuntime/OpenConfig 核心导入通过。不是完整依赖安装矩阵或交易所认证。compileall/diff 通过；原核算、CAS/恢复与已有报价工具继续复用，没有第二套撮合/财务公式。
 - Lore 后精确提交须复验默认 reader/真实整轮/报价再快进推送，并核对远端完整 SHA 与 clean；外部认证、信号显式换代、通知、容量、更广 E2E、完整安装和迁移仍待，不关闭整体 Goal。
+
+### C6 信号失效作用域修复实施/清理计划
+
+- 前轮 af09793edb591db3c2433835580cfe7caa4e6d43 已推送且 clean；1529 全离线和精确提交后 120 项为有效进展。当前无存活测试进程，继续串行 TDD；已有模型/行情/订单门禁不变。
+- 当前 SignalMonitor 的清理集合只有 target K 字符串，未包含方向和级别，并扫描该 code 全部 watching 行。先真实 SQLite＋合成已收盘 CChan fixture 证明：同目标反向候选不能保留旧方向；只扫描一个交易级别时不能使其他级别失效。按现有 SQL 机会键和本次实际 trade_lv 约束修复，不改冻结决策字节、模型阈值、旧订单/段算法或添加生命周期表。
+- 复用现有发布/原去重/失效写入，先观察行为 RED，再最小 GREEN；适用信号/输入/默认工作流回归、编译/差异、串行自审和 Lore 后精确提交核验才推送。用户尚未确认的候选换代/重臂方案不依此自动实现；保留全生命周期去重，不让已消费机会重新交易。外部认证与整体 Goal 仍未完成。
+- 前三项 RED→GREEN 后组合 98 passed。新增真实 SQLite 的第四项 RED 证明：同 code 第二候选原字节冲突时，第一候选已提交并计 added。后续清理仅提取既有信号写入/相同字节复用/失效循环，使整个 code 批次共用原 SQLite transaction；成功提交后才合并统计，异常回滚且保留旧观察。复用现有嵌套 savepoint，不增加表、恢复协议或第二套 CAS；MySQL 保留兼容但不宣称同级原子验收。
+- 四项行为 RED 均已 GREEN；最新信号/不可变发布/输入组合 71 passed（9.23s）。扩大真实默认流程/管理 CLI/三模型部署/运行壳/多级别/订单历史/事务组合 250 passed / 4 已有小样本模型 warnings（240.34s），明确 exit=0，期间无代码/测试/文档编辑。一次误用不存在的 test_order_history.py 导致 0 tests，随后按 rg 找到 test_order_audit_history.py 再运行；该命令错误不是验收结果。
+- CPython 3.14.2/3.11.15 主动屏蔽 ccxt/xgboost/lightgbm/sklearn/optuna/yaml 后，真实临时 SQLite 与实际信号 writer 的方向失效、未扫描级别不变、整批回滚均 PASS，核心导入通过；不是完整安装矩阵。compileall/diff 通过；主代理按审查清单串行自审，不称独立审计。没有 schema/用户配置/权限/依赖/冻结研究或真实 I/O 变更。
+- 文件范围仅 Trade/Script/SignalMonitor.py、tests/test_signal_lifecycle.py、README_FULL.md 和本台账。提取原写入循环是为统一事务和提交后统计，未引入新模型/账户/订单状态机。原生撮合、C4 核算等未变代码沿用 af09793 的 1529 项完整离线基线；不把基线数字冒称当前树的新全仓结果。SignalMonitor 代码身份变化须重生成部署；不得重封旧清单。
+- 下一步仍有候选显式换代的设计确认、通知失败脱敏/运行壳观测、容量/安装/迁移、更广 E2E 和 C5/C7 外部验收。换代建议仅限从未有订单意图的候选追加新观察并失效旧候选；没有用户确认前不实施。已下单/已消费机会不自动重臂，所有真实交易与研究门禁保持，Goal active。Lore 后在精确提交复验适用信号/事务组合再快进推送并核远端/clean。

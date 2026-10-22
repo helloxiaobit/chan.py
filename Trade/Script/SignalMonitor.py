@@ -4,6 +4,7 @@
 """
 import os
 import sys
+from contextlib import nullcontext
 from typing import Dict, List, Optional
 
 if __package__ in (None, ""):
@@ -18,6 +19,35 @@ from Common.KLineTime import utc_now_ms
 from Trade.db_util import CChanDB
 
 from .StaticsChanConfig import get_statics_chan_config, get_trade_conf
+
+
+def _persist_signal_scan(db, code, trade_level, signals):
+    stat = {"added": 0, "existed": 0, "unwatched": 0}
+    valid_targets = {(sig.lv.name, bool(sig.is_buy), str(sig.target_klu_time)) for sig in signals}
+    for sig in signals:
+        try:
+            db.add_signal(sig)
+            stat["added"] += 1
+        except CChanException as e:
+            if e.errcode != ErrCode.SIGNAL_EXISTED:
+                raise
+            if db.db_type == "sqlite" and type(sig.decision) is bytes:
+                matches = db.get_signal_records(code, sig.lv.name, sig.is_buy, sig.target_klu_time)
+            else:
+                matches = [rec for rec in db.get_watching_signals(code)
+                    if rec["lv"] == sig.lv.name and bool(rec["is_buy"]) == sig.is_buy
+                    and rec["target_klu_time"] == str(sig.target_klu_time)]
+            if (len(matches) != 1 or type(sig.decision) is not bytes
+                    or matches[0].get("signal_decision") != sig.decision.decode("utf-8")):
+                raise CChanException("原信号字节不符，拒绝复用或补造历史", ErrCode.FEATURE_ERROR) from None
+            stat["existed"] += 1
+    # 只有本次实际交易级别的完整机会键才有缺席证据；不清理未扫描级别。
+    for rec in db.get_watching_signals(code):
+        key = (rec["lv"], bool(rec["is_buy"]), rec["target_klu_time"])
+        if rec["lv"] == trade_level.name and key not in valid_targets:
+            db.unwatch(rec["id"], reason="signal_expired")
+            stat["unwatched"] += 1
+    return stat
 
 
 def run_signal_monitor(
@@ -63,36 +93,15 @@ def run_signal_monitor(
             print(f"[SignalMonitor] {code} 计算失败: {e}")
             stat["failed"] += 1
             continue
-        valid_targets = {str(sig.target_klu_time) for sig in signals}
-        code_failed = False
-        for sig in signals:
-            try:
-                db.add_signal(sig)
-                stat["added"] += 1
-            except CChanException as e:
-                if e.errcode == ErrCode.SIGNAL_EXISTED:
-                    if db.db_type == "sqlite" and type(sig.decision) is bytes:
-                        matches = db.get_signal_records(code, sig.lv.name, sig.is_buy, sig.target_klu_time)
-                    else:
-                        matches = [rec for rec in db.get_watching_signals(code)
-                            if rec["lv"] == sig.lv.name and bool(rec["is_buy"]) == sig.is_buy
-                            and rec["target_klu_time"] == str(sig.target_klu_time)]
-                    if (len(matches) == 1 and type(sig.decision) is bytes
-                            and matches[0].get("signal_decision") == sig.decision.decode("utf-8")):
-                        stat["existed"] += 1
-                    else:
-                        stat["failed"] += 1
-                        code_failed = True
-                        print(f"[SignalMonitor] {code} 原信号字节不符，拒绝复用或补造历史")
-                else:
-                    raise
-        if code_failed:
-            continue  # 拒绝该 code 的本轮结果，不用不一致的集合清理旧观察。
-        # 失效清理:该 code 下 watching 但已不在当前信号集合的记录
-        for rec in db.get_watching_signals(code):
-            if rec["target_klu_time"] not in valid_targets:
-                db.unwatch(rec["id"], reason="signal_expired")
-                stat["unwatched"] += 1
+        try:
+            with db.db.transaction() if db.db_type == "sqlite" else nullcontext():
+                applied = _persist_signal_scan(db, code, lv_list[trade_lv], signals)
+        except CChanException:
+            stat["failed"] += 1
+            print(f"[SignalMonitor] {code} 原信号集合被拒绝，保留旧观察")
+            continue
+        for name, count in applied.items():
+            stat[name] += count
     if push:
         send_msg("SignalMonitor", f"新增{stat['added']} 已存在{stat['existed']} "
                                   f"失效{stat['unwatched']} 失败{stat['failed']}")

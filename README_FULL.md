@@ -808,6 +808,11 @@ document = {"schema": "chan-software-paper-quotes-v1", "payload": payload,
 SQLite 检查与插入共用原事务，已有冻结 bytes 必须完全相同才计 existed；观察时钟、评分或部署变化仍拒绝，
 显式信号换代/重臂协议尚未完成。旧无冻结信号的 unwatch 后再插入行为保留，不当作新路径的证明。
 
+`SignalMonitor` 的失效判断使用本轮实际交易级别、方向和 target K，不能因同目标出现反向候选而保留旧方向，
+也不能用小时扫描使未扫描的 15m/其他级别失效。对同一 code，新增候选、原字节复用和失效清理共用原 SQLite
+事务；任一候选冲突拒绝整批，回滚本批新记录，成功提交后才统计 added/existed/unwatched。原冻结证据不改写，
+已有订单不重臂。MySQL 不据此宣称同等级原子发布认证；这也不是行情扫描与交易所发送的全局原子性证明。
+
 管理 CLI 遇 unresolved/输入问题返回非零并释放 DB/store；确认终态的部分平仓撤单可继续减少剩余量，
 未知/提交中的旧请求不能被重下。模型损坏阻断新开仓，但不要求原模型可读才能查询、撤销或减少原 paper 仓位。
 原生非 dry-run 新风险仍然关闭。此 profile 只替换交易/报价路径，`RunTradeCycle` 的 OHLCV 更新阶段仍会调用
