@@ -125,6 +125,8 @@
 
 latest 检查会验证全部元数据后才按 stable account/角色过滤；新或同 clock 不同字节的 snapshot/wallet/execution/pending/balance 未整合即拒绝，不按 SHA 排名。执行收据的相同事实/相同查询窗口重导入仍是同一 ID，保留首次原账户窗口，不能刷新年龄；新查询窗口才形成可被识别的新观察。只读断言仍不是来源真实性、exchange 服务器原子快照、当前真实 instrument metadata 或交易授权；原 C4/economics_complete=false 不被提升。下一依赖为固定顺序的 collector-owned 来源采集/失败发布，与原每单 market/intent/CAS/HTTP 路径直接绑定，禁止从 caller receipt/None 推导 native_admission_verified=true。
 
+S2b5 推送前复核纠正：latest 时钟不代表事实完整。新增真实 8 RED/4 positive，证明旧的已知 wallet/execution 包含区间内或终点后的额外零净额事实时必须拒绝，不能只因其观察时间较早便忽略；基线前事实则不误拒绝。只增加一个共用 canonical fact coverage 检查，不重算净额或改原资金/存储引擎。现 119 新用例，最终关键组合两版各 361 passed，其余未变代码沿用先前广组合；12ab104 与纠正提交验证后一起推送，不把初版 107 项或给定观察的匹配冒称完整准入。
+
 ## S3 原 intent/CAS 与 HTTP 每单消费
 
 文件：CCXTTradeEngine、OrderAudit、db_util 及对应原状态机回归。

@@ -42,6 +42,17 @@ def _latest(document, selected):
         _fail_sources()
 
 
+def _known_facts(document, selected, start, end):
+    """A newer source cannot erase known facts, even zero-net round trips."""
+    expected = {canonical_bytes(fact) for row in selected for fact in row["payload"]["facts"]
+                if start <= fact["timestamp_ms"] < end}
+    for fact in document["payload"]["facts"]:
+        if fact["timestamp_ms"] < start:
+            continue  # The accepted before endpoint already bounds this history.
+        if fact["timestamp_ms"] >= end or canonical_bytes(fact) not in expected:
+            _fail_sources()  # A post-endpoint fact also makes the point stale.
+
+
 def _snapshot(chan, context, check_id, market):
     from .AccountRiskStore import account_key
     from .AccountStore import TABLE as ACCOUNT_EVIDENCE, read_evidence
@@ -55,6 +66,7 @@ def _snapshot(chan, context, check_id, market):
         if check["schema"] != CHECK_SCHEMA:
             _fail_sources()
         saved, key = check["payload"]["inputs"], account_key(context)
+        start, end = saved["before"]["payload"]["started_ms"], saved["after"]["payload"]["finished_ms"]+1
         for row in read_account_observations(chan.db, context):
             _latest(row, [saved["pending"] if row["schema"] == PENDING_SCHEMA else saved["balance"]])
         for column in ("pending", "balance"):
@@ -63,6 +75,7 @@ def _snapshot(chan, context, check_id, market):
         for row in chan.db.query(f"SELECT evidence_id FROM {ACCOUNT_EVIDENCE} ORDER BY evidence_id"):
             document = read_evidence(chan.db, row["evidence_id"])
             if document["schema"] == WALLET_SCHEMA and account_key(document["payload"]["account_context"]) == key:
+                _known_facts(document, saved["wallets"], start, end)
                 _latest(document, saved["wallets"])
         by_instrument = {}
         for original, observed in zip(saved["executions"], executions):
@@ -80,6 +93,7 @@ def _snapshot(chan, context, check_id, market):
             selected = by_instrument.get(instrument)
             if not selected:
                 _fail_sources()
+            _known_facts(receipt, [value for value, _ in selected], start, end)
             at = linked["observation"]["finished_ms"]
             latest = max(observed["finished_ms"] for _, observed in selected)
             if at > latest or (at == latest and canonical_bytes(receipt) not in {canonical_bytes(value) for value, _ in selected}):

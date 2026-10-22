@@ -182,3 +182,9 @@ NativeCurrentComponents 新增独立完整政策版本，balance age/span 各自
 较新或同 finished 不同字节的未整合来源不能用 SHA/排名选择，所有来源索引/原始派生均先验后按稳定账户过滤；native SDK 自洽但不对应当前市场/client 的历史包也不可代替绑定。各角色年龄、市场/全组跨度和 skew 恰等通过，少 1ms 拒绝；新 pending/balance 的非零采集跨度由真实 fake collector 固定 GET 计时验证，mutation/update 时钟不是新鲜度。相同 execution packet 重导入不刷新首次 native association，新查询窗口才是新 source。
 
 107 项新测试，CPython 3.14.2/3.11.15 适用组合各 1663 pass/1 既有 skip，JUnit 用例集合完全相同；未变的模型/部署回归沿用 db75c5e 证据。严格串行、活测试不编辑、主线程审查、无真实服务。None 不表示 admission，也不替代 collector-owned、真实 instrument metadata/原 CAS/HTTP、总请求/SDK 内部重试/长期容量或 C7 外部认证；新风险常量阻断与所有 gates 不变，Goal active。
+
+## 18. 推送前事实覆盖复核纠正
+
+12ab104 尚未推送时，发现仅按 source finished 时间核 latest 仍会忽略较早观察包中的已知区间事实。真实两 venue × wallet/execution × 区间内/终点后 8 项出现错误接受；基线前 4 项按原范围通过。构造的是原 collectors/store 中可验证的零净额转入转出或买卖往返，并非直接改 caller 的 matched/count。wallet 首次 setup 因全局 clock 倒退而正确拒绝已有来源未来时间，恢复正常 use clock 后确认 8 项真正 DID NOT RAISE RED；保留该区别。
+
+最小修复只对同一稳定账户/标的的所有已知原始规范事实检查覆盖：区间内每条 canonical fact 都须在所选输入内，终点后任何已知事实使点过期，基线前事实不误纳入；不净额比较、不拓宽容差、不复制金融核算。当前 119 项，最终两版关键组合各 361 passed；原广组合仅对未变代码继续有效，不把它改报为修复后的全仓验证。仍未接 collector-owned/CAS/HTTP，保持 disabled/Goal active。

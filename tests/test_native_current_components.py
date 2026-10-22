@@ -476,3 +476,56 @@ assert not attempted, attempted
     result = subprocess.run([sys.executable, "-c", code], input=canonical_bytes(component_policy()), capture_output=True, timeout=30)
     assert result.returncode == 0, result.stderr.decode(errors="replace")
     assert result.stderr == b""
+
+
+@pytest.mark.parametrize("venue", ["binance", "okx"])
+@pytest.mark.parametrize("source", ["wallet", "execution"])
+@pytest.mark.parametrize("location", ["inside", "before", "after"])
+def test_older_known_in_interval_facts_cannot_be_omitted_even_when_their_net_effect_is_zero(store, tmp_path, monkeypatch, venue, source, location):
+    db, _ = store
+    case = current_case(db, tmp_path, monkeypatch, venue)
+    from Trade.AccountIdentity import observe_account_context
+    at = case["inputs"]["before"]["payload"]["started_ms"]
+    offsets = (250, 260) if location == "inside" else (-100, -90) if location == "before" else (402, 403)
+    if source == "wallet":
+        from Trade.AccountSources import collect_wallet_scan
+        from .test_native_account_sources import AccountSourceIO, wallet_row
+        p = case["inputs"]["wallets"][0]["payload"]
+        rows = [copy.deepcopy(row["raw"]) for row in p["facts"]]
+        for offset, delta in zip(offsets, ("5", "-5")):
+            row = wallet_row(venue, at+offset, key=2000+offset, amount=delta)
+            if venue == "okx":
+                row["bal"] = ""  # Native channel supplied no per-event balance.
+            rows.append(row)
+        io = AccountSourceIO(venue, rows)
+        monkeypatch.setattr(case["client"], "fapiPrivateGetIncome" if venue == "binance" else "privateGetAccountBillsArchive", io.wallet)
+        monkeypatch.setattr("Trade.AccountSources.utc_now_ms", lambda: p["finished_ms"]-1)
+        document = collect_wallet_scan(case["client"], mode="testnet", start_ms=min(p["start_ms"], at+offsets[0]-1),
+                                       end_ms=max(p["end_ms"], at+offsets[1]+1))
+        assert document["payload"]["finished_ms"] < p["finished_ms"]
+        monkeypatch.setattr("Trade.AccountSources.utc_now_ms", lambda: case["clock"]["now"])
+        db.store_account_evidence(document)
+    else:
+        from Trade.ExecutionFacts import collect_execution_scan
+        from .test_execution_facts import NativeSources, fill
+        p = case["inputs"]["executions"][0]["receipt"]["payload"]
+        rows = [copy.deepcopy(row["raw"]) for row in p["facts"] if row["kind"] == "trade"]
+        cash = [copy.deepcopy(row["raw"]) for row in p["facts"] if row["kind"] == "funding"]
+        for offset, side in zip(offsets, ("buy", "sell")):
+            row = fill(venue, at+offset, key=2000+offset, side=side, fee="0", quantity="0.01" if venue == "binance" else "1")
+            row["orderId" if venue == "binance" else "ordId"] = "1999"
+            rows.append(row)
+        observed = case["inputs"]["executions"][0]["observed_ms"]-1
+        monkeypatch.setattr("Trade.ExecutionFacts.utc_now_ms", lambda: observed)
+        document = collect_execution_scan(NativeSources(venue, rows, cash), p["market"], account_scope=p["account_scope"],
+            mode="testnet", start_ms=min(p["start_ms"], at+offsets[0]-1), end_ms=max(p["end_ms"], at+offsets[1]+1))
+        context = observe_account_context(case["client"], "testnet")
+        db.store_execution_scan(document, account_observation={"before": context, "after": context,
+            "started_ms": observed, "finished_ms": observed})
+    changes = db.db.conn.total_changes
+    if location == "before":
+        assert assert_current(case) is None
+    else:
+        with pytest.raises(CChanException):
+            assert_current(case)
+    assert db.db.conn.total_changes == changes
