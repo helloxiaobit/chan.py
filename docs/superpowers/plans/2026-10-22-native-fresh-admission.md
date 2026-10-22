@@ -99,6 +99,14 @@
 
 可用额只使用原币 native 字段并检查覆盖约束，不反算交易所 tier/逐单保证金，不把 OKX ordFrozen 再从可能已含其的 imr 扣一遍；原生更低可用额照实保留。新来源和当前组件报告尚未写入新持久 check，不能借旧 v1 matched check 为此路径发放准入；下一步应将新来源版本化持久保存、复用原 append-only check/sticky freeze 做失败发布和重建，再合并显式当前来源政策、独立 mark/book 和原 CAS/HTTP。新金融模块/共享 v2 的源码身份必须在 S3 明确绑定，旧 workflow SHA 不包含它们。
 
+### S2b4 新来源版本化保存与原冻结发布（实施中）
+
+先独立保存 native pending/balance 观察，不拓宽 AccountStore 的旧 kind/schema，也不重封旧证据。新增 append-only 原生观察表，单份 ID 为完整 canonical document SHA；读取重新验证来源 raw→derived、代码/账户/窗口与全部索引字段。ID 读取与账户列举使用同一 SQLite view；列举先验证所有行再按 stable native account 筛选，禁止损坏索引隐藏较新来源。初始化须沿原 SQLite 原子 schema/保留表名检查；外来同名表不采用，失败回滚，不改旧历史。公开接口只显式存取已采集字节，事务内不采集或加载 SDK，不写订单/ACK/PASS/冻结。
+
+行为边界先以两 venue/两 source 的 RED→GREEN 保护：原字节重启/幂等、UPDATE/DELETE/REPLACE 拒绝、篡改 raw/derived/metadata 拒绝、失败零写入、外层 savepoint 所有权、reader 无 SDK/实际配置。旧 AccountStore/风险检查/订单回归复用并补跑受影响范围。其后再复用原 append-only check/sticky freeze 发布新组件检查：历史输入按原 journal prefix 证明，不能用现时 ledger 伪造旧结果，matched 永不抹掉旧失败；纯组件重建须避免 risk_state 递归。完整 freshness/current-client/mark/book、CAS 与源码绑定仍是后续依赖，不得由 source store 隐式放行。
+
+来源存储子层已实现：NativeAccountStore 复用旧 canonical codec、账户 stable key、schema validation 和 SQLite transaction/savepoint；新增表及保留名纳入原原子初始化，旧表 SQL/字节不变。85 个新测试、CPython 3.14.2/3.11.15 广组合各 1519 passed / 1 既有 skip，全部串行且活测试不编辑文件。显式接入仅三项存取接口，无隐式采集、SDK/config 读取、金融重算或新风险授权；check 发布/重建及 sticky failure 接入尚未完成。
+
 ## S3 原 intent/CAS 与 HTTP 每单消费
 
 文件：CCXTTradeEngine、OrderAudit、db_util 及对应原状态机回归。

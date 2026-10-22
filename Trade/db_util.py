@@ -255,6 +255,29 @@ class CChanDB:
         with self.db.transaction():
             return read_evidence(self.db, evidence_id)
 
+    def store_native_account_observation(self, document):
+        self._require_execution_sqlite()
+        from .NativeAccountStore import store_observation
+        document = json.loads(canonical_bytes(document))
+        try:
+            with self.db.transaction():
+                return store_observation(self.db, document)
+        except sqlite3.DatabaseError:
+            raise CChanException("原生账户来源发布失败，整份观察回滚", ErrCode.LIST_ORDER_FAIL) from None
+
+    def get_native_account_observation(self, evidence_id):
+        self._require_execution_sqlite()
+        from .NativeAccountStore import read_observation
+        with self.db.transaction():
+            return read_observation(self.db, evidence_id)
+
+    def get_native_account_observations(self, account_context):
+        self._require_execution_sqlite()
+        from .NativeAccountStore import read_account_observations
+        account_context = json.loads(canonical_bytes(account_context))
+        with self.db.transaction():
+            return read_account_observations(self.db, account_context)
+
     def reconcile_account(self, *, account_context, before_id, after_id, wallet_ids, execution_scan_ids):
         self._require_execution_sqlite()
         from .AccountRiskStore import reconcile

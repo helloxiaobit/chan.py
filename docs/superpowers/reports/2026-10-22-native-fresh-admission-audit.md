@@ -160,3 +160,9 @@ Binance 资产/总额/原账户腿的 position/open-order initial margin 与余�
 59 项新用例沿原合法双币实际假流水（部分平仓、部分开仓未决、费用、已实现、funding）；同记录开单未终结的平仓仍被原 CAS 拒绝。两 venue/模式/方向，丢失来源、历史 ID/余额/仓位变异、原 sticky freeze、嵌套事务、重启及无可选 SDK/配置的子进程均有证据。v1 对相同双币输入与已接受 2ee0345 源码逐字节比较 2 项通过；该一次性 release 检查未成为常规单测的 Git 历史依赖。
 
 最终精确测试范围和 XML 摘要见台账。matched_components 只描述所给观察，仍两个 flags=false、无源码重新武装或订单授权。新来源持久化/失败发布、完整 freshness/current-client/独立 mark 绑定、原 CAS/HTTP 与默认入口仍待；保持全部现有门禁与 Goal active，不声称完整 C5/C6/C7 或真实服务通过。
+
+## 15. S2b4 原生来源持久化子层
+
+NativeAccountStore 新表只收当前版本原始 pending/balance 文档，ID 为完整 canonical 字节摘要；重读重算 raw/派生与代码身份、窗口、稳定账户、context/venue/mode/kind/observed_ms。账户列举先读验全部行再过滤，不信索引能隐藏损坏/较新文档。原 AccountStore SQL 与两种旧 schema 未改，不把旧来源重封为新来源。
+
+显式三接口沿原 SQLite transaction/savepoint，初始化/外来同名表失败原子回滚，append-only 含 REPLACE 防护，缺触发器和重封金额/标记均拒绝。85 项 fake 新测试、两版广组合各 1519 pass/1 既有 skip，包含原账户/订单/冻结与 SQLite 事务；核心子进程读验无可选 SDK/实际 YAML，主线程审查，未做真实端点/容量/外部独立认证。存储层不采集或写订单，不创建检查/冻结，不提供真实性或当前性证明。下一依赖仍是原 check 的新组件历史重建和 sticky failure 发布；S2/C5/C6/C7/Goal 未完成。

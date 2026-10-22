@@ -439,6 +439,9 @@ OKX ordFrozen/frozenBal/借贷/策略与 copy 分项按原币保存，USD 总额
 新路径只能从原始 pending 和同一 ledger 重建归属。各币现金、费用/资金费、pooled entry、独立余额响应中的仓位及 margin 分项一并核验，
 拒绝旧可用额覆盖最终快照、同市场历史 ID 歧义、外币未解释保证金及空列表下非零挂单保证金。
 新增 59 项；精确验证范围见台账。matched_components 仍非准入，两个 flags=false；新来源持久化/失败发布、全部来源当前性与 CAS/HTTP 接入仍待。
+`Trade.NativeAccountStore` 现已独立 append-only 保存原生 pending/balance，CChanDB 显式存取/账户列举接口可重启重验，
+不修改旧 AccountStore schema 或重封旧证据。85 项新测试、两版各 1519 pass/1 既有 skip；来源存储不发布 PASS/冻结或写订单，
+原检查表的新组件失败发布与历史重建仍待接入，完整 freshness 与 CAS/HTTP 门禁不变。
 版本化 API 见下文，本入口的命令完成状态不是完整验收或生产授权。
 
 非 dry-run 还必须同时满足以下门禁：

@@ -112,7 +112,8 @@ class CSqliteDB:
         from .ExecutionStore import SCHEMA as execution_schema, initialize_schema as initialize_execution_schema
         from .AccountStore import SCHEMA as account_schema, initialize_schema as initialize_account_schema
         from .AccountRiskStore import SCHEMA as risk_schema, initialize_schema as initialize_risk_schema
-        if table_name in SCHEMA or table_name in execution_schema or table_name in account_schema or table_name in risk_schema:
+        from .NativeAccountStore import SCHEMA as native_schema, initialize_schema as initialize_native_schema
+        if table_name in SCHEMA or table_name in execution_schema or table_name in account_schema or table_name in risk_schema or table_name in native_schema:
             raise ValueError("Reserved order audit table")
         self.table_name = table_name
         self.conn = sqlite3.connect(db_path)
@@ -128,6 +129,7 @@ class CSqliteDB:
                 initialize_execution_schema(self.conn)
                 initialize_account_schema(self.conn)
                 initialize_risk_schema(self.conn)
+                initialize_native_schema(self.conn)
         except BaseException:
             self.conn.close()
             raise
