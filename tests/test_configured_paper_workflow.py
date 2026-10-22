@@ -14,10 +14,11 @@ from Common.ChanException import CChanException
 from Config.EnvConfig import CEnv
 from CustomBuySellPoint.Decision import canonical_bytes
 from Trade.PaperState import CPersistentPaperState
+from Trade.LinearPaperAccount import verify_linear_paper_report
 from Trade.Script.Deployment import CDeployment, publish_deployment
 from Trade.Script.RunTradeCycle import run_trade_cycle
 from Trade.db_util import CChanDB
-from .test_deployment_workflow import deployment_model, future_candidate
+from .test_deployment_workflow import deployment_model_data, future_candidate, SOURCE
 from .test_linear_paper_account import paper_account, CODE
 from .test_linear_paper_engine import paper_engine
 from .test_configured_paper_runtime import publish_quotes
@@ -33,8 +34,17 @@ runpy.run_module("Trade.Script.RunTradeStage", run_name="__main__")
 '''
 
 
+@pytest.fixture(scope="module", params=["binance", "okx"])
+def workflow_model(request, tmp_path_factory):
+    root = tmp_path_factory.mktemp("configured-"+request.param)
+    with deployment_model_data(root, source={**SOURCE, "exchange": request.param}) as result:
+        yield result
+
+
 @pytest.fixture()
-def workflow(deployment_model, tmp_path, monkeypatch):
+def workflow(workflow_model, tmp_path, monkeypatch):
+    deployment_model = workflow_model
+    venue = deployment_model["source_identity"]["exchange"]
     manifest = tmp_path/"deployment.json"
     original_model = Path(deployment_model["model"].GetModelPath())
     shutil.copytree(original_model.parent, tmp_path/"models")
@@ -48,7 +58,7 @@ def workflow(deployment_model, tmp_path, monkeypatch):
         rounding=ROUND_CEILING if signal.is_buy else ROUND_FLOOR)*Decimal("0.1")
     config = {"db": {"type": "sqlite", "sqlite_path": str(tmp_path/"trade.db")},
         "offline_data": {"sqlite_path": str(deployment_model["root"]/"kline.db"), "source_identity": deployed.source_identity},
-        "ccxt": {"mode": "dry_run", "default_type": "swap", "exchange": "binance"},
+        "ccxt": {"mode": "dry_run", "default_type": "swap", "exchange": venue},
         "snapshot_engine": "sina", "notify": {"backend": "none"},
         "trade": {"deployment_manifest": str(manifest), "bench_price": float(price)*0.035, "quote_max_age_ms": 1000,
             "open_para": {}, "paper": {"server_path": str(tmp_path/"server.json"),
@@ -57,10 +67,11 @@ def workflow(deployment_model, tmp_path, monkeypatch):
     path.write_bytes(canonical_bytes(config))
     db = CChanDB(db_conf=config["db"])
     key = db.add_signal(signal)
-    with CPersistentPaperState.create(tmp_path/"server.json", account=paper_account(mode="one_way"), database=config["db"]["sqlite_path"]) as server:
+    with CPersistentPaperState.create(tmp_path/"server.json", account=paper_account(mode="one_way", venue=venue), database=config["db"]["sqlite_path"]) as server:
         engine = paper_engine(db, state=server.state)
         engine.set_sim_fill_plan(engine.make_client_order_id(db.get_record(key), "open"), [0.01, 0.03])
     document = publish_quotes(tmp_path/"quotes.json", now)
+    document["payload"]["source"] = deployed.source_identity
     bid, ask = (price-Decimal("0.1"), price) if signal.is_buy else (price, price+Decimal("0.1"))
     document["payload"]["quotes"][0].update(bid=str(bid), ask=str(ask), mark=str(price), last=float(price))
     document["payload_sha256"] = hashlib.sha256(canonical_bytes(document["payload"])).hexdigest()
@@ -94,9 +105,20 @@ def test_actual_default_cycle_reaches_the_same_persistent_paper_order(workflow):
     row = db.get_record(key)
     assert row["open_attempt"] == 1 and row["current_qty"] == 0.01
     assert json.loads(row["open_order_contract"])["schema"] == "chan-paper-order-v3"
+    contract = json.loads(row["open_order_contract"])
+    venue = CEnv(str(path)).ccxt_conf["exchange"]
+    expected_id = "TESTUSDT" if venue == "binance" else "TEST-USDT-SWAP"
+    assert contract["market"]["exchange"] == venue and contract["market"]["id"] == expected_id
+    assert Decimal(contract["market"]["contractSize"]) == Decimal("0.01")
+    assert Decimal(contract["quantity"]) == Decimal("0.03") and Decimal(contract["exchange_amount"]) == 3
     assert json.loads(row["snapshot_before"])["opening_inputs"]["schema"] == "chan-opening-input-check-v2"
     with CPersistentPaperState.open(root/"server.json", database=root/"trade.db") as server:
         assert len(server.state.orders) == 1 and server.state.paper_account.position_quantity(f"chan_trade:{key}") == Decimal("0.01")
+        first_account = server.state.paper_account.to_dict()
+        assert canonical_bytes(verify_linear_paper_report(first_account)) == canonical_bytes(first_account)
+        assert first_account["identity"]["markets"][0]["exchange"] == venue
+    first_history = db.get_order_history(key)
+    assert not first_history["gaps"]
     assert all(code == 0 for _, code, _ in trace)
     assert all(row["observation"]["state"] == "complete" for row in result["notifications"] if not row["stage"].startswith("update:")), "actual CLI stages must publish their own summaries"
     trace.clear()
@@ -105,6 +127,10 @@ def test_actual_default_cycle_reaches_the_same_persistent_paper_order(workflow):
     assert db.get_record(key)["open_attempt"] == 1 and db.get_record(key)["current_qty"] == 0.03
     with CPersistentPaperState.open(root/"server.json", database=root/"trade.db") as server:
         assert len(server.state.orders) == 1
+        repeated_account = server.state.paper_account.to_dict()
+        assert canonical_bytes(verify_linear_paper_report(repeated_account)) == canonical_bytes(repeated_account)
+        assert canonical_bytes(first_account["effects"]) == canonical_bytes(repeated_account["effects"][:len(first_account["effects"])])
+    assert not db.get_order_history(key)["gaps"]
     manifest = json.loads((root/"deployment.json").read_bytes())
     model = (root/manifest["model_path"]).resolve()
     model.write_bytes(model.read_bytes()+b"broken-model-fixture")
@@ -120,6 +146,30 @@ def test_actual_default_cycle_reaches_the_same_persistent_paper_order(workflow):
     assert db.get_record(key)["current_qty"] == 0
     with CPersistentPaperState.open(root/"server.json", database=root/"trade.db") as server:
         assert len(server.state.orders) == 2
+        final_account = server.state.paper_account.to_dict()
+        assert canonical_bytes(verify_linear_paper_report(final_account)) == canonical_bytes(final_account)
+        assert canonical_bytes(repeated_account["effects"]) == canonical_bytes(final_account["effects"][:len(repeated_account["effects"])])
+        assert Decimal(final_account["account"]["snapshot"]["fees"]) > 0
+    assert not db.get_order_history(key)["gaps"]
+
+
+def test_other_venue_quote_resealed_hash_cannot_open_or_move_the_original_server(workflow):
+    db, path, key, now, root = workflow
+    quote_path = root/"quotes.json"
+    quote = json.loads(quote_path.read_bytes())
+    venue = quote["payload"]["source"]["exchange"]
+    quote["payload"]["source"]["exchange"] = "okx" if venue == "binance" else "binance"
+    quote["payload_sha256"] = hashlib.sha256(canonical_bytes(quote["payload"])).hexdigest()
+    quote_path.write_bytes(canonical_bytes(quote))
+    with CPersistentPaperState.open(root/"server.json", database=root/"trade.db") as server:
+        before_account = server.state.paper_account.to_dict()
+    trace = []
+    result = run_trade_cycle(path, report_path=root/"wrong-venue.jsonl", command=actual_dispatch(now, trace), now_ms=lambda: now)
+    assert result["status"] == "failed" and result["failed_stage"] == "restore", (result, trace)
+    assert "Trade.Script.MakeOpenTrade" not in [module for module, _, _ in trace]
+    assert db.get_record(key)["open_attempt"] == 0 and db.get_record(key)["current_qty"] == 0
+    with CPersistentPaperState.open(root/"server.json", database=root/"trade.db") as server:
+        assert not server.state.orders and server.state.paper_account.to_dict() == before_account
 
 
 @pytest.mark.parametrize("mode", ["missing_profile", "loosened_policy"])

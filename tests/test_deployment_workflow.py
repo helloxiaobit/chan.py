@@ -1,6 +1,7 @@
 """真实 SQLite、生产策略和小合成模型的统一部署/评分工作流；不连接交易所。"""
 import json
 import os
+from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
@@ -25,9 +26,15 @@ CODE = "TEST/USDT:USDT"
 @pytest.fixture(scope="module")
 def deployment_model(tmp_path_factory):
     root = tmp_path_factory.mktemp("deployment")
+    with deployment_model_data(root, source=SOURCE) as result:
+        yield result
+
+
+@contextmanager
+def deployment_model_data(root, *, source):
     config_path = root / "config.yaml"
     config_path.write_text(json.dumps({
-        "offline_data": {"sqlite_path": str(root / "kline.db"), "source_identity": SOURCE},
+        "offline_data": {"sqlite_path": str(root / "kline.db"), "source_identity": source},
         "db": {"type": "sqlite", "sqlite_path": str(root / "trade.db")},
         "notify": {"backend": "none"},
         "trade": {"code_list": [CODE], "lv_list": ["K_60M"], "strategy": "custom"}}))
@@ -38,7 +45,7 @@ def deployment_model(tmp_path_factory):
         rows = [(START+i*HOUR, b["open"], b["high"], b["low"], b["close"], b["volume"])
                 for i, b in enumerate(gen_synthetic_bars(1000))]
         with CKLineDB(str(root / "kline.db")) as db:
-            db.bind_source(SOURCE)
+            db.bind_source(source)
             db.upsert_klines(CODE, KL_TYPE.K_60M, rows[:600])
         chan_config = {"cbsp_strategy": CCustomStrategy, "divergence_rate": float("inf"), "min_zs_cnt": 0,
                        "bs_type": "1,2,3a,1p,2s,3b", "kl_data_check": True,
@@ -53,7 +60,7 @@ def deployment_model(tmp_path_factory):
         gen.trainProcess(result.output_dir)
         with CKLineDB(str(root / "kline.db")) as db:
             db.upsert_klines(CODE, KL_TYPE.K_60M, rows[600:])
-        yield {"root": root, "model": gen, "rows": rows, "chan_config": chan_config}
+        yield {"root": root, "model": gen, "rows": rows, "chan_config": chan_config, "source_identity": source}
     finally:
         if previous is None:
             os.environ.pop("CHANPY_CONFIG", None)
@@ -73,7 +80,7 @@ def future_candidate(deployment_model):
     chan = CChan(CODE, lv_list=[KL_TYPE.K_60M], config=CChanConfig({**deployment_model["chan_config"], "trigger_step": True}))
     for i, row in enumerate(deployment_model["rows"]):
         unit = make_crypto_klu(row, KL_TYPE.K_60M)
-        unit.source_identity = SOURCE
+        unit.source_identity = deployment_model["source_identity"]
         chan.trigger_load({KL_TYPE.K_60M: [unit]})
         if i >= 600:
             signals = chan[0].cbsp_strategy.bsp_signal(chan, 0)

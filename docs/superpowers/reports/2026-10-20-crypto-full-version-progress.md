@@ -16,7 +16,7 @@
 |---|---|---|---|
 | 已收盘 15m/1h/4h、多级别结构 | `DataAPI/ccxt.py`、`OfflineDataAPI.py`、`Chan.py` | `test_m5_data`、`test_multilv`、`test_consistency` | C1 时间/finality/来源；C2 因果发布 |
 | Binance USDT 线性永续 | CCXT 行情与 `Trade/CCXTTradeEngine.py` | fake exchange 安全/状态机测试 | 第一交付目标；合约单位/真实环境未认证 |
-| OKX USDT 线性永续 | 同上 | 通用 fake exchange 路径 | 第二目标；交易所参数映射、测试环境未认证 |
+| OKX USDT 线性永续 | 同上 | 原参数/恢复 fake 证据与独立来源/真实模型/默认 CLI 软件 paper E2E | 第二目标；one-way 单 instrument 合成场景，非原生测试环境认证 |
 | 现货 | 原有 CCXT/SQLite 路径 | M5/M6 离线回归 | 保留兼容回归；不与永续混库 |
 | XGB | `ModelStrategy/models/Xgboost`、`ChanModel/XGBModel.py` | M3 小样本训练/评分 | C3 meta、时序切分、在线产物契约 |
 | LGBM/MLP | `ModelStrategy/models/lightGBM`、`deepModel`、`ChanModel/GeneratorModel.py` | M3 小样本训练；C3 三类模型存取、统一部署/实际候选和入场评分 | 离线软件路径；非经济采用或实盘认证 |
@@ -596,3 +596,18 @@ C1 收尾清理计划：迁移校验由两份全表内存列表改为有序逐�
 - 随后原环境升级到 Script/requirements_full.txt：3.11 使用 XGBoost 3.2.0/SciPy 1.17.1/NumPy 2.4.6，3.14 使用 3.4.1/1.18.1/2.5.4；均真实导入/依赖一致性通过，各自完整离线 1581 passed / 8 skipped / 1 network deselected / 18 existing warnings，分别 829.95s / 765.70s，明确 exit=0。运行期间无文件编辑、无并发长任务。
 - 3.11 首次句柄丢失且无最终结果的那轮不计 PASS；确认无存活 Python 后才新 basetemp＋JUnit 复验。两个终局 JUnit 各自确认 1589 tests、0 failures/errors、8 skipped，并记录 SHA。skip 仍有外部正式研究、可选 PyQt GUI 和 native isolated 缺通道，不升格认证，不执行正式数据/绩效。
 - 本轮无行为清理/重构，复用现有全部测试与真实程序，不为文档变更发明 RED，也不为通过验收 pin/放宽依赖或加入新包。仅新增安装报告并同步 README/本台账；主代理串行自审。测试范围不外推到所有未来依赖/其他 OS/旧产物迁移。此 C6 安装子项完成不关闭 C5/C6/C7 或 Goal，剩余候选换代设计确认、原生准入、容量/迁移/更广 E2E 和外部验收继续保留；Lore 后依精确文档提交复核并快进推送。
+
+### C6 双 venue 默认软件 paper E2E 验收/测试清理计划
+
+- 起始 928fecfdc4245ec19d760ea6bd56f27ddc98e591 已推送/clean；两套隔离完整环境各 1581 pass 有效，当前无活测试进程。继续 Binance 优先、OKX 第二的批准范围，仅合成数据/软件 paper，不接真实交易所/通知或冻结研究。
+- 现有默认流程 fixture 只训练 Binance 来源模型。复用实际 1000 根合成行情、前 600 根样本/2 轮 XGB、C2/C3 发布、原运行壳/CLI/PersistentPaperState/C4 核算；给 OKX 单独建库并从样本开始训练，不修改已发布模型/部署的 source 字段，不复制第二套交易/财务逻辑。
+- 清理仅把现有 deployment_model 的搭建体提取成带显式 source 的测试 contextmanager，默认 Binance fixture 仍走同一代码；future_candidate 使用该 fixture 原 source。新默认整轮矩阵分别 Binance/OKX，检查独立来源、market id、contractSize≠1、partial/restart/repeat/model-corruption management 及原始账本/历史，不只看最终数量；仅公共 OHLCV 更新传输/合成时钟为 fake，其余真实执行。
+- 先核现有行为的适用回归，再扩展验证。若通用路径直接通过，按已存在功能记录，不虚构 RED 或增加无必要生产参数；若新 fixture 发现真实缺陷，先观察失败再最小修复。报价错 venue/掉 reader/放宽原年龄仍须拒绝，不扩大模式/账户准入。
+- 测试活进程期间不编辑文件；终局需 JUnit＋明确 exit，适用三模型部署/默认流程/quotes/账户/历史回归、编译/差异、主代理串行自审、Lore/精确提交/快进远端核验。候选换代仍待确认，真实 ACK/mark/book/路由/资金费规则等 C5/C7 外部认证未满足，不以 OKX 软件 PASS 移除门禁或关闭 Goal。
+- 通用现有路径直接 GREEN：双 venue 默认整轮＋原部署 44 passed / 5 existing warnings（216.62s），没有生产缺陷或生产代码修复，不伪称 RED。再补逐事件账本/历史与重封错 venue 报价拒绝后，当前默认流程 8 passed / 2 small-model AUC warnings（194.10s），均明确 exit=0。每 venue 独立训练/发布来源，合约大小 0.01、0.03 币=3 张；原 effects 前缀和 C4 全账本重放一致，错 source 保持零 intent/零订单/原账户不变。当前只验 synthetic one_way 单 instrument，不外推全部策略/多币/双向/原生交易所规则。
+- 已在前轮隔离 CPython 3.11.15/XGBoost 3.2.0 环境复验同一完整双 venue 默认流程：8 passed / 2 small-model AUC warnings（180.20s），明确 exit=0。原库存量/完整历史/手续费/账户 effects 均核验，无真实 API/候选授权；相同观察重跑的幂等不外推到未获批准的候选换代。
+- 最新隔离 CPython 3.14.2/XGBoost 3.4.1 的受影响组合：双 venue 默认流程、原三模型部署、评估绑定、runtime、输入/报价、持久 paper/原 C4、运行壳、历史/事务及 signal lifecycle，364 passed / 6 existing model warnings（295.02s），明确 exit=0。全程无源/测试/文档编辑、无并发长任务，JUnit 保留终局。
+- 只提取现有 deployment_model 测试搭建体为 source 显式的 contextmanager，默认 Binance fixture 不变；future_candidate 沿同一实际 source，未增生产 feature/模型/账户/订单接口。两 venue 从 raw source 重新建样本与模型，没有重标旧产物、mock reader/评分/SQLite 或另造财务公式。旧核心代码/依赖/环境保持，前轮两套 1581 完整基线适用于未变代码，不将其冒称当前新增测试后的全仓计数。
+- 文件范围为 tests/test_deployment_workflow.py、tests/test_configured_paper_workflow.py、README_FULL.md 与本台账；无生产源码/依赖/配置/权限/规则/冻结研究变更，也不增加可选包。独立 PaperRehearsal 仍固定 Binance，当前通过只扩充默认软件路径的实际适用证据。主代理串行审查，不称独立审计；编译/差异/精确提交后复验与远端核验通过才推送。
+- C5 原生完整账户/mark/book/交易所语义、C6 多币/更多策略/双向完整整轮、候选换代（待确认）/容量/迁移，以及 C7 外部认证均保留未完成，Goal active；不因软件通用路径直接通过而降低真实账户门槛。
+- 终局 JUnit 复核：3.14 适用组合 364 tests、3.11 双 venue 8 tests，均 failures=errors=skipped=0；XML SHA 分别 `8cbecd5b2c01f00366ebc87da2b05438b0dc2a7f649148536aeb35ca6fee64ed` / `f54af4bbb11985f0332c379d91abe440c48a616e606c6c89541864c51053f916`。两解释器 compileall 与 git diff --check 通过，生产目录与 928fecf 的 diff 为空；本轮没有改变模型/部署代码指纹，不需为了测试复用重封或迁移旧资产。
