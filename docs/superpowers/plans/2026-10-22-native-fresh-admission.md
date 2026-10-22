@@ -34,11 +34,26 @@
 - 先明确原生未决单/余额预占与本地 reservation 归属协议；缺证明不能当可用，unknown 不清空。完整账户公式仍沿原 C4/对账组件，原 economics_complete=false 不升级。
 - 测试边界包含每一来源年龄/跨度/时差、全部市场/持仓、确切金融差异和原历史/配置/DB 身份 mutation；consumer 未完整时仍无 admission=true。
 
+### S2a 政策与账户/市场来源使用断言（已实现，完整 S2 未完成）
+
+- 新增 `Trade/NativeAdmission.py` 与 `tests/test_native_admission_freshness.py`，先不接发送路径、DB 表或运行配置；复用原 AccountSources/AccountIdentity/NativeMarketEvidence，不扩展旧收据字段，也不复制财务公式。
+- 政策 schema `chan-native-freshness-policy-v1`：精确字段 `schema`、`max_age_ms`、`max_observation_span_ms`、`max_source_skew_ms`。年龄键精确为 account/mark/book/wallet/execution/open_orders；跨度键精确为 account/market/wallet/execution/open_orders/total。所有值显式非负 int 毫秒（不接受 bool/float/string，0 是显式的严格零，不是默认）。缺任何角色或多余别名一律拒绝；没有 ticker 年龄、全局配置或隐含秒数回退。此政策没有金额容差旋钮。
+- `read_native_freshness_policy` 只验证/复制全部显式字段；没有批准或更新用户实际配置。
+- `assert_native_account_market_freshness` 只核给定账户/市场观察的身份、完整市场池与当前客户端、年龄/跨度/时差；成功返回 None，不生成 receipt/ready/admission=true。wallet/execution/open_orders/全账本/reservations 尚未纳入此断言，不能把其未检查的角色解释成通过。完整 S2 仍须实际采集和完整消费者。
+- 账户年龄以整段采集开始计至本次使用完成，不能用较晚 finished 掩盖最早读取；mark/book 同时检查原来源时间与各自请求开始时间。account/market 自身跨度分别为 finished-started，total 则为本次使用完成时刻减本组最早 started（包含身份读取及等待，不在最后一次来源 GET 就提前截断）。时差是来源提供的 Unix 时钟与账户观察开始的最大 spread，不宣称它们是相同生成时钟或全局原子快照；原 position/asset mutation 时间不作新鲜度替代。
+- 原账户快照仍 raw 重算且 context 与当前 profile 相同；完整执行 metadata 与当前显式 market pool/S1 原观察精确相等，账户中的实际/unsupported 持仓不得靠删市场隐藏。当前公共路由与 SDK/源码身份必须匹配原观察；检查前后时钟、账户环境/公共环境漂移均拒绝。不重发/改写来源、不缓存旧结果。
+- 先政策缺函数/字段 RED，再用真实旧账户/S1 collectors＋最底层 fake 两 venue/模式/多市场用例观察断言缺函数 RED；补年龄/跨度/时差恰等/超 1ms、缺市场/单位/metadata/context/route/SDK/旧源篡改回归。最终双解释器、原账户/订单门禁适用回归、Lore/精确提交/推送。全账户金融/未决预占/原 CAS 尚未通过前，常量阻断保持不变。
+
+实现说明：本次输入先固定完整 canonical 字节、复制校验，最终再次核原输入字节；最终序列化/核验完成后才读使用时刻，不把 CPU 核验耗时漏在预算外。以两次当前 profile 与前后公共环境/SDK 检查包围绑定核验，仍不是服务器原子证明；调用者必须保证 GET 位于 DB 写锁外，helper 无法检查其外部事务。实际 149 新用例、两版适用组合各 886 pass/1 既有 isolated 通道 skip，详见台账。
+
+下一依赖仍是 S2b：原 wallet/execution 的观察窗口与覆盖、全 trade-shaped 历史/持久冻结及当前账户经济闭合、原生未决单/预占归属；不得把 S2a 的 None 或完整政策格式代替这些证据。之后才是 S3 原 CAS 每单消费与 S4 默认入口 E2E。
+
 ## S3 原 intent/CAS 与 HTTP 每单消费
 
 文件：CCXTTradeEngine、OrderAudit、db_util 及对应原状态机回归。
 
 - 新证明版本绑定账户/模式、DB、候选/部署/配置/代码、role/qty/price 与全部 source IDs；持久化原 intent 引用。
+- 新增 NativeAdmission/NativeMarketEvidence 目前未纳入旧模型/部署/输入/paper 的指纹列表，也未被默认入口消费；S3 必须显式版本化并绑定新消费者及依赖源码，不能假设旧 workflow SHA 已覆盖它们，更不能重封旧模型/部署/订单来续用旧授权。
 - 网络在 SQLite 写锁外；原事务内复核历史/投影/reservation/年龄，原 claim 和 HTTP 前再核 route/account/kill/candidate/freeze/实际意图。
 - 跨连接并发、claim 前后漂移、超龄、原生未决预占不一致不发送；已 claim/unknown/submitted 不退回可重创，不重封旧契约。
 - 旧恢复/查询/撤单/降风险路径继续按原门禁工作，不要求补造已消费模型。

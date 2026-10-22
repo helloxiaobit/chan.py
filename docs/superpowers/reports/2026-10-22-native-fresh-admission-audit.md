@@ -114,4 +114,9 @@ JUnit：154 tests，0 failures/errors/skipped；SHA256 `979105764da300cdbc9669d1
 
 独立 [NativeMarketEvidence](../../../Trade/NativeMarketEvidence.py) 与 [来源测试](../../../tests/test_native_market_evidence.py) 已实现并通过离线验收，两版 Python 各 166 项。原账户/冻结/订单恢复/壳/报价适用组合各 734 passed / 1 既有 Binance isolated 通道 skip；完整证据及限制见台账。
 每个市场保留两来源 raw/查询/原时钟/本地窗口和完整执行 metadata；公共路由/客户端环境逐请求前后检查，边界及 SDK 源码带摘要。空/交叉盘口不修复，来源永不 admission=true。
-这是 S1，不是完整 fresh-admission：没有当前显式政策/全账户消费者/CAS 集成，旧常量阻断不变。读取已存字节只能验证内容自洽，不验证调用者真实性；SDK 本地摘要也不是服务端签名或 SDK 内部 HTTP 次数保证。没有真实 I/O、配置/规则/权限/依赖修改，C7 未获认证，Goal active。
+这是 S1，不是完整 fresh-admission：交付时尚无显式政策/全账户消费者/CAS 集成，旧常量阻断不变；后续政策子边界见下一节。读取已存字节只能验证内容自洽，不验证调用者真实性；SDK 本地摘要也不是服务端签名或 SDK 内部 HTTP 次数保证。没有真实 I/O、配置/规则/权限/依赖修改，C7 未获认证，Goal active。
+
+## 9. S2a 显式政策与账户/市场观察使用检查
+
+[NativeAdmission](../../../Trade/NativeAdmission.py) 已实现完整显式毫秒政策 reader，以及原账户/S1 市场观察的当前身份/metadata/年龄/跨度/时差断言。测试仍沿原 collectors＋fake native 运输，不把 raw summary 的重封 SHA 当来源认证；输入在读取 profile 期间变化会拒绝，最终字节核验耗时也计入使用预算。
+新增 149 项，两版 Python 的适用原账户/订单/门禁组合各 886 passed / 1 既有 Binance isolated 通道 skip。该断言只返回 None，未接入开仓，不验证 wallet/execution 覆盖、原全账本/冻结、未决原生预占或 CAS；需要由后续完整消费者自己采集/关联，不接受外部 passed 布尔值。旧常量门禁、原 evidence flags=false 与候选/实盘/研究审批均不变，Goal 尚未完成。

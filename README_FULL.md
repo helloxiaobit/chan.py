@@ -403,7 +403,15 @@ minio/txcos SDK 或签名 URL 失败会抛固定脱敏异常，缺可选依赖�
 空/交叉/零量盘口保留为不可交易观察。SDK/源码摘要只描述本地采集身份，`requests` 计显式 SDK 来源调用而非全部底层 HTTP 尝试，
 本层不认证服务器/SDK 内部重试、不能证明账户或持仓齐全；自封 SHA 也不是准入能力。
 两版 Python 各 166 个来源用例通过；适用原账户/冻结/订单恢复/壳/报价组合各 734 passed / 1 既有 isolated 通道 skip。
-来源观察始终 `native_admission_verified=false`，不提供隐含 max-age；明确鲜活性政策、全账户关联与原 CAS 消费仍是下一步。
+来源观察始终 `native_admission_verified=false`，不提供隐含 max-age；下述政策/使用子边界也不替代全账户关联与原 CAS 消费。
+现有 `Trade.NativeAdmission.read_native_freshness_policy` 要求所有来源年龄/跨度与时差字段显式给出整毫秒，
+不接受 bool/float/字符串或 ticker 回退；0 按严格零处理，没有金额容差开关，也没有修改现有运行配置。
+`assert_native_account_market_freshness` 已将原账户与 S1 原观察按完整市场池、当前 typed profile/公共环境/SDK 绑定，
+以最早读取、原来源时间及使用完成时间核验年龄/跨度/时差，并阻止检查期间输入字节变异；成功仅返回 None。
+它不验证钱包/成交覆盖、全账本与历史冻结、原生未决单/保证金预占或原 CAS，不能当成准入/解冻接口。
+调用者须保证只读身份 GET 在 DB 写锁外，不能把 helper 没有创建事务理解成它能检测外部持有的锁。
+新增 149 项政策/使用用例，连同来源及原账户/订单/壳/报价适用组合，两版 Python 各 886 passed / 1 既有 isolated 通道 skip；
+真实 I/O、C7 认证及完整 S2/S3/S4 尚未完成，默认非 dry-run 开仓阻断仍保留。
 版本化 API 见下文，本入口的命令完成状态不是完整验收或生产授权。
 
 非 dry-run 还必须同时满足以下门禁：
