@@ -394,9 +394,16 @@ minio/txcos SDK 或签名 URL 失败会抛固定脱敏异常，缺可选依赖�
 当前运行壳对非 dry-run 新风险明确返回 `native_fresh_admission_not_integrated`，
 `native_admission_verified` 恒为 false；历史上没有冻结并不等于鲜活账户准入。
 已有仓位管理仍可按原门禁尝试。独立 paper 与默认脚本的显式软件 profile 已接进程级状态绑定；
-通知固定摘要/脱敏及上述两版 Python 安装项已验；强制原生鲜活账户及独立 mark/book 来源准入、更广 E2E 仍待 C6。
-原生准入的当前缺口、官方来源和待批严格实现方向见
-[fresh-admission 审计草案](docs/superpowers/reports/2026-10-22-native-fresh-admission-audit.md)；草案不改变门禁或授权真实请求。
+通知固定摘要/脱敏及上述两版 Python 安装项已验；强制原生鲜活账户准入、更广 E2E 仍待 C6。
+原生准入的当前缺口、官方来源和已获明确批准的严格方向见
+[fresh-admission 审计](docs/superpowers/reports/2026-10-22-native-fresh-admission-audit.md) 与
+[串行实施计划](docs/superpowers/plans/2026-10-22-native-fresh-admission.md)；仅 fake 开发，尚未替代上述门禁或授权真实请求。
+独立 `Trade.NativeMarketEvidence` 来源层现已实现：完整 market metadata、分别读取的 raw mark/BBO、各自来源时钟与本地窗口、
+每次 GET 前后公共路由/客户端环境核验，以及 allowlisted raw→派生值重算。金额单位沿原严格 Decimal 边界，无 epsilon/舍入补救；
+空/交叉/零量盘口保留为不可交易观察。SDK/源码摘要只描述本地采集身份，`requests` 计显式 SDK 来源调用而非全部底层 HTTP 尝试，
+本层不认证服务器/SDK 内部重试、不能证明账户或持仓齐全；自封 SHA 也不是准入能力。
+两版 Python 各 166 个来源用例通过；适用原账户/冻结/订单恢复/壳/报价组合各 734 passed / 1 既有 isolated 通道 skip。
+来源观察始终 `native_admission_verified=false`，不提供隐含 max-age；明确鲜活性政策、全账户关联与原 CAS 消费仍是下一步。
 版本化 API 见下文，本入口的命令完成状态不是完整验收或生产授权。
 
 非 dry-run 还必须同时满足以下门禁：
