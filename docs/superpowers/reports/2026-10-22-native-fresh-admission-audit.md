@@ -142,3 +142,11 @@ NativePendingOwnership 复用原完整历史 reader、原 typed account、原订
 同账户同市场的多原 attempt 拒绝最佳匹配；Binance 跨市场同号可独立归属，可证明的其他账户可排除，未知历史与环境漂移保留问题。原生量/累计量、方向/腿、reduce-only、限价/post-only/GTC 等条款核验；算法/附件/外国市场不会被普通记录认领。原 DB 投影/事件链、单位/执行设置错误与倒退/晚于来源的本地事件拒绝。
 
 这仍是数量与身份观察。两个 flags=false、native_margin_amount=None、未接原 CAS/HTTP；没有可用资金或原生冻结保证金结论，也不能替代原 sticky freeze/current-state/freshness 检查。下一依赖为独立原生余额/保证金/账户模式来源与原金融核算复用；完整 S2/S3/S4、C5/C6/C7、外部容量和 Goal 均未通过本子边界完成。
+
+## 13. S2b2 原生余额/预占分项来源（消费者仍待）
+
+NativeBalanceReservations 固定 configuration_before→balance→configuration_after；每段原 typed profile 前后读取及环境/SDK/客户端守卫，共 9 次显式 GET。没有账户/币种/标的过滤、重试、DB 写入、余额推算或新的金融公式。原 AccountSources schema/收据保持原字节语义。
+
+Binance 资产/总额/原账户腿的 position/open-order initial margin 与余额、OKX 每币 ordFrozen/frozenBal/借贷/iso/策略/copy 字段均按允许原字段保存；未知/空项为 None，原币与 USD 总额分别标记，金额不转汇或分配到订单。窗口与 mutation 时钟分别保留，Binance config 保留字段 updateTime 不充当 fresh 时钟。配置响应自己的 UID 须与前后原账户一致，只记录 hash。
+
+66 个新 case、两版各 940 项适用回归通过；源码编译/差异和核心无 SDK reader 验证通过。两个 flags=false，未形成当前金融 PASS；账户模式适用性、余额/预占的独立核算、原 wallet/executions 与完整 ledger/positions 闭合、sticky failure 发布及 CAS/HTTP 消费仍须实施，真实端点/内部重试/容量与 C7 未认证。

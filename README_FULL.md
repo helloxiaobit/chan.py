@@ -429,6 +429,11 @@ minio/txcos SDK 或签名 URL 失败会抛固定脱敏异常，缺可选依赖�
 同账户同市场订单号歧义、原契约/累计量/条款不符、复杂单和历史缺口会明确拒绝或保留问题；仅可证明的其他账户可排除。
 原执行设置/限额检查直接复用，事件时钟倒退或晚于观察也拒绝。报告中的 native_margin_amount 仍为 None，两个 flags=false；
 原生冻结余额/保证金、完整金融闭合和 CAS 消费仍是后续依赖。验证范围及双解释器记录见开发验收台账。
+`Trade.NativeBalanceReservations` 进一步保留原生余额/预占分项：固定配置→账户余额→配置三段 GET，
+每段核原 typed profile/环境与 SDK，共 9 次显式调用。Binance position/open-order initial margin、
+OKX ordFrozen/frozenBal/借贷/策略与 copy 分项按原币保存，USD 总额单列；缺失或不适用金额为 None，未换汇或逐单分摊。
+显式 OKX 配置响应 UID 也必须匹配前后账户，只持久摘要。新增 66 项、两版各 940 项适用回归通过；
+该独立来源仍两个 flags=false，完整金融闭合、来源当前使用和原 CAS/HTTP 尚未集成。
 版本化 API 见下文，本入口的命令完成状态不是完整验收或生产授权。
 
 非 dry-run 还必须同时满足以下门禁：

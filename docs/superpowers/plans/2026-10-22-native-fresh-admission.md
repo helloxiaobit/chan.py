@@ -79,6 +79,14 @@
 
 归属层离线实现已落地：仅可证明的不同 stable account 排除；同账户/市场多个原 server ID 候选拒绝歧义，不能靠 client ID 选优。原 CCCXTTradeEngine 的纯执行设置/限额检查直接复用，单位与 requested/contractSize 精确核验；post-only/market 原条款独立匹配。读取来源期间输入变化、历史投影篡改、事件时钟倒退或晚于本次来源 finished 均拒绝。原报告不表示最新或来源真实，未来消费者仍须自己采集、检查年龄与范围并在原 CAS 内重读。native_margin_amount=None 不是零，未查资金余额/原生 margin 字段，S2b2 整体仍未完成。
 
+下一来源接口为独立 `Trade/NativeBalanceReservations.py`：`collect_native_balance_reservations(exchange, *, mode)` / `verify_native_balance_reservations(document)`。固定三段 configuration_before → balance → configuration_after；Binance 使用 accountConfig 和 V3 account，OKX 使用 account/config 和 account/balance，均不传币种/标的过滤。每段包围原 typed profile、路由/TLS/SDK/客户端身份，记录完整本地窗口，计入原 128 次显式调用预算；无重试。两次允许的配置必须相同，不能把中途模式变更混为同账户快照。
+
+新 schema 原样保留原生账户/各币种的余额、可用、position/open-order initial margin、冻结额、iso/借贷/策略/copy 等允许原字段；USD 总额和币种金额分别命名，不换汇、不分摊到每个订单。空/缺省原字段以 None 保留，绝不补 0；已有数值必须沿原 Decimal finite 边界。Binance config.updateTime 为上游保留字段，不当来源时钟；balance/asset mutation 时钟也不冒称快照/mark 生成时刻。原 AccountSources/收据和金融公式不变；新来源两个 flags=false，不做 DB 写入。后续完整消费者必须结合原 positions、wallet/executions、归属和余额预占闭合，不以来源层子集代替主目标。
+
+技术依据（仅文档/SDK 方法核验、无实际 API）：[Binance Account/Config/V3](https://developers.binance.com/en/docs/catalog/core-trading-derivatives-trading-usd-s-m-futures/api/rest-api/account)、[OKX balance/config](https://my.okx.com/docs-v5/en/)。先明确缺 API RED，再 fake 传输核非零挂单保证金、两币种和单双向/环境、遗漏/空字段、原币/USD 区分、模式/路由/账户漂移、原字节重封/派生变异及核心无 SDK reader；之后才做新金融消费者。
+
+余额来源层已实现并离线验证：66 项；两版适用组合各 940 passed。存储 reader 逐段重算 raw/派生、窗口、固定请求与计数、当前代码和身份形状，不加载 SDK，也不认证原始来源。显式 OKX configuration 的 UID 在采集当时另核与当前 typed account 相等，观察仅保存 identifier SHA；不能只核周围 profile 而忽略配置响应自己的 UID。旧来源/金融/订单/CAS/配置未改。当前金融消费者仍未完成，不能把“已观察原生预占字段”改称“已完成预占/可用资金闭合”。
+
 ## S3 原 intent/CAS 与 HTTP 每单消费
 
 文件：CCXTTradeEngine、OrderAudit、db_util 及对应原状态机回归。
