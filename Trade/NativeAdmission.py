@@ -46,12 +46,12 @@ def _fail_sources():
     raise CChanException("原生账户/市场来源使用检查失败；不是完整账户准入，禁止据此新增风险", ErrCode.TRADE_UNLOCK_FAIL) from None
 
 
-def _assert_current_windows(policy, start, checked, *, account, market, wallets, executions):
+def _assert_current_windows(policy, start, checked, *, account, market, wallets, executions, additional=()):
     """Pure shared use-time checks; historical coverage bounds are not clocks."""
     if type(start) is not int or type(checked) is not int or not 0 <= start <= checked < 2**63:
         _fail_sources()
     ages, spans = policy["max_age_ms"], policy["max_observation_span_ms"]
-    current = [("account", account), *[("wallet", row) for row in wallets], *[("execution", row) for row in executions]]
+    current = [("account", account), *[("wallet", row) for row in wallets], *[("execution", row) for row in executions], *additional]
     anchors, starts = [], [market["started_ms"]]
     for role, row in current:
         begin, finish = row["started_ms"], row["finished_ms"]
@@ -134,6 +134,56 @@ def assert_native_account_market_freshness(exchange, *, mode, markets, account_s
         _fail_sources()
 
 
+def _current_interval_snapshot(chan, context, check_id, market_document):
+    """Shared DB-only binding; caller owns the same SQLite transaction."""
+    from .AccountRiskStore import _ledger, account_key, read_check, risk_state
+    from .AccountStore import TABLE as ACCOUNT_EVIDENCE, read_evidence
+    from .ExecutionStore import read_scan_with_account
+    check = read_check(chan.db, check_id)
+    state = risk_state(chan.db, context)
+    saved = check["payload"]["inputs"]
+    if (state["frozen"] or canonical_bytes(check["payload"]["account_context"]) != canonical_bytes(context)
+            or saved is None or check["payload"]["report"]["payload"]["status"] != "matched_observations"):
+        _fail_sources()
+    if canonical_bytes(_ledger(chan)) != canonical_bytes({key: saved[key] for key in ("histories", "projections")}):
+        _fail_sources()
+    market, after = market_document["payload"], saved["after"]["payload"]
+    after_bytes = canonical_bytes(saved["after"])
+    # A later known observation invalidates this old current point even
+    # before it has a report. Same-clock distinct snapshots are ambiguous.
+    for row in chan.db.query(f"SELECT evidence_id FROM {ACCOUNT_EVIDENCE} ORDER BY evidence_id"):
+        document = read_evidence(chan.db, row["evidence_id"])
+        observed = document["payload"]
+        if document["schema"] == SNAPSHOT_SCHEMA and account_key(observed["account_context"]) == state["account_key"]:
+            if (observed["finished_ms"] > after["finished_ms"]
+                    or (observed["finished_ms"] == after["finished_ms"] and canonical_bytes(document) != after_bytes)):
+                _fail_sources()
+    if (market["venue"] != context["venue"] or market["mode"] != context["mode"]
+            or any(market["environment"][key] != context["environment"][key]
+                   for key in ("sandbox", "hostname", "simulated_trading"))):
+        _fail_sources()
+    with localcontext(_MONEY):
+        units = sorted((_market(row["market"]) for row in market["observations"]), key=lambda row: row["id"])
+    if canonical_bytes(units) != canonical_bytes(sorted(after["markets"], key=lambda row: row["id"])):
+        _fail_sources()
+    by_id = {row["market"]["id"]: row for row in market["observations"]}
+    for position in after["positions"]:
+        if _exact_number(position["quantity"]) and _exact_number(position["mark_price"]) != _exact_number(by_id[position["instrument_id"]]["mark"]["price"]):
+            _fail_sources()
+    observations = []
+    ids = check["payload"]["source_ids"]["executions"]
+    if len(ids) != len(saved["executions"]):
+        _fail_sources()
+    for scan_id, original in zip(ids, saved["executions"]):
+        receipt, linked = read_scan_with_account(chan.db, scan_id)
+        if (linked is None or canonical_bytes(receipt) != canonical_bytes(original["receipt"])
+                or linked["manifest_sha256"] != original["manifest_sha256"]
+                or canonical_bytes(linked["observation"]["account_context"]) != canonical_bytes(context)):
+            _fail_sources()
+        observations.append(linked["observation"])
+    return check, observations
+
+
 def assert_native_persisted_interval(chan, *, account_context, check_id, market_evidence, policy):
     """DB-only check of original evidence and an unchanged current journal.
 
@@ -143,9 +193,6 @@ def assert_native_persisted_interval(chan, *, account_context, check_id, market_
     None is not admission. The original v1 report's limitations are preserved.
     """
     try:
-        from .AccountRiskStore import _ledger, account_key, read_check, risk_state
-        from .AccountStore import TABLE as ACCOUNT_EVIDENCE, read_evidence
-        from .ExecutionStore import read_scan_with_account
         start = utc_now_ms()
         provided = {"account_context": account_context, "check_id": check_id, "market_evidence": market_evidence, "policy": policy}
         original_bytes = canonical_bytes(provided)
@@ -156,49 +203,9 @@ def assert_native_persisted_interval(chan, *, account_context, check_id, market_
         if chan.db_type != "sqlite":
             _fail_sources()
         with chan.db.transaction():
-            check = read_check(chan.db, inputs["check_id"])
-            state = risk_state(chan.db, context)
+            check, observations = _current_interval_snapshot(chan, context, inputs["check_id"], market_document)
             saved = check["payload"]["inputs"]
-            if (state["frozen"] or canonical_bytes(check["payload"]["account_context"]) != canonical_bytes(context)
-                    or saved is None or check["payload"]["report"]["payload"]["status"] != "matched_observations"):
-                _fail_sources()
-            if canonical_bytes(_ledger(chan)) != canonical_bytes({key: saved[key] for key in ("histories", "projections")}):
-                _fail_sources()
             market, after = market_document["payload"], saved["after"]["payload"]
-            after_bytes = canonical_bytes(saved["after"])
-            # A later known observation invalidates this old current point even
-            # before it has a report. Validate every original row before using
-            # indexed metadata; same-clock distinct snapshots are ambiguous.
-            for row in chan.db.query(f"SELECT evidence_id FROM {ACCOUNT_EVIDENCE} ORDER BY evidence_id"):
-                document = read_evidence(chan.db, row["evidence_id"])
-                observed = document["payload"]
-                if document["schema"] == SNAPSHOT_SCHEMA and account_key(observed["account_context"]) == state["account_key"]:
-                    if (observed["finished_ms"] > after["finished_ms"]
-                            or (observed["finished_ms"] == after["finished_ms"] and canonical_bytes(document) != after_bytes)):
-                        _fail_sources()
-            if (market["venue"] != context["venue"] or market["mode"] != context["mode"]
-                    or any(market["environment"][key] != context["environment"][key]
-                           for key in ("sandbox", "hostname", "simulated_trading"))):
-                _fail_sources()
-            with localcontext(_MONEY):
-                units = sorted((_market(row["market"]) for row in market["observations"]), key=lambda row: row["id"])
-            if canonical_bytes(units) != canonical_bytes(sorted(after["markets"], key=lambda row: row["id"])):
-                _fail_sources()
-            by_id = {row["market"]["id"]: row for row in market["observations"]}
-            for position in after["positions"]:
-                if _exact_number(position["quantity"]) and _exact_number(position["mark_price"]) != _exact_number(by_id[position["instrument_id"]]["mark"]["price"]):
-                    _fail_sources()
-            observations = []
-            ids = check["payload"]["source_ids"]["executions"]
-            if len(ids) != len(saved["executions"]):
-                _fail_sources()
-            for scan_id, original in zip(ids, saved["executions"]):
-                receipt, linked = read_scan_with_account(chan.db, scan_id)
-                if (linked is None or canonical_bytes(receipt) != canonical_bytes(original["receipt"])
-                        or linked["manifest_sha256"] != original["manifest_sha256"]
-                        or canonical_bytes(linked["observation"]["account_context"]) != canonical_bytes(context)):
-                    _fail_sources()
-                observations.append(linked["observation"])
         # Include release/commit latency too. These are the immutable values
         # read in the owned snapshot, not a claim that the DB remains unchanged
         # after release; the later original CAS must perform its own recheck.

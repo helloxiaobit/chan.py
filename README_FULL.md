@@ -446,6 +446,10 @@ OKX ordFrozen/frozenBal/借贷/策略与 copy 分项按原币保存，USD 总额
 重读按显式 event-id 前缀与全部尝试重建，不用现时投影改写旧结果，新旧失败共享原 sticky freeze，后来的匹配不会解冻。
 新增 37 项；两版各 1662 pass/1 既有 skip（另 6 条小样本模型警告）。复用原金融/发布/风险门禁，报告仍历史观察、两个 flags=false，
 并非完整当前准入或测试网/实盘授权；全部来源 freshness、collector-owned、独立 mark/book 与每单 CAS/HTTP 消费及 C7 仍待。
+`Trade.NativeCurrentComponents` 新增联合只读使用断言，将匹配的 native check、原全账本/冻结、最新已知来源和独立 mark/book，
+与事务外当前账户/公共路由/SDK 复查及最终统一 use-time 预算关联。独立政策版本显式新增 balance age/span，旧政策不加默认值。
+107 项新测试、两版适用组合各 1663 pass/1 既有 skip；复用原区间/时间核验，不写 PASS/订单，None 不代表授权。
+collector-owned 采集、完整源码身份、原 CAS/HTTP 每单消费与外部 C7 仍待，常量阻断和全部交易 gates 保留。
 版本化 API 见下文，本入口的命令完成状态不是完整验收或生产授权。
 
 非 dry-run 还必须同时满足以下门禁：

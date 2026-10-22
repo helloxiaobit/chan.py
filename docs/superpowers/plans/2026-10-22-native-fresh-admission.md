@@ -111,6 +111,20 @@
 
 前缀以原显式 INTEGER PRIMARY KEY event_id 固定并摘要覆盖其全部 attempt/event 原行，再与保存 histories 的全部 key/事件数量及原 prefix bytes 校验；不使用可被 SQLite 压缩重排的隐含 rowid，不从当前可变 projection 重建过去，也不能删掉零成交终态尝试后重算一个匹配 report 就过关。来源错误固定 failure 发布；发布/schema 失败则拒绝/回滚，不写新订单。37 项新测试、两版各 1662 pass/1 既有 skip/6 小样本模型警告，含旧部署契约/工作流/persistent paper；两 venue/模式/方向、原 v1 失败共存、跨连接 claim→HTTP 冻结与原减仓、无 SDK 重启均验证。此步完成来源存储和历史失败机制，不等于完整 S2；下一步为新 pending/balance 的显式年龄/跨度/当前来源与现客户端、独立 mark/book/完整市场池关联，再接原 CAS/HTTP、默认入口与新源码身份。旧部署指纹含 db_util/SqliteDB，但不含所有新增 native 模块，不能借旧 receipt 自动重封或重新武装。
 
+### S2b5 完整组件来源的当前使用断言（实施中）
+
+新政策 `chan-native-component-freshness-policy-v1` 保留原显式 age/span/skew 字段并为 age/span 各新增必填 balance 角色；旧政策/schema/默认值不改，不将 account 的预算暗用为 balance。纯读/断言接口不返回 proof/ready/admission，不写账户检查或订单，collector-owned 与原 CAS 消费仍是后续必要边界。
+
+复用/清理计划：把 NativeAdmission 原 DB 当前区间核验体提为共用内部函数，旧 public 入口保留同样验证与 None 结果，原 56 项适用回归保护。原 use-time helper 仅增加可选的额外窗口角色，旧默认路径不变；新模块复用其 account/mark/book/wallet/execution 窗口并纳入 open_orders/balance，完成时间包含 DB 退出和 private profile 的全部耗时，不用 update/mutation 时钟或后来的导入时间刷新 source。
+
+新断言先读匹配的 native check/原全 ledger、sticky freeze、最新已知 snapshot/wallet/execution/pending/balance 与完整市场/mark 绑定，在 SQLite 事务外复查当前 typed account/public route/SDK/市场定义，再重读相同 DB 当前状态。新版源与市场 SDK 身份须对应；任何较新或同 finished 不同字节的未整合来源、跨账户/模式、缺域、账本变化、原冻结、全组 skew/age/span 超界都拒绝。禁止在调用者已有事务内发 private I/O。来源原字节与输入包最终再验，金额无容差、未知不填零。
+
+先真实缺 API RED，再用原 collectors＋双币实际部分成交/未决 ledger、原持久 check/独立 mark/book 的两 venue/模式/方向夹具，测试各角色精确边界/超 1ms、来源 mutation、latest 源索引、当前 client/路由/SDK、profile 期间其他连接写入、DB 退出耗时与输入变化。此步不把外部传入自洽 receipt 当采集权或订单能力；旧候选/全部交易 gates/常量阻断不变。
+
+此只读子层已实现，107 新用例、两版适用组合各 1663 passed/1 既有 skipped，源年龄/跨度/全组 skew 含新 pending/balance 和最终 DB 退出耗时；正向是两币非空持仓/实际部分假成交/非零未决保证金，不缩成空仓证明。原 DB 当前区间体抽为 _current_interval_snapshot 供两入口复用；原 policy/public API 不改返回值或拓宽字段，金额核算仍为原共享实现。源码/环境/原字节异常脱敏拒绝，无 SDK/配置的子进程可单独导入/读新政策。
+
+latest 检查会验证全部元数据后才按 stable account/角色过滤；新或同 clock 不同字节的 snapshot/wallet/execution/pending/balance 未整合即拒绝，不按 SHA 排名。执行收据的相同事实/相同查询窗口重导入仍是同一 ID，保留首次原账户窗口，不能刷新年龄；新查询窗口才形成可被识别的新观察。只读断言仍不是来源真实性、exchange 服务器原子快照、当前真实 instrument metadata 或交易授权；原 C4/economics_complete=false 不被提升。下一依赖为固定顺序的 collector-owned 来源采集/失败发布，与原每单 market/intent/CAS/HTTP 路径直接绑定，禁止从 caller receipt/None 推导 native_admission_verified=true。
+
 ## S3 原 intent/CAS 与 HTTP 每单消费
 
 文件：CCXTTradeEngine、OrderAudit、db_util 及对应原状态机回归。

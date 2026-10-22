@@ -174,3 +174,11 @@ NativeAccountCheck 已由持久 before/after/wallet/execution/pending/balance ID
 保存的原 event_id 前缀、全部 attempt/event 原行摘要及 key/事件数须与原不可变 journal 相符；原逐 attempt prefix verifier 仍核字节链。以显式 event_id 而非 attempts 隐含 rowid 标记版本，避免普通 SQLite compaction 重排造成伪身份。测试包含删掉零成交已撤销尝试及 projection、重新计算一个 matched report 并全重封 check 后仍拒绝；未来真实减仓推进 ledger 不改旧 check，重新启动可复核且无 SDK/配置或新写入。
 
 37 项新测试、两版适用广组合各 1662 pass/1 既有 skip/6 小样本模型警告；包括旧冻结/金融/来源/订单、部署契约/工作流和持久 paper。跨连接 native failure 在原 claim 后、HTTP 前阻止发送，未知提交不自动重试，原减仓仍可执行；无真实 HTTP、长期容量或独立外部认证。新 check 明确两个 flags=false/历史组件观察，完整 freshness/current source/current client、独立 mark/book、每单 CAS/HTTP 和源码版本绑定仍待，不删除常量阻断或重封旧候选，Goal active。
+
+## 17. S2b5 所有组件来源的联合使用断言
+
+NativeCurrentComponents 新增独立完整政策版本，balance age/span 各自必填；旧 v1 不拓宽、不回填预算、不加金额/数量容差。复用 NativeAdmission 的原 DB 当前区间体和时间 helper，将匹配 native check 的全 ledger/冻结/原来源/独立 mark/book 与新的 pending/balance 窗口、当前 typed account/public route/SDK 和最终 use-time 联合复核。两次 DB 当前视图包围事务外 private profile，拒绝调用者已占有的事务；任何中途已知账本/冻结/来源/输入变化或超龄均拒绝。
+
+较新或同 finished 不同字节的未整合来源不能用 SHA/排名选择，所有来源索引/原始派生均先验后按稳定账户过滤；native SDK 自洽但不对应当前市场/client 的历史包也不可代替绑定。各角色年龄、市场/全组跨度和 skew 恰等通过，少 1ms 拒绝；新 pending/balance 的非零采集跨度由真实 fake collector 固定 GET 计时验证，mutation/update 时钟不是新鲜度。相同 execution packet 重导入不刷新首次 native association，新查询窗口才是新 source。
+
+107 项新测试，CPython 3.14.2/3.11.15 适用组合各 1663 pass/1 既有 skip，JUnit 用例集合完全相同；未变的模型/部署回归沿用 db75c5e 证据。严格串行、活测试不编辑、主线程审查、无真实服务。None 不表示 admission，也不替代 collector-owned、真实 instrument metadata/原 CAS/HTTP、总请求/SDK 内部重试/长期容量或 C7 外部认证；新风险常量阻断与所有 gates 不变，Goal active。
