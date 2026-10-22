@@ -9,6 +9,7 @@ from OfflineData.offline_data_util import validate_source_identity
 
 
 SCHEMA = "chan-market-quotes-v1"
+SOFTWARE_SCHEMA = "chan-software-entry-quotes-v1"
 
 
 def _fail():
@@ -28,11 +29,16 @@ def _digest(value):
 def _validate(document):
     result = json.loads(canonical_bytes(document))
     if (not isinstance(result, dict) or set(result) != {"schema", "payload", "payload_sha256"}
-            or result["schema"] != SCHEMA):
+            or result["schema"] not in {SCHEMA, SOFTWARE_SCHEMA}):
         _fail()
     payload = result["payload"]
-    if (not isinstance(payload, dict) or set(payload) != {"source", "started_ms", "finished_ms", "quotes", "clock_kind"}
-            or payload["clock_kind"] != "exchange_ticker_timestamp" or _digest(payload) != result["payload_sha256"]
+    software = result["schema"] == SOFTWARE_SCHEMA
+    extra = {"synthetic_only", "software_max_age_ms"} if software else set()
+    if (not isinstance(payload, dict) or set(payload) != {"source", "started_ms", "finished_ms", "quotes", "clock_kind", *extra}
+            or (software and payload["synthetic_only"] is not True)
+            or (software and not 0 < _clock(payload["software_max_age_ms"]))
+            or payload["clock_kind"] != ("explicit_software_clock" if software else "exchange_ticker_timestamp")
+            or _digest(payload) != result["payload_sha256"]
             or _clock(payload["started_ms"]) > _clock(payload["finished_ms"])):
         _fail()
     validate_source_identity(payload["source"])
@@ -62,6 +68,16 @@ def make_quote_batch(quotes, *, source, started_ms, finished_ms):
         _fail()
 
 
+def make_software_quote_batch(quotes, *, source, started_ms, finished_ms, max_age_ms):
+    """Whitelist raw software inputs without claiming exchange timestamps."""
+    if not 0 < _clock(max_age_ms):
+        _fail()
+    result = make_quote_batch(quotes, source=source, started_ms=started_ms, finished_ms=finished_ms)
+    payload = result["payload"]
+    payload.update(clock_kind="explicit_software_clock", synthetic_only=True, software_max_age_ms=max_age_ms)
+    return _validate({"schema": SOFTWARE_SCHEMA, "payload": payload, "payload_sha256": _digest(payload)})
+
+
 def read_quote_batch(document, *, source, symbols, now_ms, max_age_ms):
     """Fresh original evidence, not a trusted ready/passed boolean or refresh."""
     try:
@@ -72,6 +88,8 @@ def read_quote_batch(document, *, source, symbols, now_ms, max_age_ms):
             _fail()
         result = _validate(document)
         payload = result["payload"]
+        if result["schema"] == SOFTWARE_SCHEMA:
+            max_age_ms = min(max_age_ms, payload["software_max_age_ms"])
         if (payload["source"] != validate_source_identity(source) or payload["finished_ms"] > now_ms
                 or [quote["symbol"] for quote in payload["quotes"]] != sorted(symbols)
                 or any(not 0 <= now_ms-quote["timestamp_ms"] <= max_age_ms for quote in payload["quotes"])):

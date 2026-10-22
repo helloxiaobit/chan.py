@@ -357,8 +357,8 @@ SignalMonitor 仅在重复信号的完整 frozen bytes 相等时记录为 existe
 
 当前运行壳对非 dry-run 新风险明确返回 `native_fresh_admission_not_integrated`，
 `native_admission_verified` 恒为 false；历史上没有冻结并不等于鲜活账户准入。
-已有仓位管理仍可按原门禁尝试。独立 paper 入口已接进程级状态绑定与固定合成单路径逐事件演练；
-默认运行壳接入、强制鲜活账户及独立 mark/book 来源准入、通知失败观测、更广 E2E 和安装矩阵仍待 C6。
+已有仓位管理仍可按原门禁尝试。独立 paper 与默认脚本的显式软件 profile 已接进程级状态绑定；
+强制原生鲜活账户及独立 mark/book 来源准入、通知失败观测、更广 E2E 和安装矩阵仍待 C6。
 版本化 API 见下文，本入口的命令完成状态不是完整验收或生产授权。
 
 非 dry-run 还必须同时满足以下门禁：
@@ -754,6 +754,66 @@ v1 内存历史不自动升级。代码/运行时变化须保留旧产物并评�
 这只是同机、合作式单写入器的软件恢复，文件与 SQLite **没有全局原子事务**；不抗两个文件一起回滚/伪造，
 不认证物理掉电、跨主机或恶意文件系统写入。全账本重验的容量/时延尚未认证。
 并发撮合、queue/流动性、挂单保证金预占、原生 pooled/isolated/保险/强平与真实限频仍未认证；Goal 未完成。
+
+#### 默认交易脚本使用同一软件 paper 服务器
+
+`MakeOpenTrade`、`RestoreOrders`、`ClosePreErrorOpen`、`RealTimeTracker` 和 `RetradeCoverOrder`
+现在共用 `Trade/Script/TradeRuntime.py` 的 context-managed 工厂。下列是**需自行填写的配置结构**，
+不写入默认配置，也不会创建或替换原 server：
+
+```yaml
+trade:
+  quote_max_age_ms: <last 报价允许年龄，正整数毫秒>
+  paper:
+    server_path: <已由 CPersistentPaperState.create 创建的原文件>
+    quote_path: <当前软件行情文件>
+    quote_max_age_ms: <bid/ask/mark 允许年龄，正整数毫秒>
+  open_para:
+    score_thred: null
+    max_sl_rate: null
+    max_profit_rate: null
+    bsp_type_filter: null
+```
+
+同时需要显式 `ccxt.mode: dry_run`、`default_type: swap`、SQLite 和同源的 `offline_data.source_identity`。
+profile 缺失/损坏或原 server 身份不匹配时不会回退成新内存账户。未声明 profile 的旧库调用仍兼容，
+但旧简化模拟不是完整账户证明。显式 profile 的开仓/跟踪/后验只读内联 `trade.open_para`，
+缺项是未启用该额外条件，不暗读仓库私有 `OpenConfig.yaml`；模型三个阶段阈值仍以部署清单为准。
+
+软件行情是有限 canonical JSON（不是普通 pretty JSON）：
+
+```python
+payload = {
+    "synthetic_only": True,
+    "source": source_identity,
+    "at_ms": explicit_utc_ms,
+    "quotes": [{"symbol": symbol, "bid": "99.9", "ask": "100", "mark": "100", "last": 100.0}],
+}
+document = {"schema": "chan-software-paper-quotes-v1", "payload": payload,
+            "payload_sha256": hashlib.sha256(canonical_bytes(payload)).hexdigest()}
+```
+
+生产者应为账户的**全部 market** 提供按 symbol 排序、无重复的行情；bid/ask/mark 为有限正数字符串，
+盘口符合原 tick，mark 独立，last 为有限正数。这里只表达显式软件观察，不证明真实盘口或 mark 时钟。
+生产者在各脚本运行前提供新文件/原子替换 `quote_path`，不得改 server 或交易库；receiver 不下载、
+伪造或刷新报价。每个脚本冻结一次原批次，使用时复验文件、来源、账户报价及结束时钟，
+行情变更/过期/缺失不产生新模拟 fill，已知累计回报与撤单仍可读取/执行；新减仓成交也须有有效报价。
+
+这类新订单使用 `chan-paper-order-v3` 保存原 `software_quote_max_age_ms`，后续恢复/退出取历史与当前策略
+更严格的上限；无 reader 的旧调用只能查已知状态，不能绕过该上限继续撮合。v1 内存/v2 持久历史不重标。
+开仓 v2 输入证明携带独立 `chan-software-entry-quotes-v1`、`explicit_software_clock`、`synthetic_only=true`，
+绝不将软件时钟伪称交易所 ticker 时间；非 paper guard/DB 意图拒绝它。原 native quote schema/bytes 保留。
+
+原 SQL 机会键（code/level/方向/target K）对冻结信号贯穿整个生命周期，已开仓/已失效后不能因重跑再次下单。
+SQLite 检查与插入共用原事务，已有冻结 bytes 必须完全相同才计 existed；观察时钟、评分或部署变化仍拒绝，
+显式信号换代/重臂协议尚未完成。旧无冻结信号的 unwatch 后再插入行为保留，不当作新路径的证明。
+
+管理 CLI 遇 unresolved/输入问题返回非零并释放 DB/store；确认终态的部分平仓撤单可继续减少剩余量，
+未知/提交中的旧请求不能被重下。模型损坏阻断新开仓，但不要求原模型可读才能查询、撤销或减少原 paper 仓位。
+原生非 dry-run 新风险仍然关闭。此 profile 只替换交易/报价路径，`RunTradeCycle` 的 OHLCV 更新阶段仍会调用
+配置的更新器；完全无网络演练请用前面的 `PaperRehearsal`，不能把 profile 当作全局断网开关。
+本轮默认整轮测试只 fake 公共更新传输，其余真实模型、SQLite、CLI 和新进程均实际执行。
+Binance 合成路径不是 OKX E2E 或任何测试网/实盘认证；容量、通知、完整安装矩阵、迁移及 C5–C7 其余项仍待。
 
 当前只完成了离线可证明的安全边界，尚未完成交易所逐一测试网认证。待验证项包括：
 沙盒支持与市场映射、客户端订单号历史查询窗口/分页、post-only/reduce-only/

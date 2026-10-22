@@ -36,7 +36,8 @@ def _evaluator_identity():
         "Trade/Script/SignalMonitor.py", "Trade/TradeEngine.py", "Trade/CCXTTradeEngine.py", "Trade/OrderAudit.py",
         "Trade/Script/StaticsChanConfig.py", "Trade/Script/OpenConfig.py", "Trade/Script/Deployment.py", "Config/EnvConfig.py",
         "OfflineData/offline_data_util.py", "CustomBuySellPoint/Decision.py", "CustomBuySellPoint/Signal.py",
-        "DataAPI/SnapshotAPI/CCXTSnapshot.py", "DataAPI/ccxt.py", "Trade/PaperState.py")
+        "DataAPI/SnapshotAPI/CCXTSnapshot.py", "DataAPI/ccxt.py", "Trade/PaperState.py",
+        "Trade/PaperInputs.py", "Trade/Script/TradeRuntime.py")
     files = {name: hashlib.sha256((root/name).read_text(encoding="utf-8").replace("\r\n", "\n").encode()).hexdigest()
              for name in paths}
     return _sha({"input_code": files, "strategy_features": feature_code_identity()["sha256"],
@@ -143,7 +144,7 @@ class COpeningInputs:
 
     def bind_quotes(self, document, *, max_age_ms):
         """One original batch per input epoch, never refresh an old intent."""
-        from Common.MarketQuote import read_quote_batch
+        from Common.MarketQuote import read_quote_batch, SOFTWARE_SCHEMA
         try:
             self.assert_current()
             trade = self._env.get_section("trade")
@@ -152,6 +153,8 @@ class COpeningInputs:
                 _fail()
             batch = read_quote_batch(document, source=self._scope["source"], symbols=self._scope["code_list"],
                 now_ms=self.now_ms(), max_age_ms=max_age_ms)
+            if batch["schema"] == SOFTWARE_SCHEMA and (self._env.ccxt_conf.get("mode") != "dry_run" or not isinstance(trade.get("paper"), dict)):
+                _fail()
             raw = canonical_bytes({"batch": batch, "max_age_ms": max_age_ms})
             if self._quotes is not None and self._quotes != raw:
                 _fail()
@@ -192,6 +195,11 @@ class COpeningInputs:
                     or record.get("model_version") != scope["model_artifact_id"]):
                 _fail()
             if engine is not None:
+                from Common.MarketQuote import SOFTWARE_SCHEMA
+                if (quote_proof is not None and quote_proof["batch"]["schema"] == SOFTWARE_SCHEMA
+                        and (engine.mode != "dry_run" or getattr(engine, "paper_inputs", None) is None
+                            or getattr(getattr(engine, "sim_state", None), "paper_store", None) is None)):
+                    _fail()
                 expected_db = self.env.db_conf
                 if expected_db.get("type") != "sqlite" or engine.chan_db.db_type != "sqlite":
                     _fail()

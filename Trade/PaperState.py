@@ -124,9 +124,13 @@ def _restore_state(payload, reference):
                 or int(result["order_id"][4:]) >= sequence or not isinstance(result["client_order_id"], str)
                 or not result["client_order_id"] or result["client_order_id"] in state.client_order_ids
                 or result["order_id"] in state.orders or row["next_fill"] > len(row["fill_plan"])
-                or row["paper_contract"].get("schema") != "chan-paper-order-v2"
+                or row["paper_contract"].get("schema") not in {"chan-paper-order-v2", "chan-paper-order-v3"}
                 or row["paper_contract"].get("paper_store") != reference):
             _fail()
+        if row["paper_contract"]["schema"] == "chan-paper-order-v3":
+            cap = row["paper_contract"].get("software_quote_max_age_ms")
+            if type(cap) is not int or not 0 < cap < 2**63:
+                _fail()
         order = _SimOrder(**{**row, "result": COrderResult(**result)})
         verify_paper_order_state(order, account)
         state.orders[result["order_id"]] = order.result
@@ -249,7 +253,7 @@ class CPersistentPaperState:
                                 and contract.get("paper_store") != self.reference):
                             continue
                         if (history["gaps"] or attempt["origin"] != "new_intent" or not identity["contract_complete"]
-                                or contract.get("schema") != "chan-paper-order-v2"
+                                or contract.get("schema") not in {"chan-paper-order-v2", "chan-paper-order-v3"}
                                 or contract.get("paper_store") != self.reference):
                             _fail()
                         client = identity["client_order_id"]

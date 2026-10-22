@@ -33,7 +33,9 @@ def _workflow_identity():
     root = Path(__file__).resolve().parents[2]
     names = ("Trade/Script/Deployment.py", "Trade/Script/StaticsChanConfig.py", "Trade/Script/SignalMonitor.py",
              "Trade/Script/MakeOpenTrade.py", "Trade/Script/CheckOpenScore.py", "Trade/TradeEngine.py",
-             "Trade/db_util.py", "Trade/SqliteDB.py")
+             "Trade/db_util.py", "Trade/SqliteDB.py", "Trade/Script/TradeRuntime.py", "Trade/PaperInputs.py",
+             "Trade/Script/RestoreOrders.py", "Trade/Script/ClosePreErrorOpen.py", "Trade/Script/RealTimeTracker.py",
+             "Trade/Script/RetradeCoverOrder.py")
     hashes = {name: hashlib.sha256((root/name).read_text(encoding="utf-8").replace("\r\n", "\n").encode()).hexdigest()
               for name in names}
     return hashlib.sha256(canonical_bytes(hashes)).hexdigest()

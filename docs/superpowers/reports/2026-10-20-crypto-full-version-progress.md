@@ -37,7 +37,7 @@
 | C3 | 已完成离线实现与验收 | UTC purge/unknown、三模型身份、write-once 部署、三阶段评分与 SQLite 版本链；非实盘/外部认证 |
 | C4 | 已完成离线实现与验收 | 有界实际样本→三模型→搜索/独立验证→部署→全 trial 重放；93 项组合、608 项全仓离线通过，非经济采用 |
 | C5 | 进行中 | 单位/原生恢复/历史/来源、区间核对与持久冻结已离线验收；cross/lot paper 已接原状态机与显式持久恢复；鲜活准入链、原生同义模型及外部认证仍待 |
-| C6 | 进行中（仍未完成） | 配置运行壳/失败传播/管理/OS 锁、输入版本/报价、版本化 API 与固定合成单路径进程级演练已实现；原生账户/mark/book 证明、信号换代/通知、默认壳接入、更广 E2E 与安装矩阵待完成 |
+| C6 | 进行中（仍未完成） | 配置运行壳/失败传播/OS 锁、输入/报价、API、独立及默认脚本显式软件 paper 进程级路径已实现；原生账户/mark/book 证明、信号显式换代/通知、更广 E2E、迁移与安装矩阵待完成 |
 | C7 | 待前置验收 | 公共行情与有准入后的外部认证；代码发布按阶段进行 |
 
 基线：前一审计在完全相同 `22a5a56`、依赖和环境上执行的所选离线功能集合为 116 passed / 1 skipped / 1 deselected，带一个 XGBoost 弃用警告和 pytest 临时目录清理提示；该证据仅覆盖列明集合，不称全仓或真实交易所验收。行为修改后补跑对应回归。
@@ -533,3 +533,27 @@ C1 收尾清理计划：迁移校验由两份全表内存列表改为有序逐�
 - 文件范围：新增 Trade/PaperState.py、Trade/Script/PaperRehearsal.py、tests/test_persistent_paper_state.py、tests/test_paper_rehearsal.py；接 Trade/CCXTTradeEngine.py、LinearPaperAccount.py、OrderAudit.py、Script/OpeningInputs.py；更新 README_FULL.md 与本台账。不修改用户配置/规则/权限/依赖或冻结研究资产，无真实行情/账户 I/O。默认壳接入、鲜活 native/mark/book 准入、信号换代/通知、更广 E2E/安装矩阵及 C7 未完成，Goal active。
 - 最终完整命令 python -m pytest tests -m 'not network' --basetemp <new-temp-directory> -q --tb=short -p no:cacheprovider：1490 passed / 8 expected skipped / 1 network deselected / 17 model warnings，629.12s。其中 14 条为既有模型/LibSVM 告警，3 条来自新固定演示的单类 AUC；没有隐藏警告或把合成模型当经济有效。运行期间无源码、测试或文档编辑，收到明确 exit=0 后才补本数字。
 - compileall/diff 与双运行时核心检查通过；Lore 前核实际 staged diff。精确提交后须复验持久化、原 paper 引擎和演练，再快进推送并核远端 SHA/clean；本轮不关闭 C5/C6/C7 或整个 Goal。
+
+### C6 默认脚本持久 paper 接入实施/清理计划
+
+- 上轮 b7ed92579702b39cb38028d01fec94eaf696a74c 已推送且 clean，1490 完整离线、精确提交后 71 项为有效进展；当前无遗留 Python 进程。继续执行批准的完整目标，不把独立演练替代默认工作流验收。
+- 已查明 RestoreOrders/ClosePreErrorOpen/RealTimeTracker/RetradeCoverOrder 每次新建内存引擎，且 tracker 对完整 paper 调 set_sim_price。集中到一个 context-managed 配置工厂，显式 paper profile 只 open 原服务器，绝不自动 create/fallback；原程序库和未声明 profile 的兼容路径保留。
+- profile 明确原 server、软件行情文件及正整数年龄策略；不发明生产阈值、不改用户配置。有限 canonical 软件报价声明 synthetic_only，给出全部账户 market 的独立 bid/ask/mark/last 与 UTC，校验 source/单位/tick/时钟/摘要；不能当作交易所原生数据认证或从 ticker last 补造 mark。
+- 每次脚本冻结一个原行情批次，后续 use 边界重验文件、原 account quote 与年龄；失效拒绝新开仓/新模拟 fill/新退出成交，原已知累计回报仍可查询、原单仍可撤。读不到报价不得回到无成本/裸价模拟。报价和模型的缺失不能导致已有订单被新建或转移。
+- 开仓与四个管理/恢复入口共用工厂并显式关闭 store/DB；纸面 tracker 使用经过 reader 验证的 last 作触发，真实执行仍只按独立 bid/ask。检查失败或 unresolved 必须给非零、脱敏原因；原 native 门禁不变，非 dry-run 新风险仍锁定。
+- 先 missing-reader/factory RED，再真实 SQLite/部分成交、年龄/改文件/跨账户拒绝、缺行情查询/撤单、实际脚本 main/新子进程接同一 server RED→GREEN；再以真实模型+配置运行壳验证默认流程（仅公共更新传输 fake）。不重写 CAS、C4 核算、已有信号/模型发布，不新增依赖或研究变更。完整适用组合/离线/双 Python 核心/compileall/diff/主代理自审/Lore/精确提交/快进核验后交付；C5/C6/C7 剩余项仍须继续。
+- 实际重复整轮 RED 发现原 SQL 去重只查 watching，开仓后相同冻结信号可再次插入并下单。修复沿用原 code/level/方向/target K 键，冻结 C2 信号在同一 SQLite 事务全生命周期去重；Monitor 对已有记录仍逐字节比较完整冻结证据，不忽略时钟/评分或覆盖旧行。旧无冻结信号的 unwatch 后重新入库行为保留；不同新观察或部署的显式换代仍另行验收。
+- 显式 paper 风控参数使用运行配置内联 open_para，不读取仓库私有 OpenConfig.yaml；旧未声明 profile 的文件配置路径保留。软件报价使用独立 schema/explicit_software_clock/synthetic_only，不沿用 exchange_ticker_timestamp；非 paper guard 与非 paper DB 意图均拒绝该来源。
+
+#### 本边界实现与离线证据
+
+- 先缺工厂/reader RED，再软件输入 canonical/source/all-markets/tick/有限值/单批次/开始结束时钟 GREEN。过期/改文件/缺失仍会推进 fill 的 3 RED、venue 不符 RED、意图后/实际 fill 前过期 RED、调用方放宽策略 RED 均修复；已知查询/撤单保留，新成交与新风险拒绝。依旧没有文件/SQLite/检查后动作的全局原子性证明。
+- actual subprocess 的恢复/错误修复/跟踪/重试 main 缺失或原内存状态失败 RED→GREEN；统一工厂只 open 原 store，关闭资源且按 unresolved/issue 非零。tracker 不再用 last 补造 paper mark；后验 main 同样使用内联参数、不读私有文件。现有旧库/未声明 profile 配置兼容，未升级为完整 paper 证明。
+- 软件时钟误标为 exchange ticker 的 RED 后新增独立输入 schema；非 paper guard 和非 paper DB 意图两个语义 RED→GREEN。v3 paper 合约固定原软件年龄上限，codec/history 验证字段；drop reader 或恢复时放宽当前年龄的两个真实默认流程 RED、库调用的同类 RED 均修复，旧 v1/v2 不变。
+- 真实小模型＋配置壳的首次开仓及相同输入重跑通过；第一次重跑曾重复创建第二个订单，RED 后复用原机会键/SQLite BEGIN IMMEDIATE 全生命周期去重，仍严格保留原完整字节。旧无冻结信号回归保持，观察时钟/部署变化未忽略，也未冒称完成显式换代。
+- 真实默认整轮在模型损坏后停止新开仓，管理链仍减少原仓位至零；只有公共 OHLCV 更新传输 fake，脚本、模型/策略/输入 reader、SQLite 与进程实际执行。另一个 RED 修复了错误开仓修复器跳过已确认 canceled 的部分平仓余量；未确认/提交中请求仍只交恢复，不重下。
+- 最后修改后 kernel/来源/安全/事务组合 87 passed；此前默认流程/部署/历史/恢复组合 330 passed / 4 合成模型 warnings（190.25s），后补后验 main 和临近 fill 重验，不把早期结果冒称最终树。仅主代理依审查清单串行自审，非独立审计。
+- 新增 Trade/PaperInputs.py、Trade/Script/TradeRuntime.py 与 tests/test_configured_paper_{runtime,workflow}.py；接 Common/MarketQuote.py、Trade/{CCXTTradeEngine,OrderAudit,PaperState,db_util}.py、开仓/恢复/后验/修复/跟踪/重试/SignalMonitor、OpenConfig/OpeningInputs/Deployment 和对应回归；README/本台账记录协议。无依赖、用户配置/权限/规则、冻结研究或真实 I/O 变更。Common/工作流指纹变化须重生成模型/部署；旧 paper 代码身份不允许重封，跨版本迁移仍待验收。C5/C6/C7 与 Goal 未完成。
+- 最终完整命令 python -m pytest tests -m 'not network' --basetemp <new-temp-directory> -q --tb=short -p no:cacheprovider：1529 passed / 8 expected skipped / 1 network deselected / 18 model/LibSVM warnings，741.18s，明确 exit=0。其中新增默认流程小模型的单类 AUC 告警未隐藏；不将软件功能测试当作经济有效。全程没有源码、测试或文档编辑，收到退出结果后仅补本证据。
+- CPython 3.14.2 与实际 3.11.15 主动屏蔽 ccxt/xgboost/lightgbm/sklearn/optuna/yaml 后，实际临时 SQLite/软件 reader/v3 paper 部分成交→原 server 重开→无 reader 不推进→有效 reader 恢复完整成交→退出→原 C4 账本复核均 PASS；TradeRuntime/OpenConfig 核心导入通过。不是完整依赖安装矩阵或交易所认证。compileall/diff 通过；原核算、CAS/恢复与已有报价工具继续复用，没有第二套撮合/财务公式。
+- Lore 后精确提交须复验默认 reader/真实整轮/报价再快进推送，并核对远端完整 SHA 与 clean；外部认证、信号显式换代、通知、容量、更广 E2E、完整安装和迁移仍待，不关闭整体 Goal。

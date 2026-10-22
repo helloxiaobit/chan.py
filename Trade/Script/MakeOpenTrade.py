@@ -124,7 +124,7 @@ def make_open_trade(
 
 def main():
     from .OpeningInputs import COpeningInputs
-    from Trade.CCXTTradeEngine import CCCXTTradeEngine
+    from .TradeRuntime import configured_trade_engine
     from Trade.OpenQuotaGen import CBenchPriceQuotaGen
     try:
         cycle = os.environ.get("CHANPY_CYCLE_ID", "")
@@ -144,19 +144,27 @@ def main():
             scope = guard.scope
             eligible = any(record["stock_code"] in scope["code_list"] and record["lv"] == scope["trade_lv"]
                 for record in chan_db.get_watching_signals())
-            prices = {}
-            if eligible:
-                max_age = guard.env.get_section("trade").get("quote_max_age_ms")
-                if (guard.env.snapshot_engine != "ccxt" or type(max_age) is not int or not 0 < max_age < 2**63):
-                    raise CChanException("配置开仓需要显式 CCXT 来源与报价年龄上限", ErrCode.SNAPSHOT_ERR)
-                from DataAPI.SnapshotAPI.CCXTSnapshot import CCCXTSnapshot
-                prices = guard.bind_quotes(CCCXTSnapshot.query_quotes(scope["code_list"], now_ms=utc_now_ms), max_age_ms=max_age)
-            engine = CCCXTTradeEngine(chan_db, quota_gen=CBenchPriceQuotaGen(float(notional)),
-                ccxt_conf=guard.env.ccxt_conf, trade_conf=guard.env.get_section("trade"), opening_inputs=guard)
-            failures = []
-            opened = make_open_trade(chan_db, engine, price_map=prices, failures=failures, now_ms=utc_now_ms)
-            print(f"MakeOpenTrade: opened={len(opened)} blocked={len(failures)}")
-            return 1 if failures else 0
+            with configured_trade_engine(chan_db, env=guard.env, quota_gen=CBenchPriceQuotaGen(float(notional)),
+                    opening_inputs=guard, now_ms=utc_now_ms) as engine:
+                prices = {}
+                if eligible:
+                    max_age = guard.env.get_section("trade").get("quote_max_age_ms")
+                    if type(max_age) is not int or not 0 < max_age < 2**63:
+                        raise CChanException("配置开仓需要显式报价年龄上限", ErrCode.SNAPSHOT_ERR)
+                    if engine.paper_inputs is not None:
+                        batch = engine.paper_inputs.price_batch(engine, symbols=scope["code_list"])
+                    else:
+                        if guard.env.snapshot_engine != "ccxt":
+                            raise CChanException("非 paper 配置开仓需要明确 CCXT 来源", ErrCode.SNAPSHOT_ERR)
+                        from DataAPI.SnapshotAPI.CCXTSnapshot import CCCXTSnapshot
+                        batch = CCCXTSnapshot.query_quotes(scope["code_list"], now_ms=utc_now_ms)
+                    prices = guard.bind_quotes(batch, max_age_ms=max_age)
+                failures = []
+                opened = make_open_trade(chan_db, engine, open_conf=COpenConfig.configured(guard.env),
+                    price_map=prices, failures=failures, now_ms=utc_now_ms)
+                issues = engine.paper_inputs.issues if engine.paper_inputs is not None else []
+                print(f"MakeOpenTrade: opened={len(opened)} blocked={len(failures)} paper_input_issues={len(issues)}")
+                return 1 if failures or issues else 0
         finally:
             chan_db.close()
     except Exception:

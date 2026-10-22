@@ -143,6 +143,7 @@ class CCCXTTradeEngine(CTradeEngine):
         sim_state: Optional[CSimExchangeState] = None,
         push_msg: bool = True,
         opening_inputs=None,
+        paper_inputs=None,
     ):
         super(CCCXTTradeEngine, self).__init__(
             market="crypto", chan_db=chan_db, quota_gen=quota_gen, push_msg=push_msg)
@@ -223,11 +224,42 @@ class CCCXTTradeEngine(CTradeEngine):
             from .Script.OpeningInputs import COpeningInputs
             if type(opening_inputs) is not COpeningInputs:
                 raise CChanException("开仓输入必须由实际配置/来源 reader 构造，不能传 passed 标志", ErrCode.PARA_ERROR)
+        self.paper_inputs = paper_inputs
+        if paper_inputs is not None:
+            from .PaperInputs import CSoftwarePaperInputs
+            if type(paper_inputs) is not CSoftwarePaperInputs or self.sim_state.paper_store is None:
+                raise CChanException("软件行情策略需要原持久 paper server/reader，不能传 ready 标志", ErrCode.PARA_ERROR)
 
     def check_open_inputs(self, record, *, price=None):
         if self.opening_inputs is not None:
             return self.opening_inputs.check(record, engine=self, price=price)
         return None
+
+    def _software_quote_bound(self, record):
+        from Common.MarketQuote import SOFTWARE_SCHEMA
+        try:
+            record = record or {}
+            bounds = []
+            for name in ("open_order_contract", "cover_order_contract"):
+                contract = json.loads(record[name]) if record.get(name) else {}
+                if contract.get("schema") == "chan-paper-order-v3":
+                    bounds.append(contract["software_quote_max_age_ms"])
+            snapshot = json.loads(record.get("snapshot_before") or "{}")
+            batch = snapshot.get("opening_inputs", {}).get("quote", {}).get("batch", {})
+            if batch.get("schema") == SOFTWARE_SCHEMA:
+                bounds.append(batch["payload"]["software_max_age_ms"])
+            if any(type(value) is not int or not 0 < value < 2**63 for value in bounds):
+                raise ValueError("invalid stored policy")
+            return min(bounds) if bounds else None
+        except (ValueError, KeyError, TypeError, AttributeError):
+            raise CChanException("原软件行情策略证据无效，禁止降级或猜测成交", ErrCode.LIST_ORDER_FAIL) from None
+
+    def _check_paper_inputs(self, code, record):
+        bound = self._software_quote_bound(record)
+        if self.paper_inputs is not None:
+            self.paper_inputs.check(self, code, max_age_ms=bound)
+        elif bound is not None:
+            raise CChanException("原软件来源单需要行情 reader，不能降级到旧模拟", ErrCode.SNAPSHOT_ERR)
 
     def get_exchange(self):
         if self.dry_run:
@@ -738,7 +770,10 @@ class CCCXTTradeEngine(CTradeEngine):
         if self.dry_run:
             if self.sim_state.paper_account is not None:
                 state = self._paper_state(code, order_id, client_order_id)
-                if state.result.status == "open":
+                intent = self.chan_db.get_order_intent(state.result.client_order_id)
+                bound = self._software_quote_bound(intent["record"])
+                available = (self.paper_inputs.available(self, code, max_age_ms=bound) if self.paper_inputs is not None else bound is None)
+                if state.result.status == "open" and available:
                     self._advance_paper_order(state)
                 return copy.copy(state.result)
             if order_id is None and client_order_id:
@@ -993,6 +1028,7 @@ class CCCXTTradeEngine(CTradeEngine):
         return executed if limit is None else min(executed, limit) if buy else max(executed, limit)
 
     def _prepare_paper_order(self, code, amount, price, *, reduce_only, record, post_only):
+        self._check_paper_inputs(code, record)
         from .ExecutionFacts import _number
         self.safety_policy.assert_order_allowed()
         paper = self._paper()
@@ -1038,6 +1074,10 @@ class CCCXTTradeEngine(CTradeEngine):
                 "account_observation": None, "paper_account": paper.identity_reference}
             if self.sim_state.paper_store is not None:
                 contract.update(schema="chan-paper-order-v2", paper_store=self.sim_state.paper_store.reference)
+                if self.paper_inputs is not None:
+                    original = self._software_quote_bound(record)
+                    cap = self.paper_inputs.max_age_ms if original is None else min(original, self.paper_inputs.max_age_ms)
+                    contract.update(schema="chan-paper-order-v3", software_quote_max_age_ms=cap)
             contract["contract_id"] = _contract_id(contract)
             return _float_exact(quantity), None if limit is None else _float_exact(limit), contract
 
@@ -1054,13 +1094,19 @@ class CCCXTTradeEngine(CTradeEngine):
                 store = self.sim_state.paper_store
                 if store is not None:
                     expected.add("paper_store")
+                if contract.get("schema") == "chan-paper-order-v3":
+                    expected.add("software_quote_max_age_ms")
+                    cap = contract["software_quote_max_age_ms"]
+                    if type(cap) is not int or not 0 < cap < 2**63:
+                        raise ValueError("invalid stored quote policy")
                 definition = self._paper_market_definition(record["stock_code"])
                 q, amount, ref = (_quantity(contract[k], positive=True) for k in ("quantity", "exchange_amount", "reference_price"))
                 limit = None if contract["price"] is None else _quantity(contract["price"], positive=True)
                 side = record["position_side"]
                 execution = {"venue": "paper", "position_mode": paper.position_mode, "position_side": side,
                     "margin_mode": "software_cross", "leverage": str(paper.config.leverage)}
-                if (set(contract) != expected or contract["schema"] != ("chan-paper-order-v2" if store is not None else "chan-paper-order-v1")
+                allowed = {"chan-paper-order-v2", "chan-paper-order-v3"} if store is not None else {"chan-paper-order-v1"}
+                if (set(contract) != expected or contract["schema"] not in allowed
                         or (store is not None and contract.get("paper_store") != store.reference)
                         or contract["contract_id"] != _contract_id(contract)
                         or contract["paper_account"] != paper.identity_reference or contract["market"] != definition
@@ -1089,7 +1135,7 @@ class CCCXTTradeEngine(CTradeEngine):
         try:
             for row in self.chan_db.db.query(f"SELECT * FROM {self.chan_db.table} WHERE open_order_contract IS NOT NULL ORDER BY id"):
                 contract = json.loads(row["open_order_contract"])
-                if contract.get("schema") not in {"chan-paper-order-v1", "chan-paper-order-v2"} or contract.get("paper_account") != paper.identity_reference:
+                if contract.get("schema") not in {"chan-paper-order-v1", "chan-paper-order-v2", "chan-paper-order-v3"} or contract.get("paper_account") != paper.identity_reference:
                     continue
                 self._read_paper_contract({"phase": "open", "record": row})
                 key = f"{self.chan_db.table}:{row['id']}"
@@ -1138,10 +1184,12 @@ class CCCXTTradeEngine(CTradeEngine):
                 raise CChanException("paper 累计计划不符合冻结合约步长", ErrCode.PARA_ERROR)
         if not reduce_only:
             self.check_open_inputs(intent["record"])
+        self._check_paper_inputs(code, intent["record"])
         if not self.chan_db.claim_order_submission(intent["record"]["id"], intent["phase"]):
             raise CChanException("paper 意图已由其他进程提交", ErrCode.TRADE_UNLOCK_FAIL)
         if not reduce_only:
             self.check_open_inputs(intent["record"])
+        self._check_paper_inputs(code, intent["record"])
         sequence = next(self._order_id_gen)
         result = COrderResult(order_id=f"sim_{sequence}", requested=amount, filled=0, avg_price=None, status="open", client_order_id=client_id)
         quote = self._paper().quotes[code]
@@ -1165,6 +1213,8 @@ class CCCXTTradeEngine(CTradeEngine):
     def _advance_paper_order(self, state):
         if state.result.status != "open" or state.next_fill >= len(state.fill_plan):
             return
+        intent = self.chan_db.get_order_intent(state.result.client_order_id)
+        self._check_paper_inputs(state.code, intent["record"])
         with localcontext(_PAPER_CONTEXT):
             paper, contract = self._paper(), state.paper_contract
             quote = paper.quotes[state.code]
@@ -1185,6 +1235,7 @@ class CCCXTTradeEngine(CTradeEngine):
                 executed = self._paper_execution_price(state.code, limit, state.is_buy, state.paper_role)
             candidate = copy.deepcopy(paper)
             event_id = f"{state.result.order_id}:{state.next_fill}"
+            self._check_paper_inputs(state.code, intent["record"])
             try:
                 candidate.execute_fill(execution_id=event_id, position_id=state.paper_position_id, code=state.code,
                     is_buy=state.is_buy, quantity=str(delta), execution_price=str(executed),

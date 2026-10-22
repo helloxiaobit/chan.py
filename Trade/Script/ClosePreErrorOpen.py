@@ -22,12 +22,15 @@ def close_pre_error_open(
 ) -> List[int]:
     closed = []
     for rec in db.get_error_opens():
-        if rec["cover_order_id"]:  # 已提交平仓单,交给 RetradeCoverOrder 轮询
+        if ((rec["cover_order_id"] or rec.get("cover_client_order_id"))
+                and rec.get("cover_order_status") not in {"closed", "canceled", "rejected"}):
+            # Only confirmed terminal orders permit an original-record retry;
+            # an unknown/submitting request still belongs to recovery.
             continue
         code = rec["stock_code"]
         price = price_map.get(code) if price_map else None
         try:
-            if price is not None and hasattr(engine, "set_sim_price"):
+            if price is not None and hasattr(engine, "set_sim_price") and getattr(getattr(engine, "sim_state", None), "paper_account", None) is None:
                 engine.set_sim_price(code, price)
             engine.cover_trade(rec, price, reason=f"open_err: {rec['open_err_reason']}")
             if db.get_record(rec["id"])["status"] in {"closed", "cover"}:
@@ -38,7 +41,23 @@ def close_pre_error_open(
     return closed
 
 
+def main():
+    from .TradeRuntime import configured_trade_engine
+    try:
+        db = CChanDB()
+        try:
+            with configured_trade_engine(db) as engine:
+                closed = close_pre_error_open(db, engine)
+                unresolved = len(db.get_error_opens())
+                issues = engine.paper_inputs.issues if engine.paper_inputs is not None else []
+        finally:
+            db.close()
+        print(f"ClosePreErrorOpen: closed={len(closed)} unresolved={unresolved} paper_input_issues={len(issues)}")
+        return 1 if unresolved or issues else 0
+    except Exception:
+        print("ClosePreErrorOpen: original order/quote evidence unavailable", file=sys.stderr)
+        return 1
+
+
 if __name__ == "__main__":
-    from Trade.CCXTTradeEngine import CCCXTTradeEngine
-    chan_db = CChanDB()
-    close_pre_error_open(chan_db, CCCXTTradeEngine(chan_db))
+    sys.exit(main())

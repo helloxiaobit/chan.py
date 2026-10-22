@@ -16,7 +16,23 @@ def retrade_cover_order(db: CChanDB, engine: CTradeEngine, times: int = 3, inter
     engine.poll_orders(times=times, interval=interval, adjust_price=True)
 
 
+def main():
+    from .TradeRuntime import configured_trade_engine
+    try:
+        db = CChanDB()
+        try:
+            with configured_trade_engine(db) as engine:
+                retrade_cover_order(db, engine)
+                unresolved = sum(row["status"] == "closing" for row in db.get_recoverable_records())
+                issues = engine.paper_inputs.issues if engine.paper_inputs is not None else []
+        finally:
+            db.close()
+        print(f"RetradeCoverOrder: unresolved={unresolved} paper_input_issues={len(issues)}")
+        return 1 if unresolved or issues else 0
+    except Exception:
+        print("RetradeCoverOrder: original order/quote evidence unavailable", file=sys.stderr)
+        return 1
+
+
 if __name__ == "__main__":
-    from Trade.CCXTTradeEngine import CCCXTTradeEngine
-    chan_db = CChanDB()
-    retrade_cover_order(chan_db, CCCXTTradeEngine(chan_db))
+    sys.exit(main())

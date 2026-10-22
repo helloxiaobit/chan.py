@@ -252,6 +252,8 @@ def configure_cli(inputs, cycle, monkeypatch, *, policy=1000, snapshot_engine="c
     from Trade.Script.OpeningInputs import COpeningInputs
     _, db = inputs
     cycle[2]["snapshot_engine"] = snapshot_engine
+    conf = explicit_open_conf(cycle)
+    cycle[2]["trade"]["open_para"] = conf.raw.get("open_para", conf.raw)
     if policy is not None:
         cycle[2]["trade"]["quote_max_age_ms"] = policy
     cycle[0].write_text(yaml.safe_dump(cycle[2]), encoding="utf-8")
@@ -262,8 +264,6 @@ def configure_cli(inputs, cycle, monkeypatch, *, policy=1000, snapshot_engine="c
     for key, value in guard.snapshot().items():
         monkeypatch.setenv("CHANPY_CYCLE_"+key.upper(), value)
     monkeypatch.setattr(module, "utc_now_ms", lambda: now)
-    conf = explicit_open_conf(cycle)
-    monkeypatch.setattr(module, "COpenConfig", lambda: conf)
     monkeypatch.setattr(module, "get_price_map", lambda codes: {code: 100.5 for code in codes})
     guard_batch(guard, monkeypatch)
     return module, db
@@ -348,6 +348,34 @@ def test_malformed_quote_check_version_is_a_closed_history_error_not_a_raw_type_
     db.db.execute("UPDATE chan_trade SET snapshot_before=? WHERE id=?", (json.dumps(snapshot), record["id"]))
     with pytest.raises(CChanException):
         db.get_order_history(record["id"])
+
+
+def test_nonpaper_guard_cannot_bind_software_clock_observations(inputs, cycle, monkeypatch):
+    from Common.MarketQuote import make_software_quote_batch
+    guard, _ = inputs
+    native = guard_batch(guard, monkeypatch)
+    body = native["payload"]
+    software = make_software_quote_batch(body["quotes"], source=body["source"], started_ms=body["started_ms"], finished_ms=body["finished_ms"], max_age_ms=1000)
+    with pytest.raises(CChanException):
+        guard.bind_quotes(software, max_age_ms=1000)
+
+
+def test_software_quote_proof_cannot_be_attached_to_a_nonpaper_db_intent(inputs, cycle, monkeypatch):
+    from Common.MarketQuote import make_software_quote_batch
+    guard, db = inputs
+    native = guard_batch(guard, monkeypatch)
+    guard.bind_quotes(native, max_age_ms=1000)
+    engine = bound_engine(inputs, cycle)
+    record = add_signal(db)
+    amount, limit, contract = engine.prepare_order(record["stock_code"], 0.03, 100.5, record=record)
+    check = guard.check(record, engine=engine, price=100.5)
+    body = native["payload"]
+    check["quote"]["batch"] = make_software_quote_batch(body["quotes"], source=body["source"],
+        started_ms=body["started_ms"], finished_ms=body["finished_ms"], max_age_ms=1000)
+    with pytest.raises(CChanException):
+        db.acquire_open_intent(record["id"], amount, engine.make_client_order_id(record, "open"),
+            order_contract=contract, snapshot={"price": 100.5, "opening_inputs": check})
+    assert db.get_record(record["id"])["open_attempt"] == 0
 
 
 @pytest.mark.parametrize("field,value", [("lv", "K_4H"), ("bstype", "other")])

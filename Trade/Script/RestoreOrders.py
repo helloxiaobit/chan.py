@@ -12,17 +12,19 @@ def restore_orders(db, engine):
 
 
 def main():
-    from Trade.CCXTTradeEngine import CCCXTTradeEngine
+    from .TradeRuntime import configured_trade_engine
     from Trade.db_util import CChanDB
     try:
         db = CChanDB()
         try:
-            result = restore_orders(db, CCCXTTradeEngine(db))
+            with configured_trade_engine(db) as engine:
+                result = restore_orders(db, engine)
+                issues = engine.paper_inputs.issues if engine.paper_inputs is not None else []
         finally:
             db.close()
-        print(f"RestoreOrders: restored={result['restored']} unresolved={len(result['unresolved'])}")
-        return 1 if result["unresolved"] else 0
-    except CChanException:
+        print(f"RestoreOrders: restored={result['restored']} unresolved={len(result['unresolved'])} paper_input_issues={len(issues)}")
+        return 1 if result["unresolved"] or issues else 0
+    except Exception:
         print("RestoreOrders: original account/order evidence unavailable", file=sys.stderr)
         return 1
 

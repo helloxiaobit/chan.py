@@ -145,5 +145,19 @@ def check_open_score(
     return err_ids
 
 
+def main():
+    try:
+        db = CChanDB()
+        try:
+            rejected = check_open_score(db, open_conf=COpenConfig.configured())
+        finally:
+            db.close()
+        print(f"CheckOpenScore: rejected={len(rejected)}")
+        return 1 if rejected else 0
+    except Exception:
+        print("CheckOpenScore: original model/bar evidence unavailable", file=sys.stderr)
+        return 1
+
+
 if __name__ == "__main__":
-    check_open_score(CChanDB())
+    sys.exit(main())

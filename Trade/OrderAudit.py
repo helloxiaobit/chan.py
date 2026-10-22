@@ -73,7 +73,7 @@ def initialize_schema(conn):
 _SCALAR = None
 _BOUNDS = {"min": _SCALAR, "max": _SCALAR}
 _CONTRACT = {key: _SCALAR for key in ("schema", "quantity_unit", "exchange_amount_unit", "quantity",
-    "exchange_amount", "price", "reference_price", "notional", "reduce_only", "contract_id", "post_only")}
+    "exchange_amount", "price", "reference_price", "notional", "reduce_only", "contract_id", "post_only", "software_quote_max_age_ms")}
 _CONTRACT.update({
     "paper_account": {"schema": _SCALAR, "account_id": _SCALAR},
     "paper_store": {"schema": _SCALAR, "store_id": _SCALAR},
@@ -129,7 +129,7 @@ def _identity(table, record, prefix):
                         or set(proof[key])-set("0123456789abcdef") for key in hashes)):
                 _fail()
             if extra:
-                from Common.MarketQuote import read_quote_batch
+                from Common.MarketQuote import read_quote_batch, SOFTWARE_SCHEMA
                 from CustomBuySellPoint.Decision import read_decision
                 quote = proof["quote"]
                 if not isinstance(quote, dict) or set(quote) != {"batch", "max_age_ms"}:
@@ -138,6 +138,11 @@ def _identity(table, record, prefix):
                 batch = read_quote_batch(quote["batch"], source=signal["identity"]["market"],
                     symbols=[row["symbol"] for row in quote["batch"]["payload"]["quotes"]],
                     now_ms=proof["checked_at_ms"], max_age_ms=quote["max_age_ms"])
+                if batch["schema"] == SOFTWARE_SCHEMA and (not isinstance(contract, dict)
+                        or contract.get("schema") != "chan-paper-order-v3" or not isinstance(contract.get("paper_store"), dict)
+                        or contract.get("software_quote_max_age_ms") != batch["payload"]["software_max_age_ms"]
+                        or contract["paper_store"].get("schema") != "chan-paper-store-v1"):
+                    _fail()
                 prices = {row["symbol"]: row["price"] for row in batch["payload"]["quotes"]}
                 if (signal["event_id"] != proof["signal_event_id"] or signal["identity"]["kind"] != "signal"
                         or signal["identity"]["code"] != record["stock_code"]

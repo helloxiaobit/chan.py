@@ -71,9 +71,12 @@ def run_signal_monitor(
                 stat["added"] += 1
             except CChanException as e:
                 if e.errcode == ErrCode.SIGNAL_EXISTED:
-                    matches = [rec for rec in db.get_watching_signals(code)
-                        if rec["lv"] == sig.lv.name and bool(rec["is_buy"]) == sig.is_buy
-                        and rec["target_klu_time"] == str(sig.target_klu_time)]
+                    if db.db_type == "sqlite" and type(sig.decision) is bytes:
+                        matches = db.get_signal_records(code, sig.lv.name, sig.is_buy, sig.target_klu_time)
+                    else:
+                        matches = [rec for rec in db.get_watching_signals(code)
+                            if rec["lv"] == sig.lv.name and bool(rec["is_buy"]) == sig.is_buy
+                            and rec["target_klu_time"] == str(sig.target_klu_time)]
                     if (len(matches) == 1 and type(sig.decision) is bytes
                             and matches[0].get("signal_decision") == sig.decision.decode("utf-8")):
                         stat["existed"] += 1

@@ -70,7 +70,7 @@ def real_time_track(
         if reason is None:
             continue
         try:
-            if hasattr(engine, "set_sim_price"):
+            if hasattr(engine, "set_sim_price") and getattr(getattr(engine, "sim_state", None), "paper_account", None) is None:
                 engine.set_sim_price(code, price)
             if rec["status"] == "partially_filled":
                 engine.close_partial_open(rec, price, reason=reason)
@@ -84,7 +84,25 @@ def real_time_track(
     return covered
 
 
+def main():
+    from .TradeRuntime import configured_trade_engine
+    try:
+        db = CChanDB()
+        try:
+            with configured_trade_engine(db) as engine:
+                inputs = engine.paper_inputs
+                prices = inputs.prices(engine) if inputs is not None else None
+                covered = real_time_track(db, engine, open_conf=COpenConfig.configured(), price_map=prices)
+                unresolved = sum(bool(row["close_err"]) for row in db.get_open_records())
+                issues = inputs.issues if inputs is not None else []
+        finally:
+            db.close()
+        print(f"RealTimeTracker: covered={len(covered)} unresolved={unresolved} paper_input_issues={len(issues)}")
+        return 1 if unresolved or issues else 0
+    except Exception:
+        print("RealTimeTracker: original order/quote evidence unavailable", file=sys.stderr)
+        return 1
+
+
 if __name__ == "__main__":
-    from Trade.CCXTTradeEngine import CCCXTTradeEngine
-    chan_db = CChanDB()
-    real_time_track(chan_db, CCCXTTradeEngine(chan_db))
+    sys.exit(main())

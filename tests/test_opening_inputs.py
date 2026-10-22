@@ -251,7 +251,8 @@ def test_default_opening_cli_uses_parent_epoch_and_configured_notional(inputs, c
     import yaml
     from Trade.Script import MakeOpenTrade as module
     guard, db = inputs
-    cycle[2]["trade"].update(bench_price=7, quote_max_age_ms=1000)
+    conf = explicit_open_conf(cycle)
+    cycle[2]["trade"].update(bench_price=7, quote_max_age_ms=1000, open_para=conf.raw.get("open_para", conf.raw))
     cycle[2]["snapshot_engine"] = "ccxt"
     cycle[0].write_text(yaml.safe_dump(cycle[2]), encoding="utf-8")
     from Config.EnvConfig import CEnv
@@ -261,8 +262,6 @@ def test_default_opening_cli_uses_parent_epoch_and_configured_notional(inputs, c
     for key, value in guard.snapshot().items():
         monkeypatch.setenv("CHANPY_CYCLE_"+key.upper(), value)
     monkeypatch.setattr(module, "utc_now_ms", lambda: NOW)
-    conf = explicit_open_conf(cycle)
-    monkeypatch.setattr(module, "COpenConfig", lambda: conf)
     from DataAPI.SnapshotAPI.CCXTSnapshot import CCCXTSnapshot
     class CQuoteTransport:
         id = "binance"
@@ -349,6 +348,28 @@ def test_duplicate_sql_signal_is_not_success_when_frozen_decision_payload_change
     result = run_monitor()
     assert result["failed"] == 1 and result["existed"] == 0
     assert db.get_record(old["id"]) == old
+
+
+def test_frozen_signal_cannot_be_reinserted_after_its_watch_lifecycle_ended(inputs):
+    _, db = inputs
+    record = add_signal(db)
+    db.unwatch(record["id"], "ended frozen observation")
+    with pytest.raises(CChanException):
+        add_signal(db)
+    assert len(db.db.query(f"SELECT id FROM {db.table}")) == 1
+
+
+def test_signal_identity_check_and_insert_share_an_owned_sqlite_transaction(inputs, monkeypatch):
+    _, db = inputs
+    original = db.db.query
+    observed = []
+    def query(sql, args=()):
+        if "stock_code=? AND lv=? AND is_buy=?" in sql and "target_klu_time=?" in sql:
+            observed.append(db.db.conn.in_transaction and db.db._transaction_depth > 0)
+        return original(sql, args)
+    monkeypatch.setattr(db.db, "query", query)
+    add_signal(db)
+    assert observed and all(observed), "signal uniqueness lookup must precede INSERT within the same owned transaction"
 
 
 @pytest.mark.parametrize("changed", ["quantity", "direction", "price", "leg"])

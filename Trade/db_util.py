@@ -99,7 +99,13 @@ class CChanDB:
 
     # ===== 信号 =====
     def add_signal(self, signal: CSignal, stock_name: str = "") -> int:
-        """信号入库(同code+级别+方向+目标K线时间的在途信号只保留一条),返回记录id"""
+        if self.db_type == "sqlite":
+            with self.db.transaction():
+                return self._add_signal(signal, stock_name)
+        return self._add_signal(signal, stock_name)
+
+    def _add_signal(self, signal: CSignal, stock_name: str) -> int:
+        """冻结信号按原机会键全生命周期去重；旧无冻结信号保留在途语义。"""
         version, deployment_id = signal.model_artifact_id, signal.deployment_id
         if version or deployment_id:
             from Trade.Script.Deployment import CDeployment, verify_signal_assessment
@@ -120,11 +126,17 @@ class CChanDB:
             snapshot = verify_signal_assessment(CDeployment(signal.deployment_path), decision)
             if not snapshot["passed"]:
                 raise CChanException("候选模型分数未达到冻结阈值", ErrCode.MODEL_ERROR)
-        exist = self.db.query_one(
-            f"SELECT id FROM {self.table} WHERE stock_code=? AND lv=? AND is_buy=? "
-            f"AND target_klu_time=? AND watching=1 AND is_open=0",
-            (signal.code, signal.lv.name, int(signal.is_buy), str(signal.target_klu_time)),
-        )
+        frozen = self.db_type == "sqlite" and type(signal.decision) is bytes
+        if frozen:
+            read_decision(signal.decision)
+            matches = self.get_signal_records(signal.code, signal.lv.name, signal.is_buy, signal.target_klu_time)
+            exist = matches[0] if matches else None
+        else:
+            exist = self.db.query_one(
+                f"SELECT id FROM {self.table} WHERE stock_code=? AND lv=? AND is_buy=? "
+                f"AND target_klu_time=? AND watching=1 AND is_open=0",
+                (signal.code, signal.lv.name, int(signal.is_buy), str(signal.target_klu_time)),
+            )
         if exist is not None:
             raise CChanException(f"信号已存在 id={exist['id']}", ErrCode.SIGNAL_EXISTED)
         extra_columns = ",model_version,deployment_id,deployment_path,signal_decision" if self.db_type == "sqlite" else ""
@@ -139,6 +151,11 @@ class CChanDB:
              int(signal.is_buy), signal.open_thred, signal.sl_thred, str(signal.target_klu_time),
              signal.score) + extra_args,
         )
+
+    def get_signal_records(self, code, level, is_buy, target_klu_time):
+        """Original opportunity key across all lifecycle states; never pick a winner."""
+        return self.db.query(f"SELECT * FROM {self.table} WHERE stock_code=? AND lv=? AND is_buy=? "
+            "AND target_klu_time=? ORDER BY id", (code, level, int(is_buy), str(target_klu_time)))
 
     def get_watching_signals(self, code: Optional[str] = None) -> List[dict]:
         sql = (
