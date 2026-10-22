@@ -107,6 +107,10 @@
 
 来源存储子层已实现：NativeAccountStore 复用旧 canonical codec、账户 stable key、schema validation 和 SQLite transaction/savepoint；新增表及保留名纳入原原子初始化，旧表 SQL/字节不变。85 个新测试、CPython 3.14.2/3.11.15 广组合各 1519 passed / 1 既有 skip，全部串行且活测试不编辑文件。显式接入仅三项存取接口，无隐式采集、SDK/config 读取、金融重算或新风险授权；check 发布/重建及 sticky failure 接入尚未完成。
 
+原检查发布/重建子层也已实现：NativeAccountCheck 从六类持久 source IDs 和同一视图全 ledger 加原 journal 前缀生成 `chan-native-account-check-v1`，复用原 `chanpy_account_checks` schema/append-only publisher 和 stable-key sticky freeze，不新建冻结/订单状态机。NativeAccountReconcile 抽出纯共享核验体，原 DB-only observer 仍额外返回当时 sticky freeze；历史重建不调用 risk_state，避免递归，也不让后来金融匹配清除旧失败。新 wrapper 的 matched_observations 只映射 matched_components 历史观察，两个 flags=false，不能升为 native admission。
+
+前缀以原显式 INTEGER PRIMARY KEY event_id 固定并摘要覆盖其全部 attempt/event 原行，再与保存 histories 的全部 key/事件数量及原 prefix bytes 校验；不使用可被 SQLite 压缩重排的隐含 rowid，不从当前可变 projection 重建过去，也不能删掉零成交终态尝试后重算一个匹配 report 就过关。来源错误固定 failure 发布；发布/schema 失败则拒绝/回滚，不写新订单。37 项新测试、两版各 1662 pass/1 既有 skip/6 小样本模型警告，含旧部署契约/工作流/persistent paper；两 venue/模式/方向、原 v1 失败共存、跨连接 claim→HTTP 冻结与原减仓、无 SDK 重启均验证。此步完成来源存储和历史失败机制，不等于完整 S2；下一步为新 pending/balance 的显式年龄/跨度/当前来源与现客户端、独立 mark/book/完整市场池关联，再接原 CAS/HTTP、默认入口与新源码身份。旧部署指纹含 db_util/SqliteDB，但不含所有新增 native 模块，不能借旧 receipt 自动重封或重新武装。
+
 ## S3 原 intent/CAS 与 HTTP 每单消费
 
 文件：CCXTTradeEngine、OrderAudit、db_util 及对应原状态机回归。

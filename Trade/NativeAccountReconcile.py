@@ -152,6 +152,33 @@ def _margin(after, balances, pending_validation, issue):
             "order_margin_field": margin_key, "per_order_allocation": "not_inferred"}
 
 
+def _result(payload, issues):
+    payload["issues"] = sorted({canonical_bytes(row): row for row in issues}.values(), key=canonical_bytes)
+    payload["status"] = "incomplete" if any(row["severity"] == "incomplete" for row in issues) else "mismatch" if issues else "matched_components"
+    return {"schema": SCHEMA, "payload": payload, "payload_sha256": _sha(payload)}
+
+
+def _components(context, request, sources, ledger, pending, balances):
+    """Pure historical component rebuild; no risk-state recursion or writes."""
+    verify_native_balance_reservations(balances)
+    after, balance = sources["after"]["payload"], balances["payload"]
+    if (canonical_bytes(after["account_context"]) != canonical_bytes(context)
+            or canonical_bytes(balance["account_context"]) != canonical_bytes(context)
+            or not sources["before"]["payload"]["finished_ms"] < balance["started_ms"] <= balance["finished_ms"] < after["started_ms"]):
+        _fail()
+    interval = build_account_reconciliation_with_pending(**sources, **ledger, pending_orders=pending)
+    issues = list(interval["payload"]["issues"])
+    def issue(reason, *, incomplete=False, **details):
+        issues.append({"reason": reason, "severity": "incomplete" if incomplete else "mismatch", **details})
+    _balance_positions(after, balance, issue)
+    margin = _margin(after, balance, interval["payload"]["pending"], issue)
+    payload = {"account_context": context, "source_ids": request, "ledger_sha256": _sha(ledger),
+               "balance_source_sha256": balances["payload_sha256"], "interval": interval,
+               "pending": interval["payload"]["pending"], "margin": margin,
+               "coverage": "provided_native_account_components", "economics_complete": False, "native_admission_verified": False}
+    return _result(payload, issues)
+
+
 def observe_native_account_components(chan, *, account_context, before_id, after_id, wallet_ids, execution_scan_ids,
                                       pending_orders, balance_reservations):
     """Reload original sources/ledger in one SQLite view; do no private I/O."""
@@ -161,34 +188,16 @@ def observe_native_account_components(chan, *, account_context, before_id, after
                     "pending_orders": pending_orders, "balance_reservations": balance_reservations}
         original = canonical_bytes(provided)
         values = json.loads(original)
-        verify_native_balance_reservations(values["balance_reservations"])
         if chan.db_type != "sqlite":
             _fail()
-        issues = []
-        def issue(reason, *, incomplete=False, **details):
-            issues.append({"reason": reason, "severity": "incomplete" if incomplete else "mismatch", **details})
         request = {"before": values["before_id"], "after": values["after_id"], "wallets": values["wallet_ids"], "executions": values["execution_scan_ids"]}
         with chan.db.transaction():
             sources, ledger = _sources(chan.db, request), _ledger(chan)
-            after, balance = sources["after"]["payload"], values["balance_reservations"]["payload"]
-            if (canonical_bytes(after["account_context"]) != canonical_bytes(values["account_context"])
-                    or canonical_bytes(balance["account_context"]) != canonical_bytes(values["account_context"])
-                    or not sources["before"]["payload"]["finished_ms"] < balance["started_ms"] <= balance["finished_ms"] < after["started_ms"]):
-                _fail()
-            interval = build_account_reconciliation_with_pending(**sources, **ledger, pending_orders=values["pending_orders"])
-            issues.extend(interval["payload"]["issues"])
+            report = _components(values["account_context"], request, sources, ledger, values["pending_orders"], values["balance_reservations"])
             if risk_state(chan.db, values["account_context"])["frozen"]:
-                issue("persisted_account_frozen", incomplete=True)
-            _balance_positions(after, balance, issue)
-            margin = _margin(after, balance, interval["payload"]["pending"], issue)
-            payload = {"account_context": values["account_context"], "source_ids": request, "ledger_sha256": _sha(ledger),
-                       "balance_source_sha256": values["balance_reservations"]["payload_sha256"], "interval": interval,
-                       "pending": interval["payload"]["pending"], "margin": margin,
-                       "coverage": "provided_native_account_components", "economics_complete": False, "native_admission_verified": False}
+                report = _result(report["payload"], [*report["payload"]["issues"], {"reason": "persisted_account_frozen", "severity": "incomplete"}])
         if canonical_bytes(provided) != original:
             _fail()
-        payload["issues"] = sorted({canonical_bytes(row): row for row in issues}.values(), key=canonical_bytes)
-        payload["status"] = "incomplete" if any(row["severity"] == "incomplete" for row in issues) else "mismatch" if issues else "matched_components"
-        return {"schema": SCHEMA, "payload": payload, "payload_sha256": _sha(payload)}
+        return report
     except Exception:
         _fail()

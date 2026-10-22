@@ -166,3 +166,11 @@ Binance 资产/总额/原账户腿的 position/open-order initial margin 与余�
 NativeAccountStore 新表只收当前版本原始 pending/balance 文档，ID 为完整 canonical 字节摘要；重读重算 raw/派生与代码身份、窗口、稳定账户、context/venue/mode/kind/observed_ms。账户列举先读验全部行再过滤，不信索引能隐藏损坏/较新文档。原 AccountStore SQL 与两种旧 schema 未改，不把旧来源重封为新来源。
 
 显式三接口沿原 SQLite transaction/savepoint，初始化/外来同名表失败原子回滚，append-only 含 REPLACE 防护，缺触发器和重封金额/标记均拒绝。85 项 fake 新测试、两版广组合各 1519 pass/1 既有 skip，包含原账户/订单/冻结与 SQLite 事务；核心子进程读验无可选 SDK/实际 YAML，主线程审查，未做真实端点/容量/外部独立认证。存储层不采集或写订单，不创建检查/冻结，不提供真实性或当前性证明。下一依赖仍是原 check 的新组件历史重建和 sticky failure 发布；S2/C5/C6/C7/Goal 未完成。
+
+## 16. S2b4 原检查表的新组件重建与 sticky failure
+
+NativeAccountCheck 已由持久 before/after/wallet/execution/pending/balance IDs 重读来源、同视图全 ledger，沿原 checks 表/publisher 写新版本检查；原 v1 document/schema/风险聚合保持，不另设 reset/冻结表。组件纯核验与 DB observer 共用，原 observer 另读当时冻结，历史 reader 不递归 risk_state、不采用当前投影替换旧输入。源不可读/核验错误形成固定脱敏 failure，后来的 matched_observations 只说明新一组历史组件匹配，不能清除任何旧 v1/native failure。
+
+保存的原 event_id 前缀、全部 attempt/event 原行摘要及 key/事件数须与原不可变 journal 相符；原逐 attempt prefix verifier 仍核字节链。以显式 event_id 而非 attempts 隐含 rowid 标记版本，避免普通 SQLite compaction 重排造成伪身份。测试包含删掉零成交已撤销尝试及 projection、重新计算一个 matched report 并全重封 check 后仍拒绝；未来真实减仓推进 ledger 不改旧 check，重新启动可复核且无 SDK/配置或新写入。
+
+37 项新测试、两版适用广组合各 1662 pass/1 既有 skip/6 小样本模型警告；包括旧冻结/金融/来源/订单、部署契约/工作流和持久 paper。跨连接 native failure 在原 claim 后、HTTP 前阻止发送，未知提交不自动重试，原减仓仍可执行；无真实 HTTP、长期容量或独立外部认证。新 check 明确两个 flags=false/历史组件观察，完整 freshness/current source/current client、独立 mark/book、每单 CAS/HTTP 和源码版本绑定仍待，不删除常量阻断或重封旧候选，Goal active。

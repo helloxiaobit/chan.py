@@ -295,6 +295,18 @@ class CChanDB:
         with self.db.transaction():
             return read_check(self.db, check_id)
 
+    def reconcile_native_account(self, *, account_context, before_id, after_id, wallet_ids, execution_scan_ids, pending_id, balance_id):
+        self._require_execution_sqlite()
+        from .NativeAccountCheck import reconcile_native_account
+        snapshot = json.loads(canonical_bytes({"context": account_context, "request": {
+            "before": before_id, "after": after_id, "wallets": wallet_ids, "executions": execution_scan_ids,
+            "pending": pending_id, "balance": balance_id}}))
+        try:
+            with self.db.transaction():
+                return reconcile_native_account(self, snapshot["context"], snapshot["request"])
+        except sqlite3.DatabaseError:
+            raise CChanException("原生账户检查/失败冻结发布失败，禁止新增风险", ErrCode.TRADE_UNLOCK_FAIL) from None
+
     def get_account_risk_state(self, account_context):
         self._require_execution_sqlite()
         from .AccountRiskStore import risk_state

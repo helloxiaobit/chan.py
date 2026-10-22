@@ -127,6 +127,13 @@ def reconcile(chan, context, request):
         report = _failure(context)
     payload = {"account_context": context, "source_ids": request, "inputs": inputs, "report": report}
     document = {"schema": "chan-account-check-v1", "payload": payload, "payload_sha256": _sha(payload)}
+    return _publish(db, document)
+
+
+def _publish(db, document):
+    """Same append-only table and failure semantics for explicit check versions."""
+    payload = document["payload"]
+    context, report = payload["account_context"], payload["report"]
     raw, digest = canonical_bytes(document).decode(), _sha(document)
     row = db.query_one(f"SELECT * FROM {TABLE} WHERE check_id=?", (digest,))
     if row:
@@ -141,6 +148,9 @@ def reconcile(chan, context, request):
 def _read(db, row):
     try:
         document = json.loads(row["payload"])
+        if document.get("schema") == "chan-native-account-check-v1":
+            from .NativeAccountCheck import read_native_check
+            return read_native_check(db, row, document)
         payload = document["payload"]
         context, inputs, report = payload["account_context"], payload["inputs"], payload["report"]
         if (set(document) != {"schema", "payload", "payload_sha256"} or document["schema"] != "chan-account-check-v1"
