@@ -385,6 +385,12 @@ accepted 仅表示收到本次成功 ACK，不证明外部送达/已读；failed
 工作流指纹已包含新入口和通知代码，部署需重新发布；
 旧 paper 代码身份不能重封，跨版本迁移仍须另行验收。
 
+现有 `Plot.CosApi.upload_file` 的显式空/无效配置不会回退读取全局图床配置；只有 `conf=None` 保留原加载行为。
+minio/txcos SDK 或签名 URL 失败会抛固定脱敏异常，缺可选依赖仍为 CONFIG_ERROR，成功 URL 和原图文件不变。
+失败不证明远端未保存对象；dispatcher 不自动重试或切换后端。两版解释器各 136 passed / 1 既有 GUI skip，
+涵盖真实 dispatcher/后端与 fake SDK、通知及调度回归；不包含真实图床服务、SDK 自身日志/内部重试认证。
+图床目前仅由绘图上传接口调用，不在默认 TradeCycle 阶段；Notion 尚未集成，不能将此子项称为全部可选输出完成。
+
 当前运行壳对非 dry-run 新风险明确返回 `native_fresh_admission_not_integrated`，
 `native_admission_verified` 恒为 false；历史上没有冻结并不等于鲜活账户准入。
 已有仓位管理仍可按原门禁尝试。独立 paper 与默认脚本的显式软件 profile 已接进程级状态绑定；

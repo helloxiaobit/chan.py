@@ -648,3 +648,14 @@ C1 收尾清理计划：迁移校验由两份全表内存列表改为有序逐�
 - 本机 CCXT 4.5.89 仅构造无凭据客户端并检查方法/参考路由；Binance/binanceusdm 的 mark/book 方法、OKX mark/books 方法存在，live/sandbox 属性分别可读，未执行任何 API 方法。SDK 参考 URL 不是交易所可用性证明，不更改 TLS/URL/代理或升级 SDK 来隐藏差异。
 - 既有常量门禁、账户身份/快照、持久冻结和输入报价短回归 154 passed（18.64s），明确 exit=0；没有源码/测试/依赖/实际配置改动，不重跑无关模型或捏造 RED。本轮只交付审计/建议与原行为新鲜证据，尚无设计批准或新准入实现，Goal active。
 - JUnit 154 tests、0 failures/errors/skipped，SHA `979105764da300cdbc9669d1e812ff8bdef69cdf15c6b725a8a0cfe519c28c3a`。审计的本地引用、DRAFT 状态/批准边界、源代码事实和文档差异核验后，按既有发布授权作 Lore 文档提交；原生准入方向与候选换代的待批状态不得因提交草案被改成已批准。
+
+### C6 可选图床配置/异常边界：实施与清理计划
+
+- 起始 54adad6b580c90fc339fd5a51a94458959b57f1d 已推送/clean，无活测试。上一轮审计为有效进展，原生设计确认仍未收到，不以 Goal 自动续行当批准；本轮处理不依赖该设计的 C6 第 7 项现有接口缺陷。
+- Plot.CosApi.upload_file 使用 conf or get_cos_conf：显式空 dict/其他 falsey 值会转读全局配置，可能意外启用远程写；SDK 构造/请求异常未经统一脱敏直接外抛。先用真实 dispatcher/后端加 fake SDK 的最底层运输复现，不装新包、不读实际用户配置或发远程请求。
+- 清理范围仅为原图床 dispatcher：只有 conf is None 才走既有配置加载；显式无效/未启用配置在 SDK 前固定 CONFIG_ERROR。沿原 minio/txcos 后端，成功 URL 原样返回，SDK 异常用固定 CChanException 隐去原因链和原文，保持失败可见，不自动重试/换后端或推断远端没写入。
+- 不修改原上传 SDK 调用/默认配置/权限/依赖，也不改 PlotDriver、绘图算法、财务/订单/CAS 或通知摘要协议；不把图床接入默认交易阶段或新增 Notion。当前二者不在默认 TradeCycle 调用链，本子项不是可选输出的全部集成/外部认证。
+- 真正 RED→最小 GREEN，覆盖显式空配置、坏类型/后端子配置、配置加载失败、两 SDK 构造/请求/签名 URL 分支故障、成功 URL/原文件不变及 KeyboardInterrupt 不吞掉。双解释器适用回归/核心懒加载、编译/差异、自审、Lore/精确提交/远端核验后推送；活测试期间不编辑文件。原生准入/候选换代/C7 门禁不变，Goal active。
+- TDD 保留三组真实失败：起初显式空配置两项及 SDK 原异常四项共 6 RED；缺/空/错误类型签名 URL 三项 RED 后才检查 URL 返回类型；主线程审查发现缺 SDK 原 CONFIG_ERROR 不应改成 PLOT_ERR，又先观察两项错误码 RED，再保留 typed CONFIG_ERROR 并脱敏其原文。最终新增文件 40 case，无空跑/条件假通过；Minio 专用分支用 indirect 参数而非另一后端无操作。
+- 原串行回归句柄 20424 已不存在且没有匹配活进程；两份终局 XML 均完整记录 136 pass/1 skip，但最终退出输出丢失，未据此推断退出成功。对同一未编辑源码补跑串行双解释器组合，33116 明确 exit=0：3.14.2 为 136 passed / 1 skipped（70.24s），3.11.15 同数（72.56s）；跳过仍仅为既有可选 GUI。JUnit 各 137 tests、0 failures/errors，SHA 分别 `d6ebd0a60eec92ead6fdaae9816a09a6f7d3c2e1041ddaa142a9f50ffcb36506`、`3997234ae03466b7967ae7348c76f1d12a5be7691434256365d93d23dd25b952`，路径为临时目录 chanpy-cos-confirm-py314/py311-54adad6.xml。
+- 两解释器阻断 minio/qcloud_cos/ccxt/模型/yaml/PyQt 导入，核心 Cos 模块仍可导入，缺 SDK 固定 CONFIG_ERROR，compileall/diff 均通过。只改 dispatcher、40-case 测试、README 与本台账，不修改原后端 SDK 参数/默认配置、通知协议、账本/CAS、依赖或用户规则。主代理串行自审，不称独立审计；真实图床、SDK 自身日志/内部重试、Notion/默认阶段集成均未认证，不外推 C6/C7 完成。新的原生设计明确批准单独记录并实施，不混入该修复。
