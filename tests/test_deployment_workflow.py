@@ -31,27 +31,30 @@ def deployment_model(tmp_path_factory):
 
 
 @contextmanager
-def deployment_model_data(root, *, source):
+def deployment_model_data(root, *, source, codes=(CODE,)):
     config_path = root / "config.yaml"
     config_path.write_text(json.dumps({
         "offline_data": {"sqlite_path": str(root / "kline.db"), "source_identity": source},
         "db": {"type": "sqlite", "sqlite_path": str(root / "trade.db")},
         "notify": {"backend": "none"},
-        "trade": {"code_list": [CODE], "lv_list": ["K_60M"], "strategy": "custom"}}))
+        "trade": {"code_list": list(codes), "lv_list": ["K_60M"], "strategy": "custom"}}))
     previous = os.environ.get("CHANPY_CONFIG")
     os.environ["CHANPY_CONFIG"] = str(config_path)
     CEnv.reset_instance()
     try:
         rows = [(START+i*HOUR, b["open"], b["high"], b["low"], b["close"], b["volume"])
                 for i, b in enumerate(gen_synthetic_bars(1000))]
+        rows_by_code = {code: [(row[0], *(value*(index+1) for value in row[1:5]), row[5]) for row in rows]
+                        for index, code in enumerate(codes)}
         with CKLineDB(str(root / "kline.db")) as db:
             db.bind_source(source)
-            db.upsert_klines(CODE, KL_TYPE.K_60M, rows[:600])
+            for code in codes:
+                db.upsert_klines(code, KL_TYPE.K_60M, rows_by_code[code][:600])
         chan_config = {"cbsp_strategy": CCustomStrategy, "divergence_rate": float("inf"), "min_zs_cnt": 0,
                        "bs_type": "1,2,3a,1p,2s,3b", "kl_data_check": True,
                        "mean_metrics": [5, 20, 60], "trend_metrics": [10, 20],
                        "cal_rsi": True, "cal_kdj": True, "cal_demark": True}
-        result = run_backtest(CBacktestConfig([CODE], lv_list=[KL_TYPE.K_60M], autype=AUTYPE.NONE,
+        result = run_backtest(CBacktestConfig(list(codes), lv_list=[KL_TYPE.K_60M], autype=AUTYPE.NONE,
             data_src="custom:OfflineDataAPI.CStockFileReader", chan_config=chan_config,
             primary_label="label_ret_N", label_para={"ret_n": 1}, output_dir=str(root / "samples")))
         assert len(result.samples) >= 6
@@ -59,8 +62,10 @@ def deployment_model_data(root, *, source):
                                       num_boost_round=2)
         gen.trainProcess(result.output_dir)
         with CKLineDB(str(root / "kline.db")) as db:
-            db.upsert_klines(CODE, KL_TYPE.K_60M, rows[600:])
-        yield {"root": root, "model": gen, "rows": rows, "chan_config": chan_config, "source_identity": source}
+            for code in codes:
+                db.upsert_klines(code, KL_TYPE.K_60M, rows_by_code[code][600:])
+        yield {"root": root, "model": gen, "rows": rows, "rows_by_code": rows_by_code,
+               "chan_config": chan_config, "source_identity": source}
     finally:
         if previous is None:
             os.environ.pop("CHANPY_CONFIG", None)
@@ -75,17 +80,24 @@ def publish(path, model):
 
 
 def future_candidate(deployment_model):
+    return future_candidates(deployment_model)[CODE]
+
+
+def future_candidates(deployment_model, *, codes=(CODE,)):
     from ChanConfig import CChanConfig
     from Common.KLineTime import make_crypto_klu
-    chan = CChan(CODE, lv_list=[KL_TYPE.K_60M], config=CChanConfig({**deployment_model["chan_config"], "trigger_step": True}))
-    for i, row in enumerate(deployment_model["rows"]):
-        unit = make_crypto_klu(row, KL_TYPE.K_60M)
-        unit.source_identity = deployment_model["source_identity"]
-        chan.trigger_load({KL_TYPE.K_60M: [unit]})
+    chans = {code: CChan(code, lv_list=[KL_TYPE.K_60M],
+        config=CChanConfig({**deployment_model["chan_config"], "trigger_step": True})) for code in codes}
+    histories = deployment_model.get("rows_by_code", {CODE: deployment_model["rows"]})
+    for i, group in enumerate(zip(*(histories[code] for code in codes), strict=True)):
+        for code, row in zip(codes, group, strict=True):
+            unit = make_crypto_klu(row, KL_TYPE.K_60M)
+            unit.source_identity = deployment_model["source_identity"]
+            chans[code].trigger_load({KL_TYPE.K_60M: [unit]})
         if i >= 600:
-            signals = chan[0].cbsp_strategy.bsp_signal(chan, 0)
-            if signals:
-                return chan, signals[0]
+            signals = {code: chan[0].cbsp_strategy.bsp_signal(chan, 0) for code, chan in chans.items()}
+            if all(signals.values()):
+                return {code: (chans[code], values[0]) for code, values in signals.items()}
     raise AssertionError("夹具须有真实的训练窗口后候选信号")
 
 
