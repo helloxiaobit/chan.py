@@ -37,7 +37,7 @@
 | C3 | 已完成离线实现与验收 | UTC purge/unknown、三模型身份、write-once 部署、三阶段评分与 SQLite 版本链；非实盘/外部认证 |
 | C4 | 已完成离线实现与验收 | 有界实际样本→三模型→搜索/独立验证→部署→全 trial 重放；93 项组合、608 项全仓离线通过，非经济采用 |
 | C5 | 进行中 | 单位/原生恢复/历史/来源、区间核对与持久冻结已离线验收；cross/lot paper 已接原状态机与显式持久恢复；鲜活准入链、原生同义模型及外部认证仍待 |
-| C6 | 进行中（仍未完成） | 配置运行壳/失败传播/OS 锁、输入/报价、API、显式软件 paper 进程级路径及通知摘要/脱敏已实现；原生账户/mark/book 证明、信号显式换代、更广 E2E、迁移、安装矩阵和外部通知送达仍待 |
+| C6 | 进行中（仍未完成） | 配置运行壳/失败传播/OS 锁、输入/报价、API、显式软件 paper 进程级路径、通知摘要/脱敏与 Windows 3.11/3.14 核心/完整安装已验；原生账户/mark/book 证明、信号显式换代、更广 E2E、迁移和外部通知送达仍待 |
 | C7 | 待前置验收 | 公共行情与有准入后的外部认证；代码发布按阶段进行 |
 
 基线：前一审计在完全相同 `22a5a56`、依赖和环境上执行的所选离线功能集合为 116 passed / 1 skipped / 1 deselected，带一个 XGBoost 弃用警告和 pytest 临时目录清理提示；该证据仅覆盖列明集合，不称全仓或真实交易所验收。行为修改后补跑对应回归。
@@ -588,3 +588,11 @@ C1 收尾清理计划：迁移校验由两份全表内存列表改为有序逐�
 - 三项显式配置 RED 修复后，当前通知/阶段/运行壳组合 81 passed（13.64s）。CPython 3.14.2 与实际 3.11.15 主动屏蔽 ccxt/xgboost/lightgbm/sklearn/optuna/yaml/requests 后，实际缺显式配置的脱敏拒绝、scoped counter、canonical write-once 摘要/reader、原恢复模块失败退出码保留均 PASS；Stage/Cycle 核心导入通过。没有伪造缺失配置的成功路径，不是完整依赖安装矩阵。compileall/diff 通过。
 - 最终完整命令 python -m pytest tests -m 'not network' --basetemp <new-temp-directory> -q --tb=short -p no:cacheprovider：1581 passed / 8 expected skipped / 1 network deselected / 18 model/LibSVM warnings，745.88s，明确 exit=0。运行中没有源码/测试/文档编辑；收到结果后仅补本文数字和主线程范围说明。不隐藏小样本 AUC/MLP 告警，不把完整软件功能回归提升为经济采用或外部认证。
 - Lore 后在精确提交复验通知/阶段/运行壳及真实默认 paper 流程，再快进推送并核远端完整 SHA/clean。仅删除旧异常全文输出，复用原通知后端、原 write_json_once、原 JSONL 和财务/订单状态机；没有另建消息队列、撮合或金融模型，不自动重试。C6 候选换代待确认，其他软件与 C7 外部要求继续按原 Goal 推进。
+
+### C6 Python 核心/完整依赖安装矩阵（2026-10-22）
+
+- 前轮 37bc07504f47e7c3e4774ddd428660ee06ab949f 已推送/clean；本轮仅文档验收，业务代码、测试和 requirements 未改。详细实施、终局结果、命令和实际 71/70 包解析快照见 [安装矩阵报告](2026-10-22-python-install-matrix.md)。无全局包或用户配置/规则/权限修改。
+- 新建两个隔离 venv，关闭 system/user site，先仅装 Script/requirements.txt：3.11.15 核心 35 包、3.14.2 核心 34 包，各自真实导入、96 根合成结构/API、七项可选包缺失和 uv pip check 通过，API payload SHA 完全一致。安装只从公开 PyPI 下载已有声明依赖，wheel-only/no keyring/no 配置继承，无实际市场/账户/通知 I/O。
+- 随后原环境升级到 Script/requirements_full.txt：3.11 使用 XGBoost 3.2.0/SciPy 1.17.1/NumPy 2.4.6，3.14 使用 3.4.1/1.18.1/2.5.4；均真实导入/依赖一致性通过，各自完整离线 1581 passed / 8 skipped / 1 network deselected / 18 existing warnings，分别 829.95s / 765.70s，明确 exit=0。运行期间无文件编辑、无并发长任务。
+- 3.11 首次句柄丢失且无最终结果的那轮不计 PASS；确认无存活 Python 后才新 basetemp＋JUnit 复验。两个终局 JUnit 各自确认 1589 tests、0 failures/errors、8 skipped，并记录 SHA。skip 仍有外部正式研究、可选 PyQt GUI 和 native isolated 缺通道，不升格认证，不执行正式数据/绩效。
+- 本轮无行为清理/重构，复用现有全部测试与真实程序，不为文档变更发明 RED，也不为通过验收 pin/放宽依赖或加入新包。仅新增安装报告并同步 README/本台账；主代理串行自审。测试范围不外推到所有未来依赖/其他 OS/旧产物迁移。此 C6 安装子项完成不关闭 C5/C6/C7 或 Goal，剩余候选换代设计确认、原生准入、容量/迁移/更广 E2E 和外部验收继续保留；Lore 后依精确文档提交复核并快进推送。

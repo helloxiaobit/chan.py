@@ -15,6 +15,11 @@ pip install -r Script/requirements_full.txt   # 完整版(策略/模型/ccxt/aut
 
 可选依赖按需安装:`akshare`(A股)、`pymysql`(mysql 后端)、`futu-api`(futu 引擎)、`pytdx`、`minio`/`cos-python-sdk-v5`(图床)。所有重依赖均为懒加载,不装不影响其他功能。
 
+Windows x86-64 的 CPython 3.11.15 与 3.14.2 已分别在无全局包的隔离环境验证核心/完整声明依赖；
+两个完整环境各通过 1581 项离线测试（8 skipped、1 网络测试排除、18 条既有模型/弃用告警）。
+实际版本、复现命令与边界见 [Python 安装矩阵](docs/superpowers/reports/2026-10-22-python-install-matrix.md)。
+例如两环境 XGBoost 为 3.2.0/3.4.1；这不是全部未来依赖组合、其他 OS 或旧部署跨版本迁移保证。
+
 ## 配置
 
 ```bash
@@ -134,7 +139,7 @@ Python API 为 `ModelStrategy.training_pipeline.run_crypto_training_pipeline(dat
 `verify_crypto_training_pipeline(output_dir, data)` 从实际数据重放核验，目录移动后仍可验证，
 不依赖已删除的 staging 绝对路径。状态为 `offline_training_and_window_checks_passed`，
 始终 `candidate_authorized=false`；不是测试网、实盘或策略经济采用授权。
-PS1/SH 共用一个 Python 调用并传递非零退出码；交易运行壳与单实例锁见下文，完整调度、安装矩阵和跨环境验收仍在 C6。
+PS1/SH 共用一个 Python 调用并传递非零退出码；交易运行壳与单实例锁见下文。两版 Python 安装验收见上文；完整调度与更广跨环境验收仍在 C6。
 正式参数搜索继续受独立研究门禁约束，不能将本软件入口作为绕过入口。
 
 低级接口继续兼容，用于单独检查样本、模型和逐笔统计；不能替代上述完整流水线收据：
@@ -375,7 +380,7 @@ accepted 仅表示收到本次成功 ACK，不证明外部送达/已读；failed
 当前运行壳对非 dry-run 新风险明确返回 `native_fresh_admission_not_integrated`，
 `native_admission_verified` 恒为 false；历史上没有冻结并不等于鲜活账户准入。
 已有仓位管理仍可按原门禁尝试。独立 paper 与默认脚本的显式软件 profile 已接进程级状态绑定；
-通知固定摘要/脱敏已实现；强制原生鲜活账户及独立 mark/book 来源准入、更广 E2E 和安装矩阵仍待 C6。
+通知固定摘要/脱敏及上述两版 Python 安装项已验；强制原生鲜活账户及独立 mark/book 来源准入、更广 E2E 仍待 C6。
 版本化 API 见下文，本入口的命令完成状态不是完整验收或生产授权。
 
 非 dry-run 还必须同时满足以下门禁：
@@ -835,7 +840,7 @@ SQLite 检查与插入共用原事务，已有冻结 bytes 必须完全相同才
 原生非 dry-run 新风险仍然关闭。此 profile 只替换交易/报价路径，`RunTradeCycle` 的 OHLCV 更新阶段仍会调用
 配置的更新器；完全无网络演练请用前面的 `PaperRehearsal`，不能把 profile 当作全局断网开关。
 本轮默认整轮测试只 fake 公共更新传输，其余真实模型、SQLite、CLI 和新进程均实际执行。
-Binance 合成路径不是 OKX E2E 或任何测试网/实盘认证；容量、外部通知送达、完整安装矩阵、迁移及 C5–C7 其余项仍待。
+Binance 合成路径不是 OKX E2E 或任何测试网/实盘认证；容量、外部通知送达、迁移及 C5–C7 其余项仍待。
 
 当前只完成了离线可证明的安全边界，尚未完成交易所逐一测试网认证。待验证项包括：
 沙盒支持与市场映射、客户端订单号历史查询窗口/分页、post-only/reduce-only/
