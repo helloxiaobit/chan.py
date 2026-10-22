@@ -418,6 +418,12 @@ minio/txcos SDK 或签名 URL 失败会抛固定脱敏异常，缺可选依赖�
 独立 mark 必须与非零原持仓 mark 精确相等；事务释放/最终字节核验耗时也在使用预算内。
 新增 56 项，两版适用回归各 1103 passed / 1 既有 isolated 通道 skip；这是 DB-only 检查，不做网络或新写入、仍仅返回 None。
 未决原生单/余额预占、完整当前金融闭合、每单原 CAS/HTTP 消费和容量验证仍待，不能将其当成 fresh-admission 或用来删除常量阻断。
+`Trade.NativePendingOrders` 已提供独立未决来源观察：Binance 普通/conditional 两通道，OKX 普通及八种算法通道，
+不按候选市场过滤，OKX 按 native ID 分页至短页。每页带前后 typed profile、请求窗口、原字段与 SDK/路由身份；
+128 次显式调用预算包含 profile，耗尽则拒绝整批。Binance 的 ID 重复检测包含 symbol，避免跨币对误冲突。
+普通单同时保留原单位、币数/张数/累计及剩余量；算法条件数量、未知市场和附带复杂条款保留为未证实项目，不能当零风险。
+两版 Python 各 251 项新用例、779 项适用组合通过。来源仍 flags=false，不证明 bot/copy 等未观察通道、原子不存在或余额预占，
+尚未接入原 intent/CAS；无实际交易所请求，也未改变配置或任何候选/测试网/实盘门禁。
 版本化 API 见下文，本入口的命令完成状态不是完整验收或生产授权。
 
 非 dry-run 还必须同时满足以下门禁：

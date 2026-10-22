@@ -128,3 +128,9 @@ JUnit：154 tests，0 failures/errors/skipped；SHA256 `979105764da300cdbc9669d1
 TTL 未过也不能重用被同一稳定原生账户的新 snapshot 取代的旧 current 点；尚未组成 report 的新来源也不能忽略。同 finished 的完整 snapshot 不同则歧义拒绝，不按 ID/导入顺序择优。原 reader 在完整行核验后才关联账户，受损索引不能隐藏新来源。事务释放及最终输入字节核验耗时计入预算；释放后数据库当然还可能变化，未来原 CAS 内必须重新校验，不能把本次 None 当可携带的授权。
 
 新增 56 项离线用例，原政策/使用 149 项保持通过；两版解释器各 1103 passed / 1 既有 Binance isolated 通道 skip（适用组合，不是新全仓结果）。核心子进程屏蔽 ccxt/模型/yaml/GUI/图床依赖仍可读原持久检查；其路径环境为显式临时注入，不读取实际配置。无网络、订单或冻结新写入；金融失败仍须通过原 reconcile_account 持久发布。原报告对 unresolved_attempt 的 incomplete 与所有 flags=false 均不放宽；此步未认证原生未决单/余额预占、完整金融闭合、CAS/HTTP 或真实服务。全历史重读容量尚未验证，S2/S3/S4、C7 和 Goal 均未完成。
+
+## 11. S2b2 原生未决来源（归属与预占仍待）
+
+新增 NativePendingOrders，独立读取 Binance fapi 普通/conditional 与 OKX 普通/八种 algo 通道；后者精确 native ID after 分页，缺页、重复、不前进、预算耗尽整批失败。每页前后原 typed profile 与当前 route/TLS/SDK 相同，保留原响应允许字段、请求/本地窗口和订单 mutation 时间。数据不是原子全账户快照，普通单列表为空也不意味着无预占。
+
+复用原市场/单位/Decimal/身份边界；普通单归一化数量，未知市场、算法 closeFraction/条件量与复杂原生条款不猜为普通已归属订单。Binance orderId/algoId 按 symbol 自增，必须保留市场维度，不能以全账户 ID 去重。具体覆盖及未认证 bot/copy、经济预占等保留在 schema disclosures，两个 flags 始终 false。251 项新测试、两解释器各 779 项适用组合通过；主线程串行审查，无独立审计或真实服务认证。下一步仍为原历史归属、独立 native 保证金/余额观察及原 CAS/HTTP 消费，不能删常量阻断。

@@ -61,6 +61,20 @@
 
 实施证据：原缺函数 RED→最小实现；两项真实事务释放延时 RED→将最终时间/字节检查移到所拥有的 transaction/savepoint 退出后。随后 8 项真实 RED 证明 TTL 内新 snapshot（含未组成报告者）、同 finished 时刻的不同 snapshot 及受损索引不能被旧检查忽略，补原 AccountStore reader 的完整校验后 GREEN。新增 56 项＋149 原政策/使用项共 205 passed；CPython 3.14.2 / 3.11.15 的扩展适用组合各 1103 passed / 1 既有 isolated 通道 skip，详见台账。不声称全仓重跑或独立审核。后续仍须原生未决单/预占、完整当前金融消费者、原 CAS/HTTP 与默认入口，不能围绕此无未决成交的区间 fixture 缩减主计划。
 
+### S2b2 未决原生单、归属与余额预占（实施顺序；尚未完成）
+
+- 先新增独立 `Trade/NativePendingOrders.py` / 对应测试，不能扩展旧 AccountSources v1 的 allowlist 并重封旧快照。使用原 `_markets`/`_market`/严格 Decimal、typed account profile 和原环境守卫；不复制订单或金融状态机。旧来源、原报告 unresolved_attempt/incomplete、CAS 与 runtime 常量阻断均保留。
+- 第一依赖为有明确覆盖范围的原生未决观察：Binance fapi 普通单与独立 conditional algo 两通道，不传 symbol/algoId 等缩小范围的过滤；OKX 普通 pending 加 conditional/oco/chase/trigger/move_order_stop/iceberg/twap/smart_iceberg 八种 algo 通道，不传 instType/instId/instFamily 或 state 过滤。OKX 按原 native ordId/algoId 逐页 after、limit=100，到短页才闭合；严格拒绝游标不前进/跨页重复/错类型/失败响应，不以时间截断或统一 CCXT 列表代替原分页。
+- 每页保留请求、允许的原字段、原订单修改时间和完整本地采集窗口；修改时间不是鲜活性时间，不发明全列表 server timestamp。每页原 typed profile 前后相同、路由/TLS/SDK/客户端身份稳定才发布。最多沿原 128 次显式 SDK 调用预算，profile 读取也计入；预算耗尽整批拒绝，无重试、自动降级或部分 PASS。SDK 内部 HTTP 重试仍未认证。
+- 原字段按完整允许形状保存，含附件/父子单 ID、触发/数量/reduceOnly/方向/持仓腿与交易类型；额外私密 free-text 不回显。各声明通道返回的所有行均保留，不因不在候选池而丢弃。已知 regular 市场沿原 contractSize 精确保留 native/base/contracts 三单位和剩余量；未知市场、非 SWAP、algo 的条件数量/closeFraction 不猜单位、填零或据此放行。算法单留作未证归属来源，不冒称已有普通单状态机能执行/管理它。
+- 来源 schema 只描述所列 fapi / OKX trade 通道：`economics_complete=false`、`native_admission_verified=false`，不能声称服务器签名、全账户原子不存在证明、其他 bot/copy/子账户/组合保证金通道或余额预占已覆盖。已知未覆盖项目要显式披露，不能将 empty 普通单转换为完整账户 ready；后续完整消费者仍必须处理其适用性，主目标不因来源层通过而缩小。
+- 后续依赖：在原同一 SQLite 视图按 typed account、原 intent/contract/server/client ID、phase、原累计成交、剩余量、方向/腿/执行设置核对真实未决来源和所有 trade-shaped 本地 reservation；unknown/claimed 不能当未发送或释放。原 v1 快照未保留完整 native 预占分项，需独立版本的原生经济观察和原公式复用，不用零补齐或自行加减 USD/USDT。只有完整当前金融闭合与后续 S3/S4 通过，才考虑替换新风险常量阻断。
+- 本步只用无凭据真实 SDK 类和 fake 最底层 native 运输。先缺函数断言 RED，再两 venue/模式、多市场不同 contractSize、非空 regular/partial/algo/外国市场、原分页/路由/预算/脱敏/重封变异与无 SDK reader；实际网络、用户配置/权限/依赖、研究输出不在范围。
+
+接口依据（仅技术文档，不是实际端点验收）：[Binance fapi Trade](https://developers.binance.com/en/docs/catalog/core-trading-derivatives-trading-usd-s-m-futures/api/rest-api/trade)、[OKX native order/algo list](https://my.okx.com/docs-v5/en/)。本机 CCXT 4.5.89 确认普通与算法列表是不同 raw 方法；其 unified fetch_open_orders 默认不会同时证明两类覆盖。
+
+来源层已完成离线实现：新增 251 项通过，CPython 3.14.2 / 3.11.15 的来源/账户/原鲜活性组合各 779 passed。Binance 普通和算法 ID 都按 symbol 自增，重复检测使用通道类型＋symbol＋ID；不同市场同号保留，同市场重复拒绝。原生类别、必需时钟、部分成交状态/累计量及 bool/模式字段矛盾不发布。详见台账；此阶段没有未决归属、余额预占或准入消费者，S2b2 整体仍未完成。
+
 ## S3 原 intent/CAS 与 HTTP 每单消费
 
 文件：CCXTTradeEngine、OrderAudit、db_util 及对应原状态机回归。

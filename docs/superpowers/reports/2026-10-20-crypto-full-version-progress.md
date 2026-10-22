@@ -702,3 +702,13 @@ C1 收尾清理计划：迁移校验由两份全表内存列表改为有序逐�
 - CPython 3.14.2 聚焦 205 passed（23.54s）；之后扩展适用组合 1103 passed / 1 skipped（110.01s），CPython 3.11.15 同组合 1103 passed / 1 skipped（110.64s），均明确 exit=0。两次活测试期间均无文件编辑。组合覆盖新 56 项、原 149 项、S1、账户/来源/冻结/对账、execution 原存储/归属/绑定、原合约/账户/venue 参数/恢复/审计、安全、运行壳与输入/报价；不是新全仓结果。唯一 skip 仍为 Binance income 缺 isolated position cash channel。
 - JUnit 各 1104 tests / 0 failures / 0 errors / 1 skipped：`chanpy-native-interval-regression-py314-2ed2728-5de7.xml` SHA256 `648acf02d5f8b683858b74dc6e896243fd9035e4d51997a365b4b3acec8f2a56`；`chanpy-native-interval-regression-py311-2ed2728-a631.xml` SHA256 `94905a17bd8dd4a51124872328c530fa52efa38864d3fd714fa202d3492da795`。文件均位于 C:\Users\yangj\AppData\Local\Temp。真实补充 RED 为同目录 `chanpy-native-interval-red-2ed2728-68d0.xml`（8 个预期行为失败）。没有抹掉旧失败或把后来 PASS 重新贴给旧树。
 - 简化仅为提取已有纯时间检查、复用原 readers/ledger/Fraction/事务；未引入新 financial engine、预占表或本地授权 receipt。仍欠完整当前金融消费者、原生未决单/余额预占协议、原 CAS/HTTP 每单使用与默认入口 E2E；全历史重读容量尚未验证，不借仅无区间新增成交的 fixture 缩减主计划。保持 native_fresh_admission_not_integrated、候选换代待批和所有外部/研究门禁，S2/S3/S4、C5/C6/C7 与 Goal 尚未完成。
+
+### C5/C6 S2b2 原生未决来源：离线来源层通过
+
+- 从 3aad746 clean 验证进展后续接，新增 NativePendingOrders 与 251 项来源测试；原 AccountSources/旧收据、金融/订单状态机及配置未改。使用原完整 market/严格 Decimal、typed account/environment、finite canonical；新观察独立版本，核心 reader 不依赖 CCXT/模型/YAML/GUI/图床，也无 DB 或网络 I/O。
+- TDD 从明确缺 module/API 断言开始；初始 fixture setup error 不冒称产品 RED。随后 24 个 bool 空 client/复杂原生条款 RED、6 个算法类别 RED、36 个零 ID/缺失或倒退 mutation 时间/部分成交矛盾/含混 bool 或模式 RED、4 个 Binance 跨 symbol 同 ID 正向 RED 均最小修复。最后 focused 251 passed（14.04s）。Binance orderId/algoId 依据官方文档按 symbol 自增，去重键已包含市场，未放宽同市场重复。
+- 来源按账户全列表读取：Binance 普通和 conditional，OKX 普通加八类算法；无 symbol/instType 等候选池过滤，原 ID after 分页直到短页，重复/错类/失败/预算耗尽不发部分结果。每页两次真实 typed profile fake GET 计入 128 显式 SDK 预算，42 页为 126 调用，下一页前拒绝。仍不认证 SDK 内部重试、bot/copy/其他账户域或全局原子不存在。
+- 保留原字段/附件/父子单 ID 与请求时钟；普通量沿 contractSize 精确保留 base/contracts/累计/剩余，未知市场和 algo 条件数量不赋零。异常/额外私密 free-text 不持久或回显；route/account/SDK/metadata/clock 漂移及重封不一致均拒绝。观察 flags=false，不提供准入或预占结论。
+- CPython 3.14.2 / 3.11.15 串行适用组合各 779 passed（39.47s / 40.48s），明确 exit=0；包含新来源、S1、原身份/账户来源/快照、execution facts、S2a/S2b1。两版 compileall 与 diff check 通过。此前 3aad746 的未改变原状态机/冻结/运行壳 1103 pass/1 skip 证据沿用，不冒称此轮全仓重跑；测试活跃期间无文件编辑。
+- JUnit：Temp/chanpy-pending-regression-py314-3aad746-b2f6.xml，SHA256 2899d5b71b9772611b25f1da9f4d1af5a9a2b9b585eeb073746b4ce92b1e64bf；py311 对应 chanpy-pending-regression-py311-3aad746-3e4c.xml，SHA256 3c5c25ad811173ca280a56fdfb70b8fe8452ec155dba0a2204e7f7d871d96ea5。Temp 为 C:\Users\yangj\AppData\Local\Temp；两份均 779 tests/0 failures/errors/skips。
+- 主线程审查，未用子代理或真实服务。仅来源层完成：原意图/归属/预占、独立 native 余额与保证金观察、当前金融闭合、原 CAS/HTTP、默认多市场 E2E、容量与 C7 仍待。Goal 保持 active。
