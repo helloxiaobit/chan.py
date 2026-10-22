@@ -389,6 +389,8 @@ accepted 仅表示收到本次成功 ACK，不证明外部送达/已读；failed
 `native_admission_verified` 恒为 false；历史上没有冻结并不等于鲜活账户准入。
 已有仓位管理仍可按原门禁尝试。独立 paper 与默认脚本的显式软件 profile 已接进程级状态绑定；
 通知固定摘要/脱敏及上述两版 Python 安装项已验；强制原生鲜活账户及独立 mark/book 来源准入、更广 E2E 仍待 C6。
+原生准入的当前缺口、官方来源和待批严格实现方向见
+[fresh-admission 审计草案](docs/superpowers/reports/2026-10-22-native-fresh-admission-audit.md)；草案不改变门禁或授权真实请求。
 版本化 API 见下文，本入口的命令完成状态不是完整验收或生产授权。
 
 非 dry-run 还必须同时满足以下门禁：

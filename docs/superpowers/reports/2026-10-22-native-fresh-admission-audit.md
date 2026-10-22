@@ -1,0 +1,108 @@
+# 原生 fresh-admission：现状审计与待批实现方向
+
+状态：**DRAFT / 待用户批准；不是准入规范、交易收据或生产授权。**
+
+审计基线：`ab02e5b50dae50f781887c95e60e47628d952b32`，`full-version`。
+前一 Goal 回合是有效进展：双币软件矩阵已推送；本轮不再以增加类似的 paper 用例代替原生缺口。
+本报告不改变 C0–C7 的完整目标，不把 unsupported/未认证能力算作完成。
+
+## 1. 结论
+
+目前不能删掉 `native_fresh_admission_not_integrated`，也不能把历史对账、ticker 或软件 paper 的 PASS 升格。
+已有来源、账本、意图/CAS 和冻结机制应继续复用；缺的是独立原生市场证据、明确的鲜活性政策及每单消费协议。
+本轮只读核对代码、官方技术文档和本机 SDK 定义，没有调用行情/账户端点、使用凭据或修改实际配置。
+
+## 2. 当前代码已经证明什么、没有证明什么
+
+| 当前实现 | 现有证据 | 不能据此推导的结论 |
+|---|---|---|
+| [RunTradeCycle](../../../Trade/Script/RunTradeCycle.py)，`run_trade_cycle` | 非 dry-run 在 open 前明确阻断，结果的 native 标志为 false；管理阶段仍在 finally 中执行 | 删除阻断分支即可安全开仓 |
+| [AccountRiskStore](../../../Trade/AccountRiskStore.py)，`risk_state` / `assert_new_risk_allowed` | 重读原证据、原历史前缀；历史异常持久冻结且后续匹配不自动解冻 | 无历史冻结、或某次 matched_observations，就是当前完整账户准入 |
+| [AccountSources](../../../Trade/AccountSources.py)，`_position` / `collect_account_snapshot` | 原生数量、单位、账户资产和观测起止窗口；position update 时间与 mark 时间明确区分，`mark_ms=None` | 刚读到账户就拥有独立、带来源时间的 mark |
+| [AccountReconcile](../../../Trade/AccountReconcile.py)，`_build` | 给定完整观察区间内的来源/原历史逐项核对；披露 economics_complete=false、mark 时钟未知 | 当前点账户准入、原生舍入/isolated/funding 分腿全部闭合 |
+| [MarketQuote](../../../Common/MarketQuote.py)，`_validate` / `read_quote_batch` | 有界的原 ticker price 与时间、完整标的集、使用时年龄检查；软件 schema 分离 | 独立 bid/ask、盘口量、mark、保证金或成交可得性 |
+| [AccountIdentity](../../../Trade/AccountIdentity.py)，`_environment` | 当前 SDK 参考客户端、TLS、mode、private_routes/账户 typed identity 前后检查；OKX 的 rest 是共用基址 | Binance fapiPublic 已覆盖、或 OKX 共用基址等于独立 mark/book 响应证据；参考 SDK 路由即外部认证 |
+| [CCXTTradeEngine](../../../Trade/CCXTTradeEngine.py)，`_observe_account` / `place_order` | 每单 mode/margin/leverage、原持久意图、kill/candidate、原生账户身份和冻结检查 | mode/leverage observation 就是完整余额/持仓/市场 fresh-admission；历史冻结检查代替新证明 |
+
+原 v3 意图和 [OrderAudit](../../../Trade/OrderAudit.py) 的输入检查不能被原地改名为新准入。
+新证据须有独立版本/身份和消费边界；旧单恢复/查询/撤销/降风险不要求重新取得旧策略模型或被重发。
+
+## 3. 官方来源与 SDK 核对
+
+以下是采集接口依据，不是已执行的交易所验收，也不是可用性/可成交性保证。
+
+- Binance 独立 mark 可取 `/fapi/v1/premiumIndex` 的 `markPrice` 与 `time`；BBO 可取 `/fapi/v1/ticker/bookTicker` 的价格、量和交易时间。后者不含 RPI 深度，不能称全盘口。[Binance 官方 Market Data](https://developers.binance.com/en/docs/catalog/core-trading-derivatives-trading-usd-s-m-futures/api/rest-api/market-data)
+- OKX mark 使用 `/api/v5/public/mark-price`；应保留其 `ts` 的“数据返回时间”含义，不冒称 position mark 的生成时间。[OKX Get mark price](https://my.okx.com/docs-v5/en/#public-data-rest-api-get-mark-price)
+- OKX `/api/v5/market/books` 的盘口时间、序列和衍生品张数有独立语义；这是服务端缓存快照，预开盘可能交叉。不能用 HTTP 接收时间刷新旧盘口，或把交叉盘口判作可新开仓。[OKX GET / Order book](https://my.okx.com/docs-v5/en/#order-book-trading-market-data-get-order-book)
+- WS mark 与 REST mark 不是同一种时钟/唯一性契约。官方还披露 WS 同时间戳可收到不同 mark 值；未来若做 WS，不能只用时间戳当内容不可变的原生事件 ID。[OKX Mark price channel](https://my.okx.com/docs-v5/en/#public-data-websocket-mark-price-channel)
+
+本机隔离环境 CCXT 4.5.89 的只读构造/属性检查确认下列方法存在；没有执行这些方法：
+
+| 客户端 | 候选方法 | 需要单独验证的实际公共路由 |
+|---|---|---|
+| binance / binanceusdm | `fapiPublicGetPremiumIndex`、`fapiPublicGetTickerBookTicker` | `fapiPublic`；本机 live 与 sandbox 参考 URL 不同 |
+| okx | `publicGetPublicMarkPrice`、`publicGetMarketBooks` | `rest` 模板、实际 hostname、sandbox/模拟 header |
+
+SDK 构造成功及方法可调用不代表服务器支持。不得为兼容而自动改 URL、TLS、代理或已冻结账户上下文；C7 才验证实际路由/模式。
+
+## 4. 待批设计方向
+
+### 4.1 证据层，而非新“信任 passed”接口
+
+建议先新增独立原生市场观察模块，复用 finite canonical/SHA、原生 `_market` / 数值校验和实际 CCXT 调用风格。
+每份观察绑定 venue/mode、原市场 metadata、实际公共路由、SDK/代码身份、请求起止时间与 allowlisted 原响应。
+mark 与 book 保留各自的字段、单位、时钟类型和来源，不伪造统一原生生成时刻；不从 last 补 mark，也不让软件 schema 进入原生证明。
+每个新观察按完整内容与请求窗口取身份，不以 timestamp 单独唯一；无 secret、原账户 ID 或任意异常全文。
+
+公共路由在请求前后复核：Binance 补独立 fapiPublic，OKX 复用已经保护的 rest 基址/hostname/header 并绑定实际来源端点，不把它说成原来完全没有保护。
+私有账户仍用原 typed identity，二者由准入消费者关联，不修改旧 context 字节。
+保留原账户证据表/旧报告语义，不把原 economics_complete=false 改为 true；仅新增独立版本的来源/使用检查。
+
+### 4.2 鲜活性政策必须由部署显式提供
+
+建议要求每来源年龄上限、账户/整个采集观测跨度及允许的跨来源时间差；名字/格式在批准后的详细规格冻结。
+不提供隐含秒数，不把原 ticker 或 software quote 的上限擅自用作账户/mark/book 上限。
+缺政策、坏类型、未来时间、时钟倒退、来源缺失、重复标的、错误 market/单位、非有限或不可交易盘口均拒绝新增风险。
+有效的原生交叉/空盘口可作为“观察到但不可准入”的事实保留，不能为了生成 PASS 自动修正。
+
+金额/数量/来源/账本仍要求严格一致，无默认 epsilon、汇率或舍入纠正。无法证明的差异为 mismatch/incomplete，不据一次后续匹配自动解冻。
+这些只是对所提供观察的检查，不宣称交易所全局原子快照、所有经济事件或平台风控公式已获证明。
+
+### 4.3 原账户、原账本及每单边界
+
+建议在同一账户命名空间关联原 snapshots/wallet/execution/全 trade-shaped 历史与独立市场证据。
+全部支持市场及实际持仓均须有对应来源；不能只核候选 symbol，也不能靠只允许空仓、单币或忽略已有仓位绕过完整状态。
+新源若只能提供有限观察，不得把旧 interval 的匹配状态当当前值；HTTP 观测窗口、数据 mutation 时间和来源返回时间分别处理。
+
+复用 prepare → 原 intent/CAS → claim → HTTP 前的检查点，而不是只在运行壳检查一次。
+证明应绑定实际账户/模式、DB、原候选/部署/配置/代码、order role/数量/价格和引用来源；持久意图必须记录原证明。
+DB 锁内核对原历史/投影/预留身份及年龄，网络采集不置于 SQLite 写锁内；并发新意图、账户可用余额和原生未决单/预留归属需有明确一致性规则。
+不能把缺少预留证明解释成“可用”，也不能清空未知状态后重下；该规则的详细协议必须在集成前审查。
+HTTP 前再次核原来源/身份/kill/candidate/冻结和实际意图；失效仍保留未知/已提交边界，不回滚为可重新创建。
+
+原 v1/v2/v3 记录只按已验证恢复路径管理，不能重封迁移。新风险证明使用新版本，不给 caller 一个布尔 ready、任意来源 ID 或自封 SHA 的放行接口。
+股票、Spot、Portfolio/multi-asset、借贷/缺 channel/isolated、未知币种或无法闭合来源的组合不随初期 USDT linear cross 支持被暗中放行；未覆盖的完整目标仍记未完成。
+
+## 5. 实施顺序与验收建议（待批，不是已批准实现）
+
+1. 独立 mark/book 来源：原生 raw 夹具先 RED，finite/canonical/raw 重算/公共路由变异/时钟和单位 GREEN；此时 admission 仍为 false。
+2. 当前使用检查：显式政策、完整市场集、账户/市场/原账本关联；不足来源一律不生成有效准入，不另写第二套财务公式。
+3. 原意图/CAS 消费：跨连接修改历史、预留、配置/路由/账户、年龄失效与 claim 后漂移均拒绝新发送；原恢复/撤销/降风险回归。
+4. 真实运行壳与 CLI：合成 native 运输做两 venue/模式/多市场端到端，证明没有绕过新消费者的入口；旧常量阻断只能在这条完整路径证据成立后有条件替换。
+5. 适用回归、身份/迁移说明、Lore/精确提交/远端核验。真实公共/私有请求、候选、测试网、实盘及人工解冻均不是本次设计批准附带的权限，C7 保留独立前置条件。
+
+拟新增源码/测试名称仅为审查占位：`Trade/NativeMarketEvidence.py`、`Trade/NativeAdmission.py` 及对应 tests；也可沿原 utils 最小扩展。
+涉及接入的原文件为 AccountSources/Store/Reconcile/RiskStore、AccountIdentity、CCXTTradeEngine、OrderAudit、db_util、OpeningInputs/RunTradeCycle；具体 diff 在各步 TDD 前收窄。
+不修改用户配置、AGENTS/CLAUDE、权限或依赖，不把本草案当作对旧冻结边界的覆盖指令。
+
+## 6. 当前需要的用户决定
+
+是否批准以上“独立证据＋显式鲜活性政策＋原账户/账本＋原 CAS 每单复验”的严格方向，先仅用 fake 实施？
+批准不包含任何真实 I/O、自动解冻、默认容差/年龄、候选换代或现有配置变更；这些授权保持独立。
+在获得明确答复前，只保存审计与建议，不修改依赖本设计的生产准入代码。
+
+## 7. 本轮验证状态
+
+CPython 3.14.2 短回归：非 dry-run 新风险常量门禁、原生账户身份/快照、历史持久冻结和输入报价，154 passed（18.64s），明确 exit=0。
+JUnit：154 tests，0 failures/errors/skipped；SHA256 `979105764da300cdbc9669d1e812ff8bdef69cdf15c6b725a8a0cfe519c28c3a`。
+它验证旧边界仍在，不验证草案中的新功能；本报告没有新可执行行为，不虚构缺函数 RED 或以旧完整回归冒称新功能已实现。

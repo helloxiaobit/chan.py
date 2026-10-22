@@ -639,3 +639,12 @@ C1 收尾清理计划：迁移校验由两份全表内存列表改为有序逐�
 - CPython 3.11.15/XGBoost 3.2.0 新矩阵＋原部署（含真实 XGB/LGBM/MLP 单币评分）50 passed / 5 existing model warnings（304.13s），明确 exit=0；新增 12 case 在两解释器均通过。两份终局 JUnit 的 failures/errors/skipped 均为 0，SHA 分别为 3.14 `cc9c39703d96744e87cc271796d949fd3883e012bc9fe4cebb08c6392749fb07` / 3.11 `48a3e5cccc80c73faf9aa4e7da08ae35ab0d2546da0293a6b98efe32a1bca177`。活测试期间没有任何文件编辑；没有真实行情/账户/通知 I/O。
 - 本轮只有 tests/test_deployment_workflow.py、tests/test_configured_paper_portfolio.py、README_FULL.md、本台账四文件；只提取/扩展原搭建与候选喂入体，未另建金融/撮合/意图状态机或改生产代码/依赖/用户配置。7000eb8 的完整 1608 pass 对未变生产代码仍适用，本轮不冒称重跑全仓或累加为一次新全量结果。模型多币组合目前 custom＋XGB，其他策略/模型、同币双腿整轮和长时间容量/迁移仍未据此验收。
 - 原生 fresh-admission 仍未集成、candidate 未授权、候选换代仍待批，C5/C6/C7 尚未整体完成；已补齐的软件组合证据不能关闭 Goal 或开启测试网/实盘。双解释器编译、差异、主线程审查与精确提交核验后仅按授权快进推送 full-version，不新建 PR/子代理/工作树。
+
+### C5/C6 原生 fresh-admission 关键路径审计与待批方向
+
+- 前轮 ab02e5b50dae50f781887c95e60e47628d952b32 为有效进展，已推送/clean，376＋50 与精确提交后 6 项证据保留。本轮不继续用相似软件组合替代已知原生缺口；读取当前代码并查询官方技术文档，没有请求行情/账户或使用密钥。
+- 已核实常量阻断、历史 risk 状态 false、账户 mark_ms=None、ticker 无独立 mark/book，以及 v3 原单冻结/身份检查与 fresh-admission 的区别。context 的 private_routes 不含 Binance fapiPublic；OKX rest 共用基址已有保护，但不等于独立市场来源证据，不能误报完全无保护。新增 [原生准入审计草案](2026-10-22-native-fresh-admission-audit.md) 逐项定位当前证据、缺口、官方字段/时钟含义、拟复用文件与分步验收。
+- brainstorming 识别出必须先冻结的材料决策：显式来源年龄/观测跨度/时差、独立公共路由证明、新证明如何在原 CAS/HTTP 边界消费及原生未决预留一致性。已向用户提出一次严格方案确认；未收到答复前仅审计，不将 silence 解释为批准，不修改依赖设计的准入实现或用户配置。旧候选换代审批保持独立。
+- 本机 CCXT 4.5.89 仅构造无凭据客户端并检查方法/参考路由；Binance/binanceusdm 的 mark/book 方法、OKX mark/books 方法存在，live/sandbox 属性分别可读，未执行任何 API 方法。SDK 参考 URL 不是交易所可用性证明，不更改 TLS/URL/代理或升级 SDK 来隐藏差异。
+- 既有常量门禁、账户身份/快照、持久冻结和输入报价短回归 154 passed（18.64s），明确 exit=0；没有源码/测试/依赖/实际配置改动，不重跑无关模型或捏造 RED。本轮只交付审计/建议与原行为新鲜证据，尚无设计批准或新准入实现，Goal active。
+- JUnit 154 tests、0 failures/errors/skipped，SHA `979105764da300cdbc9669d1e812ff8bdef69cdf15c6b725a8a0cfe519c28c3a`。审计的本地引用、DRAFT 状态/批准边界、源代码事实和文档差异核验后，按既有发布授权作 Lore 文档提交；原生准入方向与候选换代的待批状态不得因提交草案被改成已批准。
