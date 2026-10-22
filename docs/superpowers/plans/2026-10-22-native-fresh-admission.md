@@ -87,6 +87,18 @@
 
 余额来源层已实现并离线验证：66 项；两版适用组合各 940 passed。存储 reader 逐段重算 raw/派生、窗口、固定请求与计数、当前代码和身份形状，不加载 SDK，也不认证原始来源。显式 OKX configuration 的 UID 在采集当时另核与当前 typed account 相等，观察仅保存 identifier SHA；不能只核周围 profile 而忽略配置响应自己的 UID。旧来源/金融/订单/CAS/配置未改。当前金融消费者仍未完成，不能把“已观察原生预占字段”改称“已完成预占/可用资金闭合”。
 
+### S2b3 原金融核算复用与非空未决单观察闭合（实施中）
+
+清理/复用计划：只在 AccountReconcile 的共享纯核算体增加内部 pending 分支，默认 v1 输入/输出字节和 unresolved_attempt 语义不变；新公开 builder 必须自行验证原始 pending 来源并从同一 histories/projections 重建归属，不能接受 caller 的 matched/qualified 集合或过滤旧 report 的 issue 后假装通过。新路径使用独立 v2 schema 和 pending 身份入摘要，其余钱包链、费用/PnL、funding、pooled entry、native mark 与 DB/current_qty 仍共用原实现，不写第二套金融/订单状态机。现有 v1 回归是行为清理保护；新非空 pending 行为先 RED。
+
+新增 DB-only NativeAccountReconcile.observe_native_account_components：按原 before/after/wallet/execution IDs 重读原来源、同视图全 trade-shaped ledger 和 sticky freeze，验证新 balance/pending 原字节，再合并 pending-aware 区间和 native 组件问题。两份新观察须先于最终 after snapshot；其各币现金/未实现/权益/原可用及 margin 公共字段、账户和全部市场/实际腿须与 after 对应。Binance single-asset cross 的 total/asset 原 IMR position/open 分项精确对齐；OKX 只使用明确币种的 native availEq/ordFrozen 等字段，不用 USD 总额换算，不假设 imr 已排除挂单而再扣一次。只检验声明组件和原核算恒等关系，不估算交易所 tier/逐单冻结额或引入金额容差。
+
+报告仍两个 flags=false，matched_components 只是所给观察的经济一致性，不能携带授权、忽略年龄或绕过原 CAS；失败持久发布/新来源存储与完整当前消费是后续明确依赖，禁止借本步删除常量阻断。测试沿原 collector/store/真实 fake 原订单流：非空仓位、区间实际部分平仓、费用/已实现/资金费和非零普通未决单；新增双市场/双腿、源缺失/变异/跨账户、原冻结/跨表与嵌套事务、重启、无 SDK/无写入及 v1 不变检查。全部 fake、串行、无配置/依赖修改。
+
+本子边界已实现观察闭合，完整 S2 仍未完成。59 个新用例覆盖两 venue × 两模式 × 多空的双币原流水；同记录开单未终结时原 CAS 不允许取得平仓意图，故使用原合法顺序：TEST 已部分平仓，ALT 有实际部分开仓未决单，不放宽原状态机。新路径按账户＋市场限定历史 server ID 唯一性；即使零成交撤销也不能最佳匹配，Binance 跨市场同号保留。独立 balance 中的 account position/公共 raw 金额须与最终 after 相容，早期 availEq/cross 值不得覆盖新终点；未知/非 USDT 保证金和来源通道缺口仍 incomplete。
+
+可用额只使用原币 native 字段并检查覆盖约束，不反算交易所 tier/逐单保证金，不把 OKX ordFrozen 再从可能已含其的 imr 扣一遍；原生更低可用额照实保留。新来源和当前组件报告尚未写入新持久 check，不能借旧 v1 matched check 为此路径发放准入；下一步应将新来源版本化持久保存、复用原 append-only check/sticky freeze 做失败发布和重建，再合并显式当前来源政策、独立 mark/book 和原 CAS/HTTP。新金融模块/共享 v2 的源码身份必须在 S3 明确绑定，旧 workflow SHA 不包含它们。
+
 ## S3 原 intent/CAS 与 HTTP 每单消费
 
 文件：CCXTTradeEngine、OrderAudit、db_util 及对应原状态机回归。

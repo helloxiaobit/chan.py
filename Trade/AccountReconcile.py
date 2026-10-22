@@ -13,7 +13,7 @@ from Common.ChanException import CChanException, ErrCode
 from CustomBuySellPoint.Decision import canonical_bytes
 from .AccountIdentity import verify_account_context
 from .AccountSources import verify_account_snapshot, verify_wallet_scan
-from .ExecutionReconcile import build_execution_ownership
+from .ExecutionReconcile import _order_ids, build_execution_ownership
 
 
 SCHEMA = "chan-account-reconciliation-v1"
@@ -165,7 +165,7 @@ def _cash_components(facts, wallet, venue, issue):
             issue("unowned_trade_cashflow", source_id=row["source_id"], incomplete=True)
 
 
-def _build(before, after, wallets, executions, histories, projections):
+def _build(before, after, wallets, executions, histories, projections, *, pending_validation=None):
     verify_account_snapshot(before)
     verify_account_snapshot(after)
     first, last = before["payload"], after["payload"]
@@ -177,6 +177,14 @@ def _build(before, after, wallets, executions, histories, projections):
 
     def issue(reason, *, incomplete=False, **details):
         issues.append({"reason": reason, "severity": "incomplete" if incomplete else "mismatch", **details})
+
+    qualified = set()
+    if pending_validation is not None:
+        observed = pending_validation["payload"]
+        qualified = {tuple(row["attempt"][key] for key in ("trade_table", "record_id", "phase", "attempt", "client_order_id"))
+                     for row in observed["orders"] if row["status"] == "owned"}
+        for row in observed["issues"]:
+            issue("native_pending_"+row["reason"], incomplete=True, observation=row)
 
     start, end = first["started_ms"], last["finished_ms"]+1
     low, high = first["finished_ms"], last["started_ms"]
@@ -252,7 +260,7 @@ def _build(before, after, wallets, executions, histories, projections):
             if ref in attempts:
                 _fail()
             attempts[ref] = attempt
-            if attempt["events"][-1]["state"]["order_status"] not in {"closed", "canceled", "rejected"}:
+            if attempt["events"][-1]["state"]["order_status"] not in {"closed", "canceled", "rejected"} and ref not in qualified:
                 issue("unresolved_attempt", identity=list(ref), incomplete=True)
             clocks = [e["observed_ms"] for e in attempt["events"]]
             if clocks != sorted(clocks):
@@ -268,6 +276,19 @@ def _build(before, after, wallets, executions, histories, projections):
                 record_events.setdefault(record, []).append({**event, "attempt_key": ref})
                 if event["observed_ms"] >= high:
                     issue("db_event_at_or_after_endpoint", identity=list(record), incomplete=True)
+
+    if pending_validation is not None:
+        # A terminal zero-fill claim can still conflict with a real native
+        # order. Do not select a best client-id match in this new version.
+        # Binance identifiers are per market, not globally unique.
+        by_order = {}
+        for ref, attempt in attempts.items():
+            instrument = attempt["identity"]["order_contract"]["market"]["id"]
+            for native_id in _order_ids(attempt):
+                by_order.setdefault((instrument, native_id), []).append(list(ref))
+        for key, identities in sorted(by_order.items()):
+            if len(identities) > 1:
+                issue("ambiguous_historical_order_id", incomplete=True, native_order=list(key), attempts=identities)
 
     all_facts, funding_facts, windows = [], [], {}
     market_map = {m["symbol"]: m for m in first["markets"]}
@@ -403,22 +424,55 @@ def _build(before, after, wallets, executions, histories, projections):
             issue("position_unrealized_difference", endpoint="rebuilt", leg=list(key))
         results.append({"leg": list(key), "quantity": _ratio(expected["q"]), "entry_price": _ratio(expected["entry"]), "unrealized_pnl": _ratio(upl)})
     issues = sorted({canonical_bytes(r): r for r in issues}.values(), key=canonical_bytes)
+    inputs = {"before": before, "after": after, "wallets": wallets, "executions": executions,
+              "histories": histories, "projections": projections}
+    if pending_validation is not None:
+        inputs["pending_validation"] = pending_validation
     payload = {"account_context": account, "start_ms": start, "end_ms": end,
-        "coverage": "observed_account_interval", "economics_complete": False,
+        "coverage": "observed_account_interval" if pending_validation is None else "observed_account_interval_with_native_pending",
+        "economics_complete": False,
         "status": "incomplete" if any(r["severity"] == "incomplete" for r in issues) else "mismatch" if issues else "matched_observations",
-        "input_sha256": _sha({"before": before, "after": after, "wallets": wallets, "executions": executions,
-            "histories": histories, "projections": projections}),
+        "input_sha256": _sha(inputs),
         "wallets": wallet_results, "positions": results, "issues": issues,
         "disclosures": {"funding_allocation": "account_only_native_leg_missing", "mark_generation_clock": "unknown",
             "position_margin_currency": "USDT" if venue == "binance" else "USD", "native_rounding_tolerance": "none",
             "usd_totals": "retained_not_converted_or_added_to_settlement_cash",
             "completeness": "provided_observations_only_not_trading_admission"}}
-    return {"schema": SCHEMA, "payload": payload, "payload_sha256": _sha(payload)}
+    if pending_validation is not None:
+        payload["pending"] = pending_validation
+    return {"schema": SCHEMA if pending_validation is None else "chan-account-reconciliation-pending-v2",
+            "payload": payload, "payload_sha256": _sha(payload)}
 
 
 def build_account_reconciliation(*, before, after, wallets, executions, histories, projections):
     """Inputs from a single verified DB snapshot; no network, writes or unlock."""
     try:
         return _build(before, after, wallets, executions, histories, projections)
+    except (ValueError, TypeError, KeyError, AttributeError, DecimalException, ZeroDivisionError):
+        _fail()
+
+
+def build_account_reconciliation_with_pending(*, before, after, wallets, executions, histories, projections, pending_orders):
+    """New observational version; qualify only from raw pending + same ledger.
+
+    The original v1 builder never takes this argument or returns this schema.
+    There is no caller-supplied matched report or set of exempt attempts.
+    """
+    from .NativePendingOrders import verify_native_pending_orders
+    from .NativePendingOwnership import SCHEMA as PENDING_SCHEMA, _build as pending_ownership
+    from .ExecutionFacts import _MONEY, _market
+    from decimal import localcontext
+    try:
+        verify_native_pending_orders(pending_orders)
+        source = pending_orders["payload"]
+        if (canonical_bytes(source["account_context"]) != canonical_bytes(after["payload"]["account_context"])
+                or not before["payload"]["finished_ms"] < source["started_ms"] <= source["finished_ms"] < after["payload"]["started_ms"]
+                or canonical_bytes(sorted((_market(row) for row in source["markets"]), key=lambda row: row["id"]))
+                   != canonical_bytes(sorted(after["payload"]["markets"], key=lambda row: row["id"]))):
+            _fail()
+        with localcontext(_MONEY):
+            payload = pending_ownership(source, {"histories": histories, "projections": projections})
+        pending = {"schema": PENDING_SCHEMA, "payload": payload, "payload_sha256": _sha(payload)}
+        return _build(before, after, wallets, executions, histories, projections, pending_validation=pending)
     except (ValueError, TypeError, KeyError, AttributeError, DecimalException, ZeroDivisionError):
         _fail()

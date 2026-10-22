@@ -150,3 +150,13 @@ NativeBalanceReservations 固定 configuration_before→balance→configuration_
 Binance 资产/总额/原账户腿的 position/open-order initial margin 与余额、OKX 每币 ordFrozen/frozenBal/借贷/iso/策略/copy 字段均按允许原字段保存；未知/空项为 None，原币与 USD 总额分别标记，金额不转汇或分配到订单。窗口与 mutation 时钟分别保留，Binance config 保留字段 updateTime 不充当 fresh 时钟。配置响应自己的 UID 须与前后原账户一致，只记录 hash。
 
 66 个新 case、两版各 940 项适用回归通过；源码编译/差异和核心无 SDK reader 验证通过。两个 flags=false，未形成当前金融 PASS；账户模式适用性、余额/预占的独立核算、原 wallet/executions 与完整 ledger/positions 闭合、sticky failure 发布及 CAS/HTTP 消费仍须实施，真实端点/内部重试/容量与 C7 未认证。
+
+## 14. S2b3 原区间核算与未决/保证金组件的观察闭合
+
+新增 NativeAccountReconcile DB-only reader，按原 source IDs 重读完整来源、全 trade-shaped histories/projections 与 sticky freeze；不接受 caller 的账本或 matched 集合。AccountReconcile 共享核算体的新 pending-v2 builder 自行从 raw pending 重建同一 ledger 的归属；旧 v1 builder 不能传入豁免集合，仍保持原 unresolved_attempt/字节语义。没有复制钱包链/费用/PnL/funding/pooled-entry 金融算法或订单状态机。
+
+来源时间与 identity/市场池须对应最终 after；余额分项、原币/Upl/equity、独立 account positions、native available/IMR/MMR 和 pending/全历史 ID 歧义逐项核验。Binance ID 以市场分组，OKX 错 client 的已撤销零填单也不能遮住重复原 ID。更早的 availEq/crossWallet/crossUnPnl 不覆盖最终快照。外币现金不加到 USDT，未解释的外币保证金、isolated/借贷/copy/策略资金、非零挂单 margin 却无 native 单均 incomplete。native IMR 只用一次，真实更低 available 允许保留，不发明容差/FX/逐单冻结金额。
+
+59 项新用例沿原合法双币实际假流水（部分平仓、部分开仓未决、费用、已实现、funding）；同记录开单未终结的平仓仍被原 CAS 拒绝。两 venue/模式/方向，丢失来源、历史 ID/余额/仓位变异、原 sticky freeze、嵌套事务、重启及无可选 SDK/配置的子进程均有证据。v1 对相同双币输入与已接受 2ee0345 源码逐字节比较 2 项通过；该一次性 release 检查未成为常规单测的 Git 历史依赖。
+
+最终精确测试范围和 XML 摘要见台账。matched_components 只描述所给观察，仍两个 flags=false、无源码重新武装或订单授权。新来源持久化/失败发布、完整 freshness/current-client/独立 mark 绑定、原 CAS/HTTP 与默认入口仍待；保持全部现有门禁与 Goal active，不声称完整 C5/C6/C7 或真实服务通过。

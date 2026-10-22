@@ -20,7 +20,7 @@ from .test_native_account_snapshot import asset, position, snapshot_client
 from .test_native_account_sources import AccountSourceIO, wallet_client, wallet_row
 
 
-def interval_case(db, tmp_path, monkeypatch, venue, *, side=True, mode="one_way", store_source=True):
+def interval_case(db, tmp_path, monkeypatch, venue, *, side=True, mode="one_way", store_source=True, after_sources=None, source_markets=None, before_sources=None):
     import Trade.AccountSources as account_source
     import Trade.OrderAudit as audit
     import Trade.db_util as db_module
@@ -41,7 +41,10 @@ def interval_case(db, tmp_path, monkeypatch, venue, *, side=True, mode="one_way"
         account.update(totalUnrealizedProfit="0", totalMarginBalance="1000")
     else:
         account["uTime"] = str(at)
-    before = collect_account_snapshot(native, [definition(venue)], mode="testnet")
+    if before_sources is not None:
+        before_sources(native, positions, account, settings, clock, trade)
+    source_markets = [definition(venue)] if source_markets is None else source_markets
+    before = collect_account_snapshot(native, source_markets, mode="testnet")
     clock[0] = at+100
     trade.exchange.fill, trade.exchange.status = 3, "closed"
     key = db.add_signal(make_signal(code=CODE, is_buy=side))
@@ -77,9 +80,12 @@ def interval_case(db, tmp_path, monkeypatch, venue, *, side=True, mode="one_way"
         account.update(totalWalletBalance="1000.076", totalUnrealizedProfit="0.4", totalMarginBalance="1000.476")
     else:
         account["uTime"] = str(at+400)
-    after = collect_account_snapshot(native, [definition(venue)], mode="testnet")
+    if after_sources is not None:
+        after_sources(native, positions, account, settings, clock, trade, key)
+    after = collect_account_snapshot(native, source_markets, mode="testnet")
+    end_ms = after["payload"]["finished_ms"]+1
     clock[0] = at+500
-    source = collect(NativeSources(venue, rows, [funding(venue, at+300)]), at-1, at+401)
+    source = collect(NativeSources(venue, rows, [funding(venue, at+300)]), at-1, end_ms)
     observed = observation(trade)
     if store_source:
         db.store_execution_scan(source, account_observation=observed)
@@ -106,7 +112,7 @@ def interval_case(db, tmp_path, monkeypatch, venue, *, side=True, mode="one_way"
             wallet_rows.append(row)
     io = AccountSourceIO(venue, wallet_rows)
     monkeypatch.setattr(native, "fapiPrivateGetIncome" if venue == "binance" else "privateGetAccountBillsArchive", io.wallet)
-    wallet = collect_wallet_scan(native, mode="testnet", start_ms=at-1, end_ms=at+401)
+    wallet = collect_wallet_scan(native, mode="testnet", start_ms=at-1, end_ms=end_ms)
     inputs = {"before": before, "after": after, "wallets": [wallet],
         "executions": [{"receipt": source, "account_context": linked["observation"]["account_context"],
             "manifest_sha256": linked["manifest_sha256"], "observed_ms": linked["observation"]["finished_ms"]}],
