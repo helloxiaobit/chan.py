@@ -355,10 +355,27 @@ SignalMonitor 仅在重复信号的完整 frozen bytes 相等时记录为 existe
 磁盘故障可能使最终事件无法落盘，须以非零退出码与原 DB/订单恢复核验，不能把日志当准入收据。
 子进程每阶段最多 300 秒，超时视作未知/失败而非“没有成交”，不回显可能包含凭据的任意子进程日志。
 
+通知失败现在独立于交易阶段结果可观测。默认运输使用内部 `RunTradeStage` 执行固定白名单模块，
+只在该子进程内收集 `send_msg` 的后端、attempted/accepted/failed/local_only 计数，
+以绑定 run_id/stage_id/module 的有限 canonical、SHA、write-once 临时摘要交给父进程。
+父进程限 16 KiB 读取，复核字段、计数与身份后写入原 JSONL 的 `notifications` 事件及最终结果，
+不采集任意 stdout/stderr，也不存消息标题/正文、收件人、URL 或凭据。
+空的有效摘要才说明该阶段未调用通知；缺失/坏摘要是 `unavailable`、counts=null，中断尝试是 `incomplete`，
+均不能解释成零失败。自定义 command 运输若不发布摘要也会明确标 unavailable。
+
+`send_msg` 仍返回 bool，失败只输出固定后端/原因，不打印异常或响应全文；未知/损坏配置不再降级成功的 none。
+HTTP 后端必须取得本软件规定的类型化 ACK，不能只看 HTTP 200；SMTP 拒收或异常返回失败，连接有 30 秒上限。
+accepted 仅表示收到本次成功 ACK，不证明外部送达/已读；failed 也可能是远端已处理但 ACK 丢失，**不自动重试或换后端**。
+显式 none 仍作本地输出、计 local_only，不算外部 accepted；调用者主动提供的本地消息仍会显示，但不进入阶段摘要。
+通知/摘要写入/临时清理/固定诊断输出失败不重写原阶段退出码或回滚、重下订单；原输入/订单失败仍保持非零。
+这些是串行主线程的软件观测，自建后台线程收集未验收，不是通知服务或交易所认证。
+工作流指纹已包含新入口和通知代码，部署需重新发布；
+旧 paper 代码身份不能重封，跨版本迁移仍须另行验收。
+
 当前运行壳对非 dry-run 新风险明确返回 `native_fresh_admission_not_integrated`，
 `native_admission_verified` 恒为 false；历史上没有冻结并不等于鲜活账户准入。
 已有仓位管理仍可按原门禁尝试。独立 paper 与默认脚本的显式软件 profile 已接进程级状态绑定；
-强制原生鲜活账户及独立 mark/book 来源准入、通知失败观测、更广 E2E 和安装矩阵仍待 C6。
+通知固定摘要/脱敏已实现；强制原生鲜活账户及独立 mark/book 来源准入、更广 E2E 和安装矩阵仍待 C6。
 版本化 API 见下文，本入口的命令完成状态不是完整验收或生产授权。
 
 非 dry-run 还必须同时满足以下门禁：
@@ -818,7 +835,7 @@ SQLite 检查与插入共用原事务，已有冻结 bytes 必须完全相同才
 原生非 dry-run 新风险仍然关闭。此 profile 只替换交易/报价路径，`RunTradeCycle` 的 OHLCV 更新阶段仍会调用
 配置的更新器；完全无网络演练请用前面的 `PaperRehearsal`，不能把 profile 当作全局断网开关。
 本轮默认整轮测试只 fake 公共更新传输，其余真实模型、SQLite、CLI 和新进程均实际执行。
-Binance 合成路径不是 OKX E2E 或任何测试网/实盘认证；容量、通知、完整安装矩阵、迁移及 C5–C7 其余项仍待。
+Binance 合成路径不是 OKX E2E 或任何测试网/实盘认证；容量、外部通知送达、完整安装矩阵、迁移及 C5–C7 其余项仍待。
 
 当前只完成了离线可证明的安全边界，尚未完成交易所逐一测试网认证。待验证项包括：
 沙盒支持与市场映射、客户端订单号历史查询窗口/分页、post-only/reduce-only/

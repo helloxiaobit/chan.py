@@ -37,7 +37,8 @@ def _evaluator_identity():
         "Trade/Script/StaticsChanConfig.py", "Trade/Script/OpenConfig.py", "Trade/Script/Deployment.py", "Config/EnvConfig.py",
         "OfflineData/offline_data_util.py", "CustomBuySellPoint/Decision.py", "CustomBuySellPoint/Signal.py",
         "DataAPI/SnapshotAPI/CCXTSnapshot.py", "DataAPI/ccxt.py", "Trade/PaperState.py",
-        "Trade/PaperInputs.py", "Trade/Script/TradeRuntime.py")
+        "Trade/PaperInputs.py", "Trade/Script/TradeRuntime.py", "Trade/Script/RunTradeCycle.py", "Trade/Script/RunTradeStage.py",
+        "Common/send_msg_cmd.py", "Common/NotificationStatus.py")
     files = {name: hashlib.sha256((root/name).read_text(encoding="utf-8").replace("\r\n", "\n").encode()).hexdigest()
              for name in paths}
     return _sha({"input_code": files, "strategy_features": feature_code_identity()["sha256"],

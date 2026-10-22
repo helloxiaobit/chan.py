@@ -35,7 +35,8 @@ def _workflow_identity():
              "Trade/Script/MakeOpenTrade.py", "Trade/Script/CheckOpenScore.py", "Trade/TradeEngine.py",
              "Trade/db_util.py", "Trade/SqliteDB.py", "Trade/Script/TradeRuntime.py", "Trade/PaperInputs.py",
              "Trade/Script/RestoreOrders.py", "Trade/Script/ClosePreErrorOpen.py", "Trade/Script/RealTimeTracker.py",
-             "Trade/Script/RetradeCoverOrder.py")
+             "Trade/Script/RetradeCoverOrder.py", "Trade/Script/RunTradeCycle.py", "Trade/Script/RunTradeStage.py",
+             "Common/send_msg_cmd.py", "Common/NotificationStatus.py")
     hashes = {name: hashlib.sha256((root/name).read_text(encoding="utf-8").replace("\r\n", "\n").encode()).hexdigest()
               for name in names}
     return hashlib.sha256(canonical_bytes(hashes)).hexdigest()

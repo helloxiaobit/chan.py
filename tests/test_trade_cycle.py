@@ -257,6 +257,65 @@ def test_default_transport_has_a_bounded_timeout_and_does_not_capture_private_ou
     assert result["reason"] == "child_timeout" and "secret token" not in cycle[1].read_text()
 
 
+def test_notification_failure_is_recorded_without_failing_successful_stages(cycle, monkeypatch):
+    from Common.NotificationStatus import observe_notifications, publish_notification_summary
+    from Common.send_msg_cmd import send_msg
+    from Config.EnvConfig import CEnv
+    import yaml
+    cycle[2]["notify"] = {"backend": "telegram", "telegram": {}}  # missing dummy credentials; never calls transport
+    cycle[0].write_text(yaml.safe_dump(cycle[2]), encoding="utf-8")
+    monkeypatch.setenv("CHANPY_CONFIG", str(cycle[0]))
+    CEnv.reset_instance()
+    def command(module, args, *, env, **kwargs):
+        with observe_notifications() as summary:
+            assert send_msg("synthetic title", "synthetic body") is False
+        publish_notification_summary(env["CHANPY_NOTIFICATION_REPORT"], summary, run_id=env["CHANPY_CYCLE_ID"],
+            stage_id=env["CHANPY_CYCLE_STAGE_ID"], module=module)
+        return 0
+    try:
+        result = run(cycle, command)
+        assert result["status"] == "completed" and all(row["exit_code"] == 0 for row in result["stages"])
+        assert len(result["notifications"]) == len(result["stages"])
+        assert all(row["observation"]["state"] == "complete" and row["observation"]["counts"][0]["failed"] == 1 for row in result["notifications"])
+        assert '"event":"notifications"' in cycle[1].read_text()
+    finally:
+        CEnv.reset_instance()
+
+
+def test_missing_notification_summary_is_unknown_not_a_fabricated_clean_count(cycle):
+    result = run(cycle, command_log()[1])
+    assert result["status"] == "completed"
+    assert result["notifications"] and all(row["observation"] == {"state": "unavailable", "counts": None} for row in result["notifications"])
+
+
+@pytest.mark.parametrize("failure", ["storage", "malformed", "cleanup"])
+def test_observation_failure_cannot_skip_successful_stages_or_echo_its_bytes(cycle, monkeypatch, failure):
+    from Common import NotificationStatus as status
+    secret = "SYNTHETIC_OBSERVATION_SECRET"
+    if failure == "storage":
+        def unavailable(*args, **kwargs):
+            raise OSError(secret)
+        monkeypatch.setattr(status, "TemporaryDirectory", unavailable)
+    elif failure == "cleanup":
+        class UnavailableCleanup:
+            name = str(cycle[1].parent)
+            def cleanup(self):
+                raise OSError(secret)
+        monkeypatch.setattr(status, "TemporaryDirectory", lambda *a, **k: UnavailableCleanup())
+    calls = []
+    def command(module, args, *, env, **kwargs):
+        calls.append(module)
+        if failure == "malformed":
+            Path(env["CHANPY_NOTIFICATION_REPORT"]).write_bytes(secret.encode())
+        elif failure == "storage":
+            assert "CHANPY_NOTIFICATION_REPORT" not in env
+        return 0
+    result = run(cycle, command)
+    assert result["status"] == "completed" and calls[-4:] == MANAGEMENT
+    assert all(row["observation"] == {"state": "unavailable", "counts": None} for row in result["notifications"])
+    assert secret not in cycle[1].read_text()
+
+
 def test_malformed_config_never_leaks_yaml_lines_or_starts_a_child(cycle, monkeypatch, capsys):
     from Trade.Script import RunTradeCycle as module
     cycle[0].write_text("secret: [DO_NOT_PRINT_SECRET\ncredentials: !bad\n", encoding="utf-8")

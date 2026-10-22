@@ -37,7 +37,7 @@
 | C3 | 已完成离线实现与验收 | UTC purge/unknown、三模型身份、write-once 部署、三阶段评分与 SQLite 版本链；非实盘/外部认证 |
 | C4 | 已完成离线实现与验收 | 有界实际样本→三模型→搜索/独立验证→部署→全 trial 重放；93 项组合、608 项全仓离线通过，非经济采用 |
 | C5 | 进行中 | 单位/原生恢复/历史/来源、区间核对与持久冻结已离线验收；cross/lot paper 已接原状态机与显式持久恢复；鲜活准入链、原生同义模型及外部认证仍待 |
-| C6 | 进行中（仍未完成） | 配置运行壳/失败传播/OS 锁、输入/报价、API、独立及默认脚本显式软件 paper 进程级路径已实现；原生账户/mark/book 证明、信号显式换代/通知、更广 E2E、迁移与安装矩阵待完成 |
+| C6 | 进行中（仍未完成） | 配置运行壳/失败传播/OS 锁、输入/报价、API、显式软件 paper 进程级路径及通知摘要/脱敏已实现；原生账户/mark/book 证明、信号显式换代、更广 E2E、迁移、安装矩阵和外部通知送达仍待 |
 | C7 | 待前置验收 | 公共行情与有准入后的外部认证；代码发布按阶段进行 |
 
 基线：前一审计在完全相同 `22a5a56`、依赖和环境上执行的所选离线功能集合为 116 passed / 1 skipped / 1 deselected，带一个 XGBoost 弃用警告和 pytest 临时目录清理提示；该证据仅覆盖列明集合，不称全仓或真实交易所验收。行为修改后补跑对应回归。
@@ -568,3 +568,23 @@ C1 收尾清理计划：迁移校验由两份全表内存列表改为有序逐�
 - CPython 3.14.2/3.11.15 主动屏蔽 ccxt/xgboost/lightgbm/sklearn/optuna/yaml 后，真实临时 SQLite 与实际信号 writer 的方向失效、未扫描级别不变、整批回滚均 PASS，核心导入通过；不是完整安装矩阵。compileall/diff 通过；主代理按审查清单串行自审，不称独立审计。没有 schema/用户配置/权限/依赖/冻结研究或真实 I/O 变更。
 - 文件范围仅 Trade/Script/SignalMonitor.py、tests/test_signal_lifecycle.py、README_FULL.md 和本台账。提取原写入循环是为统一事务和提交后统计，未引入新模型/账户/订单状态机。原生撮合、C4 核算等未变代码沿用 af09793 的 1529 项完整离线基线；不把基线数字冒称当前树的新全仓结果。SignalMonitor 代码身份变化须重生成部署；不得重封旧清单。
 - 下一步仍有候选显式换代的设计确认、通知失败脱敏/运行壳观测、容量/安装/迁移、更广 E2E 和 C5/C7 外部验收。换代建议仅限从未有订单意图的候选追加新观察并失效旧候选；没有用户确认前不实施。已下单/已消费机会不自动重臂，所有真实交易与研究门禁保持，Goal active。Lore 后在精确提交复验适用信号/事务组合再快进推送并核远端/clean。
+
+### C6 通知失败与脱敏观测实施/清理计划
+
+- 起始 ec3fee4090e849b11d47d7273b028fa16cb471e2 已推送/clean，前轮 250 适用组合与精确提交后 112 项有效；无遗留测试进程。仅执行已批准 C6 的通知可观测和日志脱敏，不代替待确认的候选换代，也不发送真实通知/交易或读实际凭据。
+- 已定位原 send_msg 将传输异常全文 traceback 打印，HTTP 失败仅返回 False，未知 backend 会降级 none 并冒称成功；SMTP 未设 timeout/忽略拒收，HTTP 后端只看 status 不看逻辑 ACK。先以真实派发器＋fake HTTP/SMTP 传输观察 RED，保留原懒加载后端/布尔接口，不新增依赖、不重写通知服务。
+- 清理范围：删除任意异常文本输出，只输出固定 backend/outcome/reason；按明确 ACK 类型判定软件返回，缺失/非法/逻辑拒绝均失败，不重试或切换其他后端。none 保留显式本地输出语义，不宣称外部送达。网络失败不得改变已提交的订单/账户状态。
+- 随后 TDD 增加仅在内存汇总的固定白名单计数和每个运行子阶段的 canonical 观测摘要；复用 RunTradeCycle 原运行 ID、阶段与 journal，不采集任意子进程 stdout/stderr、标题/正文/地址/凭据。摘要缺失/坏字节须标 unknown，不能补造零失败。通知失败作为观测而非订单失败；适用实际子进程/账本/运行壳组合与双 Python 核心、编译/差异、自审/Lore/精确提交后推送。MySQL/外部送达/全安装和 C5–C7 其余门禁未完成。
+- 官方响应参考：[Telegram Boolean ok](https://core.telegram.org/bots/api#making-requests)、[Python SMTP 拒收映射与 timeout](https://docs.python.org/3.11/library/smtplib.html)、[Gotify message API](https://gotify.net/docs/pushmsg)、[钉钉自定义机器人入口](https://open.dingtalk.com/document/robots/custom-robot-access)。企业微信官方入口本次无法读取；不因此宣称真实后端认证，使用严格整数 errcode=0 的显式软件契约，其他形状拒绝。
+
+#### 本边界实施与完整离线证据
+
+- 初始真实派发器 16 RED/4 controls PASS：HTTP/SMTP 只 fake 传输，未 fake 派发器或账户。最小 ACK/脱敏修复后 30 pass；再观察缺 scoped observer 与配置失败冒称 none 的 3 RED。ContextVar 只记固定计数、不存消息/凭据，嵌套恢复、返回副本和 KeyboardInterrupt 未完成尝试均验证。
+- canonical 摘要 publisher/reader 缺函数 RED 后复用原 write_json_once；有限 payload/SHA、严格 schema/类型/计数、固定 run/stage/module、16 KiB 上界、existing 拒绝。漏文件/坏字节不补零，未完成尝试仍 incomplete。真实新进程空摘要＋阶段/传输组合 70 passed。
+- 默认真实 paper 整轮的摘要断言先 RED，测试运输再接实际 RunTradeStage（仅时钟/公共更新传输为 fake），随后 77 passed / 1 小样本 AUC warning（93.18s），原 partial→恢复→重复不重下→模型坏仍退出保持。实际 paper 成交遇通知失败仍记录唯一订单/费用，通知失败不是金融回滚或重试依据。
+- 故障注入另外观察：临时清理 OSError 会跳过管理链，诊断 stderr 损坏会覆盖原阶段 0/37 退出码；各先 RED 再最小保护。最新通知/阶段/运行壳/原交易组合 88 passed（15.23s）。后续显式 notify=list/null/string 原被 CEnv 容错降级 none 的 3 RED，局部严格检查仅通知段，不改通用配置或默认值。
+- 父进程不捕获任意子进程日志；每阶段独立原运行 ID/新 stage ID 与临时路径，读取后仅将白名单观察并入原 JSONL。未知模块不能经新入口执行，继承来的报告路径会被覆盖/移除；摘要/通知/清理失败不改原阶段状态，原交易/输入失败仍非零。Deployment/OpeningInputs 工作流指纹包含新增代码，旧部署不可重封。
+- 文件范围：Common/send_msg_cmd.py、新 Common/NotificationStatus.py、Trade/Script/RunTradeCycle.py、新 RunTradeStage.py、Deployment/OpeningInputs、两通知测试与原 cycle/真实 paper 流程测试、README/本台账。主代理串行审查，非独立审计；无新依赖、用户配置/规则/权限/冻结研究变更，未发真实通知/市场/账户 I/O。外部送达、并发收集、完整安装、迁移、更广 E2E 和 C5/C7 仍未验收，Goal active。
+- 三项显式配置 RED 修复后，当前通知/阶段/运行壳组合 81 passed（13.64s）。CPython 3.14.2 与实际 3.11.15 主动屏蔽 ccxt/xgboost/lightgbm/sklearn/optuna/yaml/requests 后，实际缺显式配置的脱敏拒绝、scoped counter、canonical write-once 摘要/reader、原恢复模块失败退出码保留均 PASS；Stage/Cycle 核心导入通过。没有伪造缺失配置的成功路径，不是完整依赖安装矩阵。compileall/diff 通过。
+- 最终完整命令 python -m pytest tests -m 'not network' --basetemp <new-temp-directory> -q --tb=short -p no:cacheprovider：1581 passed / 8 expected skipped / 1 network deselected / 18 model/LibSVM warnings，745.88s，明确 exit=0。运行中没有源码/测试/文档编辑；收到结果后仅补本文数字和主线程范围说明。不隐藏小样本 AUC/MLP 告警，不把完整软件功能回归提升为经济采用或外部认证。
+- Lore 后在精确提交复验通知/阶段/运行壳及真实默认 paper 流程，再快进推送并核远端完整 SHA/clean。仅删除旧异常全文输出，复用原通知后端、原 write_json_once、原 JSONL 和财务/订单状态机；没有另建消息队列、撮合或金融模型，不自动重试。C6 候选换代待确认，其他软件与 C7 外部要求继续按原 Goal 推进。

@@ -10,6 +10,7 @@ from pathlib import Path
 
 from Common.ChanException import CChanException, ErrCode
 from Common.KLineTime import utc_now_ms
+from Common.NotificationStatus import notification_report_path, read_notification_summary
 from Config.EnvConfig import CEnv
 from CustomBuySellPoint.Decision import canonical_bytes
 from .OpeningInputs import COpeningInputs, inspect_opening_inputs, read_cycle_scope
@@ -65,7 +66,7 @@ def _run_lock(database):
 
 def _command(module, args, *, cwd, env):
     # 不把子进程任意日志/异常中的凭据回显或写入运行报告。
-    return subprocess.run([sys.executable, "-m", module, *args], cwd=cwd, env=env,
+    return subprocess.run([sys.executable, "-m", "Trade.Script.RunTradeStage", module, *args], cwd=cwd, env=env,
                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False, timeout=300).returncode
 
 
@@ -90,7 +91,7 @@ def run_trade_cycle(config_path, *, report_path, command=None, now_ms=None):
             child_env = {**os.environ, "CHANPY_CONFIG": str(config_path), "CHANPY_CYCLE_ID": run_id}
             result = {"schema": "chan-trade-cycle-v1", "run_id": run_id, "config_sha256": fingerprint,
                 "status": "completed", "exit_code": 0, "failed_stage": None, "reason": None,
-                "scope": None, "quality": [], "stages": [], "native_admission_verified": False}
+                "scope": None, "quality": [], "stages": [], "notifications": [], "native_admission_verified": False}
             journal_failed = False
 
             def emit(event, **fields):
@@ -125,15 +126,25 @@ def run_trade_cycle(config_path, *, report_path, command=None, now_ms=None):
                 emit("stage_started", stage=name, module=module)
                 if journal_failed and not management:
                     return False
-                try:
-                    code = command(module, list(args), cwd=ROOT, env=child_env.copy())
-                    if type(code) is not int or not -2**31 <= code < 2**31:
-                        raise ValueError("missing child exit code")
-                    reason = "child_failed" if code else None
-                except subprocess.TimeoutExpired:
-                    code, reason = 1, "child_timeout"
-                except Exception:
-                    code, reason = 1, "child_exception"
+                stage_id = uuid.uuid4().hex
+                with notification_report_path() as observation_path:
+                    stage_env = {**child_env, "CHANPY_CYCLE_STAGE_ID": stage_id}
+                    stage_env.pop("CHANPY_NOTIFICATION_REPORT", None)
+                    if observation_path is not None:
+                        stage_env["CHANPY_NOTIFICATION_REPORT"] = str(observation_path)
+                    try:
+                        code = command(module, list(args), cwd=ROOT, env=stage_env)
+                        if type(code) is not int or not -2**31 <= code < 2**31:
+                            raise ValueError("missing child exit code")
+                        reason = "child_failed" if code else None
+                    except subprocess.TimeoutExpired:
+                        code, reason = 1, "child_timeout"
+                    except Exception:
+                        code, reason = 1, "child_exception"
+                    observation = read_notification_summary(observation_path, run_id=run_id, stage_id=stage_id, module=module)
+                notification = {"stage": name, "observation": observation}
+                result["notifications"].append(notification)
+                emit("notifications", **notification)
                 stage = {"name": name, "module": module, "exit_code": code, "reason": reason}
                 result["stages"].append(stage)
                 emit("stage_finished", stage=stage)

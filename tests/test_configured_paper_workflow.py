@@ -28,8 +28,8 @@ import runpy, sys
 from Common import KLineTime
 module, stamp = sys.argv[1], int(sys.argv[2])
 KLineTime.utc_now_ms = lambda: stamp
-sys.argv = [module]
-runpy.run_module(module, run_name="__main__")
+sys.argv = ["Trade.Script.RunTradeStage", module]
+runpy.run_module("Trade.Script.RunTradeStage", run_name="__main__")
 '''
 
 
@@ -98,6 +98,7 @@ def test_actual_default_cycle_reaches_the_same_persistent_paper_order(workflow):
     with CPersistentPaperState.open(root/"server.json", database=root/"trade.db") as server:
         assert len(server.state.orders) == 1 and server.state.paper_account.position_quantity(f"chan_trade:{key}") == Decimal("0.01")
     assert all(code == 0 for _, code, _ in trace)
+    assert all(row["observation"]["state"] == "complete" for row in result["notifications"] if not row["stage"].startswith("update:")), "actual CLI stages must publish their own summaries"
     trace.clear()
     repeated = run_trade_cycle(path, report_path=root/"repeat.jsonl", command=actual_dispatch(now, trace), now_ms=lambda: now)
     assert repeated["status"] == "completed", (repeated, trace)
