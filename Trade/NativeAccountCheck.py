@@ -19,6 +19,15 @@ SCHEMA = "chan-native-account-check-v1"
 _BASE = ("before", "after", "wallets", "executions")
 
 
+def _publish_unavailable(db, context, request):
+    """Caller owns publication transaction; failures only, never a PASS input."""
+    _validate(db.conn)
+    account_key(context)
+    _base_request(request)
+    payload = {"account_context": context, "source_ids": request, "inputs": None, "report": _failure(context)}
+    return _publish(db, {"schema": SCHEMA, "payload": payload, "payload_sha256": _sha(payload)})
+
+
 def _base_request(request):
     if type(request) is not dict or set(request) != {*_BASE, "pending", "balance"}:
         _fail()

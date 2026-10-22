@@ -127,6 +127,22 @@ latest 检查会验证全部元数据后才按 stable account/角色过滤；新
 
 S2b5 推送前复核纠正：latest 时钟不代表事实完整。新增真实 8 RED/4 positive，证明旧的已知 wallet/execution 包含区间内或终点后的额外零净额事实时必须拒绝，不能只因其观察时间较早便忽略；基线前事实则不误拒绝。只增加一个共用 canonical fact coverage 检查，不重算净额或改原资金/存储引擎。现 119 新用例，最终关键组合两版各 361 passed，其余未变代码沿用先前广组合；12ab104 与纠正提交验证后一起推送，不把初版 107 项或给定观察的匹配冒称完整准入。
 
+### S2b6 固定顺序自采与原失败发布（已实现，限本地诊断子层）
+
+新增 NativeComponentCollector，仅接收原 CChanDB、实际 SDK client、完整声明市场、已存 before snapshot ID、显式 account_scope 和新鲜度政策；不接 raw receipt/check/通过布尔值。顺序固定为 pending→balance→after snapshot→逐市场 execution（真实 typed profile 前后包围）→全账户 wallet→独立 mark/book→原来源原子发布及 native check→联合 current 断言。基线/原 ledger/旧冻结在初始 DB 视图中读取，所有 GET 位于 writer lock 外；pub 事务只调用既有 store/reconciler，不写订单或 ACK。
+
+复用/清理计划：不改原 collectors 的请求/分页/schema/身份哈希，不新建金融或冻结表。只在 NativeAccountCheck 增加内部 unavailable publisher，沿已有 inputs=None＋固定 failure/schema/append-only publisher；自采、当前性或发布错误在独立事务保存原账户失败（发布本身失败则拒绝，不能假称已冻结）。部分 source 发布须原子回滚；原失败不会被后来匹配清除。政策/非法模式/无有效基线/调用者已有事务的入口错误在 I/O 前拒绝。
+
+每 collector 保留其现有 128 次 SDK 上界，不修改或包装共享 SDK 方法来假称限制内部重试。自采阶段数 N+6；观测计数根据各实际 receipt 及原代码固定 profile 次数生成。余额与 after snapshot 之间增加一次实际 typed profile 读取，核当前账户并保留严格毫秒端点分离；不伪造时间或 sleep/poll。组合保守上界为 Binance 276+132N / OKX 274+132N（N为1..64），不是128次全流程 cap，更不认证 SDK 内部 HTTP 重试；实测/长期容量留作后续。输出仅 collector-owned 本地观察包装、source/check IDs、完整新 policy、源码/DB位置摘要和操作计数，仍两个 flags=false，不可作为 transferable admission。
+
+先缺 API RED，原真实 SDK/fake 最底层方法、双市场非零仓位/partial/pending/费用资金费的8正向及分阶段异常、入锁拒绝/指针/输入变异、源发布回滚、旧冻结、并发 ledger/freeze、无重试/无新订单验证。S3仍须将实际 market metadata、候选/策略/配置、DB及本地自采调用直接与原每单 CAS/HTTP 绑定，禁止接 caller 自封 wrapper 或重封旧候选；本步不解除任何 gate。
+
+S2b6 故障注入修正/清理计划：先证明核验结果随提交回滚时不能跳过独立失败发布，再仅以事务成功退出标记判定已持久化。连接替换 RED 证明 failure fallback 也必须验证原 DB；将连接/位置断言提成同一局部函数供正常和失败路径复用，身份不确定时不向替换库写入且不声称已冻结。原 27 项正向/阶段失败回归及新事务/连接用例保护行为；不改旧 collector/金融/SQLite schema 或状态机。
+
+实现/验证：78 项自采用例均沿真实 SDK 类型和原完整 fake/raw/SQLite 管线；两 venue × 单双向 × 多空保留两币非空持仓、实际部分成交/未决、费用/funding，实测显式 SDK 次数 Binance 39 / OKX 58。after snapshot 保留原 before 市场排列，执行与市场来源仍规范排序，不修改旧证据或旧顺序契约。非法 account_scope 按原 predicate 在 I/O 前拒绝；source/check 写入失败原子回滚，提交回滚不误认冻结已保存；替换连接/位置不向其他库发布失败。正常/失败路径共用原 DB 身份检查，无新金融或冻结表。
+
+CPython 3.14.2/3.11.15 各 1753 passed / 1 既有 isolated cash channel skip，1754 个唯一用例集合相等，包含原来源/账户/订单/冻结/SQLite；两版 compileall 和 diff 通过，详细失败轨迹与 JUnit 身份见台账。仅主线程复核、串行测试，活测试期间不编辑。输出的源码文件/DB 位置摘要及本地调用归属不是服务端签名、已加载代码完整证明或每单授权；两个 flags=false，默认交易路径未接新 collector，S2/S3/S4 与 C5/C6/C7/完整 Goal 仍未完成。
+
 ## S3 原 intent/CAS 与 HTTP 每单消费
 
 文件：CCXTTradeEngine、OrderAudit、db_util 及对应原状态机回归。

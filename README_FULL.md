@@ -449,10 +449,16 @@ OKX ordFrozen/frozenBal/借贷/策略与 copy 分项按原币保存，USD 总额
 `Trade.NativeCurrentComponents` 新增联合只读使用断言，将匹配的 native check、原全账本/冻结、最新已知来源和独立 mark/book，
 与事务外当前账户/公共路由/SDK 复查及最终统一 use-time 预算关联。独立政策版本显式新增 balance age/span，旧政策不加默认值。
 107 项新测试、两版适用组合各 1663 pass/1 既有 skip；复用原区间/时间核验，不写 PASS/订单，None 不代表授权。
-collector-owned 采集、完整源码身份、原 CAS/HTTP 每单消费与外部 C7 仍待，常量阻断和全部交易 gates 保留。
+collector-owned 采集进展见下文；完整运行时身份、原 CAS/HTTP 每单消费与外部 C7 仍待，常量阻断和全部交易 gates 保留。
 提交前复核另补了已知事实覆盖：较旧的 wallet/execution 来源也不能遗漏区间事实，零净额往返亦不能净掉；
 任何已知终点后事实会使该账户点过期，基线前历史仍可忽略。新增 12 项后当前 119 项，最终关键组合两版各 361 passed；
 其余未变模块沿用上述广回归，不能把来源时间较新等同事实较完整。
+`Trade.NativeComponentCollector` 进一步固定 pending→balance→after→逐市场 execution→全账户 wallet→独立市场→原子发布/check→current 的本地自采路径。
+接口只收 SDK、原 CChanDB、before ID、完整市场与显式 scope/policy，不收 caller receipt/check/PASS；全部 GET 在 SQLite writer lock 外。
+沿原 store/核算/失败发布复用，提交失败不把内存中的失败结果当持久冻结，连接替换不向另一库写失败；来源写入失败完整回滚，缺可写原库时拒绝但不声称已冻结。
+78 项新用例、两版 Python 适用广组合各 1753 passed / 1 既有 skip。两市场 fake 实测显式 SDK 调用为 Binance 39 / OKX 58，
+上界分别为 276+132N / 274+132N（N 为完整市场数，最多 64）；不保证 SDK 内部 HTTP 重试或真实容量。
+该本地诊断包装仍 economics_complete=false/native_admission_verified=false；并非可转交的下单许可或完整运行时身份，尚未接每单 intent/CAS/HTTP，不能删除常量阻断或重新武装旧候选。
 版本化 API 见下文，本入口的命令完成状态不是完整验收或生产授权。
 
 非 dry-run 还必须同时满足以下门禁：

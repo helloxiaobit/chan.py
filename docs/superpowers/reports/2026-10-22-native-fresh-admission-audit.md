@@ -188,3 +188,13 @@ NativeCurrentComponents 新增独立完整政策版本，balance age/span 各自
 12ab104 尚未推送时，发现仅按 source finished 时间核 latest 仍会忽略较早观察包中的已知区间事实。真实两 venue × wallet/execution × 区间内/终点后 8 项出现错误接受；基线前 4 项按原范围通过。构造的是原 collectors/store 中可验证的零净额转入转出或买卖往返，并非直接改 caller 的 matched/count。wallet 首次 setup 因全局 clock 倒退而正确拒绝已有来源未来时间，恢复正常 use clock 后确认 8 项真正 DID NOT RAISE RED；保留该区别。
 
 最小修复只对同一稳定账户/标的的所有已知原始规范事实检查覆盖：区间内每条 canonical fact 都须在所选输入内，终点后任何已知事实使点过期，基线前事实不误纳入；不净额比较、不拓宽容差、不复制金融核算。当前 119 项，最终两版关键组合各 361 passed；原广组合仅对未变代码继续有效，不把它改报为修复后的全仓验证。仍未接 collector-owned/CAS/HTTP，保持 disabled/Goal active。
+
+## 19. S2b6 本地自采和原失败发布
+
+NativeComponentCollector 已沿原 collectors 的固定顺序自取完整来源，再在同一原 SQLite 事务发布来源和新版本 check，最后执行联合 current 断言。入口不接 caller receipt/check/PASS，原 before/全 ledger/冻结先读；全部 GET 位于写锁外，原 raw/source schema、金融公式、订单/CAS 和配置均不变。after 的市场排列须沿原 before 保留，不能重封旧锚点以配合新的规范扫描顺序。
+
+新增故障注入的主线程复核发现并 TDD 修正：①无效 account_scope 先前到 execution 才拒绝，已提前执行原同一 predicate；②核验结果随事务提交失败回滚后，不得误认为其冻结已持久保存，以成功退出事务为界；③失败路径也须核原连接/位置，不能因连接被替换而把失败写进另一库。普通 source/check 插入失败原子回滚，独立 failure publisher 只保存原 inputs=None 的固定不可用结果；若原库本身不可写/身份不确定，则拒绝且不作已冻结声明。已有精确失败只提交一次，重启仍冻结，后来调用不会自动重新采集/解冻。
+
+78 项新测试：两 venue/两模式/多空/两币非空持仓及实际部分假成交、未决保证金、费用/资金费；阶段异常脱敏、不重试/不写订单；非法入口零 I/O；SQL 插入/提交回滚；并发 ledger/freeze、输入/源码/owner/连接变化；核心导入不触及 SDK/Config。两版适用广组合各 1753 passed/1 既有 skip，1754 个唯一用例集合相同；两版 compileall/diff，通过范围及 JUnit 摘要见开发验收台账。仅主线程审查，不称独立审计。
+
+自采的本地文件 SHA、DB 位置和 source IDs 不构成服务器签名、已加载代码/真实 instrument metadata 完整身份或原每单授权。诊断输出两个 flags=false；计数只覆盖显式 SDK 调用（两市场实测39/58，保守界276+132N/274+132N），不认证 SDK 内部重试/容量。完整 S2、实际 instrument/候选/部署/配置/DB/runtime 与原 intent/CAS/HTTP 绑定、每单预占协议仍待；不得把原生可用额观察自行变成新单保证金公式、容差或授权。全部 candidate/testnet/live gates、原常量阻断及 Goal active 保留，未做真实 I/O/C7。
