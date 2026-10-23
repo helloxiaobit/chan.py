@@ -155,6 +155,20 @@ CPython 3.14.2/3.11.15 各 1753 passed / 1 既有 isolated cash channel skip，1
 - 跨连接并发、claim 前后漂移、超龄、原生未决预占不一致不发送；已 claim/unknown/submitted 不退回可重创，不重封旧契约。
 - 旧恢复/查询/撤单/降风险路径继续按原门禁工作，不要求补造已消费模型。
 
+### S3a 原生 instrument 来源（已实现，限独立来源子层；不实施待审 CAS 协议）
+
+文件范围：新增 NativeInstrumentEvidence 与专用 raw/fake 测试，不改旧 NativeMarketEvidence/账户来源的 schema、源码身份或旧证据，不接默认发送/准入。固定 API `collect_native_instrument_evidence(exchange, codes, *, mode)` / `verify_native_instrument_evidence(document)`；codes 为完整显式 USDT swap 目标池（1..64），不接受 caller market metadata/PASS。只调用一次明确公共 GET：Binance/binanceusdm fapi exchangeInfo `{}`；OKX public instruments `instType=SWAP`，不调用 load_markets/fetch_markets/fetch_currencies、私有接口或自动重试，也不修改实际 client cache/options/配置。
+
+schema `chan-native-instrument-evidence-v1` 固定保存 venue/mode/codes、endpoint/params、public environment、SDK/边界源码、完整允许字段 raw_rows、每 code 的 canonical 执行 market/原生状态/active/raw_index、单次请求与总批次的本地起止。沿原 _raw/finite/单位/完整 metadata validator，并复用当前 credential-free SDK 的纯 parse_market（不复制解析器/金融公式）；显式 SDK 版本/源码须对应重建使用的版本。raw rows 保留允许的 contract/precision/filter/状态/已知即将变更字段，忽略任意未允许字段，不将 SDK 默认解释伪称原生显式报告。
+
+不将 exchangeInfo.serverTime、上架/到期/更新/未来生效时间充当新鲜时钟；clock_kind=local_request_window_only、source_ms=None，未来消费者须显式配置 instrument age/span，当前不给隐含默认。完整字段下的非交易状态可保留为 active=false；缺失身份、重复/遗漏目标、错误产品/单位、非有限或不完整执行 metadata 则拒绝整批。输出 economics_complete=false/native_admission_verified=false，仅陈述允许字段覆盖，不代表全部平台交易规则或资金能力已经证明。
+
+先观察缺 API RED，再用真实 SDK 类型＋最底层 fake 单端点的两市场、binance/binanceusdm/OKX × live/testnet 验证：缓存投毒不影响原始来源，原 cache/options 不被改写；原 Engine 的 metadata 投影逐字节对齐；raw/派生/重封变异、路由/SDK/源时钟/输入漂移、重复/缺市场、错误类型与异常脱敏、核心无可选 SDK 导入。未完成原 per-order 消费前不把这一子层宣称 S3 或完整 Goal 完成。
+
+实现证据：422 项新用例，最终 CPython 3.14.2/3.11.15 各 1122 passed（422 新来源＋700 原来源/核算/订单用例），0 failure/error/skip/warning，集合一致。先用真实 RED 阻止 SDK 默认小数位数替代缺失 tick/lot filter、OKX underlying 推断掩盖显式币种/ctType 矛盾、bool/int 环境别名、缺必需原约束字段/分数毫秒、请求开始后路由变更仍发 GET、错误 envelope 残留 rows 被接受；不通过放宽原 schema/核算处理。数字字段沿原 _MONEY；SDK 会先构造备用精度字符串，因此 precision digit count 仅允许原数值指数范围 0..100，属于解析/分配边界而非资金/搜索/鲜活性默认值。
+
+字段依据为 [Binance Exchange Information](https://developers.binance.com/en/docs/catalog/core-trading-derivatives-trading-usd-s-m-futures/api/rest-api/market-data#exchange-information) 和 [OKX instruments](https://www.okx.com/docs-v5/en/#public-data-rest-api-get-instruments) 及本机 SDK 4.5.89 的原 parse_market；未调用实际端点。reader 显式重建需要对应 SDK，不做无 SDK 解析降级；核心 import 无可选依赖。原 cache/default prepare 路径未改，新来源尚未接逐单消费者/原 CAS/源码指纹闭包，未证明全部平台过滤规则或资金能力。详细协议仍待审，两个 flags=false、全部 gates 与完整 Goal active 保留。
+
 ## S4 默认 CLI 多市场合成 E2E 与发布
 
 沿真实 RunTradeCycle/RunTradeStage，fake 最底层原生运输，验证 Binance/OKX × one_way/hedged × 多市场的账户/准入/意图/恢复链。只有全部新风险入口不可绕过消费者后，才有条件替换原常量阻断。

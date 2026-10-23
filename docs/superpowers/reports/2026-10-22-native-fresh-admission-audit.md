@@ -198,3 +198,13 @@ NativeComponentCollector 已沿原 collectors 的固定顺序自取完整来源�
 78 项新测试：两 venue/两模式/多空/两币非空持仓及实际部分假成交、未决保证金、费用/资金费；阶段异常脱敏、不重试/不写订单；非法入口零 I/O；SQL 插入/提交回滚；并发 ledger/freeze、输入/源码/owner/连接变化；核心导入不触及 SDK/Config。两版适用广组合各 1753 passed/1 既有 skip，1754 个唯一用例集合相同；两版 compileall/diff，通过范围及 JUnit 摘要见开发验收台账。仅主线程审查，不称独立审计。
 
 自采的本地文件 SHA、DB 位置和 source IDs 不构成服务器签名、已加载代码/真实 instrument metadata 完整身份或原每单授权。诊断输出两个 flags=false；计数只覆盖显式 SDK 调用（两市场实测39/58，保守界276+132N/274+132N），不认证 SDK 内部重试/容量。完整 S2、实际 instrument/候选/部署/配置/DB/runtime 与原 intent/CAS/HTTP 绑定、每单预占协议仍待；不得把原生可用额观察自行变成新单保证金公式、容差或授权。全部 candidate/testnet/live gates、原常量阻断及 Goal active 保留，未做真实 I/O/C7。
+
+## 20. S3a 独立原生 instrument 来源
+
+账户预留/CAS 详细协议尚待确认，不将自动 Goal 续行视为批准。其独立前置来源 NativeInstrumentEvidence 已实现：原生公共 GET 一次，固定 fapi exchangeInfo 或 public instruments SWAP，不通过 load_markets/reload/currencies loader、不改 client cache/options，也不接 caller metadata/PASS。全允许 raw_rows 保留重复/目标覆盖核验、精确请求/批次窗口、endpoint/参数/环境/SDK/代码；按当前 credential-free SDK 的纯 parser 重建，再沿原完整 metadata/单位验证，与原 Engine 投影字节一致，未复制 parser 或资金公式。
+
+所保存的是允许字段覆盖，不是所有平台过滤条件已执行。Binance tick/lot 必须有真实 filter 及完整必要字段，不以 pricePrecision/quantityPrecision 补缺；OKX ctType/显式币种/合约价值币种不能被 underlying 的 SDK 推断掩盖。包括不参与最终投影的已知 numeric 字段也须有限，SDK 备用精度分配先限制在原 _MONEY 指数范围 0..100；日期/即将变更时间严格整数毫秒但不拿来刷新来源，未来变更只保留，不提前应用。缺/重复目标、同符号歧义、错误产品/单位/类型和异常均拒绝整批，不择优或回退缓存。
+
+主线程复核先以10项实际RED证明：环境在请求开始读时变化后，不应仍发GET；Binance错误包即使带有效rows也不能接受。最小前置环境复查/错误envelope拒绝后绿色。其余真实RED包括目标池变异、缺filter时SDK补值、显式单位/有限数字/typed时间/环境bool别名与缺原约束字段。422项新用例覆盖三SDK类×live/testnet标签、两市场与64/65边界、cache投毒/不变、raw/派生/重封/SDK/环境/源码/时钟漂移、非交易状态、无HTTP及核心导入；最终双解释器各1122 passed，0 failure/error/skip/warning，集合一致，详情见台账。
+
+两个 flags=false；source_ms=None/clock_kind=local_request_window_only，不提供服务端生成时间或原子性认证，显式reader需要对应SDK。未改旧账户/市场来源、金融、订单、配置、权限或依赖；现有 Engine cache 路径与默认壳阻断不变，新来源还须绑定实际 per-order/runtime/完整政策/原CAS。详细预留协议、逐单资金能力、原生实际吞吐/SDK内部重试与真实C7均未完成，不能重封旧候选/产物或关闭主Goal。

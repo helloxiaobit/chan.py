@@ -459,6 +459,12 @@ collector-owned 采集进展见下文；完整运行时身份、原 CAS/HTTP 每
 78 项新用例、两版 Python 适用广组合各 1753 passed / 1 既有 skip。两市场 fake 实测显式 SDK 调用为 Binance 39 / OKX 58，
 上界分别为 276+132N / 274+132N（N 为完整市场数，最多 64）；不保证 SDK 内部 HTTP 重试或真实容量。
 该本地诊断包装仍 economics_complete=false/native_admission_verified=false；并非可转交的下单许可或完整运行时身份，尚未接每单 intent/CAS/HTTP，不能删除常量阻断或重新武装旧候选。
+`Trade.NativeInstrumentEvidence` 新增独立 instrument 来源：只调用一次明确公共 endpoint（Binance/binanceusdm fapi exchangeInfo；OKX public instruments SWAP），
+按完整显式目标池保存允许字段、原生状态、请求窗口、SDK/代码和执行 metadata，不读取或刷新调用者 SDK cache，不调用 currencies/跨产品 loader。
+重建复用当前 credential-free SDK 纯 parser 和已有完整单位/metadata 验证；tick/lot 缺失不借小数位数补齐，显式原生币种/类型矛盾不由 SDK 推断覆盖。
+exchangeInfo.serverTime、上架/到期/未来生效时间均不作新鲜时钟，source_ms=None；0..100 精度位数仅是原 wire-number 指数范围内的解析资源边界。
+422 项新用例、两版各 1122 项适用组合通过；核心 import 无可选依赖，显式 reader 则需要相同 SDK 重建，缺失时拒绝。
+这仍是来源层，不是全部平台交易规则、逐单额度/资金锁、默认 Engine fresh metadata 接入或原 CAS 授权；两个 flags=false，预留协议审查与 C7 门禁均保留。
 版本化 API 见下文，本入口的命令完成状态不是完整验收或生产授权。
 
 非 dry-run 还必须同时满足以下门禁：
