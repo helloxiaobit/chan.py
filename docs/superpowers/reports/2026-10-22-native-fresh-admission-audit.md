@@ -5,6 +5,8 @@
 批准记录：用户对“独立原生 mark/book 与公共路由证据、显式年龄/观测跨度、金额零默认容差、原账户/账本及原 CAS 每单复验；仅 fake、保留全部门禁、不改实际配置”的确认问题答复“批准严格方案（推荐）”。
 下文保留最初审计及建议的历史语境；不再将本方向视为待批。具体串行实施见 [原生准入实施计划](../plans/2026-10-22-native-fresh-admission.md)。候选换代设计仍单独待批；没有真实 I/O、配置/权限修改、自动解冻或实盘授权。
 
+2026-10-23 补充批准：用户已对 [账户级原 CAS 详细协议](../specs/2026-10-23-native-per-order-admission-protocol.md) 的专门问题答复“批准上述账户级串行协议（推荐）”。该详细方向不再是待批阻塞；下文早期“尚待确认”的记录保留为当时事实，实施进度见 §22。逐单资金公式/候选换代/真实服务/配置权限并未据此批准。
+
 审计基线：`ab02e5b50dae50f781887c95e60e47628d952b32`，`full-version`。
 前一 Goal 回合是有效进展：双币软件矩阵已推送；本轮不再以增加类似的 paper 用例代替原生缺口。
 本报告不改变 C0–C7 的完整目标，不把 unsupported/未认证能力算作完成。
@@ -218,3 +220,11 @@ NativeComponentCollector 已沿原 collectors 的固定顺序自取完整来源�
 先 1 failed 的直接缺 API RED，最小实现后 133 passed；保护性补查后 398、最终 446 专项通过。两版关键集合各 1568 passed（446 新＋422 原 instrument＋700 原市场/自采/current/核算/政策/订单），0 failure/error/skip/warning，JUnit 唯一集合差异 0；compileall/diff 通过。主线程审查、严格串行、测试活进程不编辑，无独立审计或真实服务声明。其余未变模块沿原证据适用范围复用，不冒称本轮全仓测试。
 
 输出只保留原 S3a 来源 document，两个 flags=false；matching inactive 仍非许可。新消费者未被默认 prepare/CAS/HTTP 调用，未纳入旧模型/部署/输入/paper 指纹；不能重封旧产物、解除常量阻断或据文件/方法字节核验宣称加载 runtime 可信。账户级预留详细协议尚待确认，逐单资金能力独立缺口、全部平台规则/内部 HTTP 重试/真实容量和 C7 均保留，S3/C5/C6/C7 和完整 Goal 未完成。
+
+## 22. 详细协议获批后的 L0 前置边界
+
+新增 NativeOrderBoundary，只复用原 DB-only current snapshot、native check/全 ledger/journal-prefix/risk state、完整显式 policy/原时间核验。capture 从自有已提交视图产生版本化 L0，assert 必须在原 SQLite 所有权事务内重读，拒绝旧 ledger、来源、冻结、prefix/DB/代码/输入和窗口变化，另拒绝无任何 event 的孤立 attempt。两个 flags=false，不写订单/冻结，不计算资金公式、不做 SDK I/O，原 v1/v2/v3 字节、表和默认发送不改。
+
+主线程故障注入发现新模块的最终代码核验后连接切换缺口：8 个 capture 已拒绝但查询了替换库，8 个 assert 未拒绝。先真实 16 RED，再共用原 DB/conn/table/事务所有权守卫，在最终代码检查后、位置查询前后执行；16 GREEN，替换库零 query/write。此前 fixture 的 positions 路径和 hedged 缺 record/leg 分别导致 8/16 失败，只修测试构造，不放宽原引擎；不把它们计为生产缺陷 RED。
+
+153 新用例＋340 原 current/核算/检查/冻结/历史/事务用例，两版各 493 passed，0 failure/error/skip/warning，唯一集合一致；双解释器 compileall/diff 通过，均 fake/主线程串行。实验在同一真实事务中组合 L0 assert 和原 CAS，验证跨记录/市场/表/连接不能复用旧 L0，外层回滚仍归调用者；但这并非已接默认原 CAS，更没有已完成本单唯一 L1/L2 增量、持久引用或资金能力证明。后续继续这些已批准工作，不再重复要求账户级设计批准；全部真实服务/资金/候选门禁和完整版未完成状态保留。

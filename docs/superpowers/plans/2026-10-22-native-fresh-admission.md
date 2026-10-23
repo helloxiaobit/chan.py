@@ -147,7 +147,7 @@ CPython 3.14.2/3.11.15 各 1753 passed / 1 既有 isolated cash channel skip，1
 
 文件：CCXTTradeEngine、OrderAudit、db_util 及对应原状态机回归。
 
-2026-10-23 接入前复核：原 CAS 仅约束单 record，且旧 check 的完整 ledger 在合法 intent/claim 后也会变化；不能直接复用 None 或忽略自身新行。详细 [账户级预留/原 CAS 协议草案](../specs/2026-10-23-native-per-order-admission-protocol.md) 记录当前代码、公开官方接口与 SDK 证据。推荐串行化每稳定账户尚未被原生观察的新风险意图，并将逐单资金能力保留为独立硬门槛；账户级并发语义尚待审查确认，不将已批准的来源方向解释成已批准的新增金融规则。未改 runtime/CAS/config 或解除任何 gate；可独立继续明确 instrument/runtime 身份边界。
+2026-10-23 接入前复核：原 CAS 仅约束单 record，且旧 check 的完整 ledger 在合法 intent/claim 后也会变化；不能直接复用 None 或忽略自身新行。详细 [账户级预留/原 CAS 协议](../specs/2026-10-23-native-per-order-admission-protocol.md) 记录当前代码、公开官方接口与 SDK 证据。用户现已专门批准每稳定账户尚未被原生观察的新风险意图串行化，按 S3c 实施，不再等待同一设计确认；逐单资金能力仍是独立硬门槛，不将此批准扩展为新增金融公式、实际配置或任何交易权限。
 
 - 新证明版本绑定账户/模式、DB、候选/部署/配置/代码、role/qty/price 与全部 source IDs；持久化原 intent 引用。
 - 新增 NativeAdmission/NativeMarketEvidence 目前未纳入旧模型/部署/输入/paper 的指纹列表，也未被默认入口消费；S3 必须显式版本化并绑定新消费者及依赖源码，不能假设旧 workflow SHA 已覆盖它们，更不能重封旧模型/部署/订单来续用旧授权。
@@ -175,11 +175,23 @@ schema `chan-native-instrument-evidence-v1` 固定保存 venue/mode/codes、endp
 
 两个预算均显式必填非负整数毫秒（bool 不算），不借 account 默认；age 为最终全部复核完成时刻减 source.started_ms，span 为 source.finished_ms-source.started_ms，恰界允许、超 1ms 拒绝。没有原生生成时间，不能伪造 server skew。当前实际 Engine 投影、active 和原生状态必须逐字节匹配新采来源；缓存空缺/不完整、受替换方法、来源或输入/DB/client 漂移均拒绝，不尝试刷新补救。返回原来源字节，两个 flags 仍 false，不产生新授权包装或持久写入。
 
-先缺 API RED，再以真实 Engine 方法、SDK 类型及底层 fake 公共 endpoint 验证双币/三 SDK × 两模式的匹配与过期缓存、全部单位/精度/限额/状态字段、严格时钟/预算、方法替换与 cache/DB/input 漂移及失败零 I/O/零写入。固定 GET 只在无 writer lock 时运行；主线程串行，活 pytest 不编辑。此子边界不接默认发送，不证明资金、服务器原子性或已加载 runtime 完整性，账户级 CAS/资金详细协议继续待审。
+先缺 API RED，再以真实 Engine 方法、SDK 类型及底层 fake 公共 endpoint 验证双币/三 SDK × 两模式的匹配与过期缓存、全部单位/精度/限额/状态字段、严格时钟/预算、方法替换与 cache/DB/input 漂移及失败零 I/O/零写入。固定 GET 只在无 writer lock 时运行；主线程串行，活 pytest 不编辑。此子边界不接默认发送，不证明资金、服务器原子性或已加载 runtime 完整性；账户级 CAS 协议已按 S3c 获批，逐单资金规格仍独立待补。
 
 实现结果：先直接缺 API 测试观察 1 failed，再最小实现；首组 133 passed，保护性补查后 398、最终 446 项专项用例全部通过。已初始化的 markets/markets_by_id 和原 bound methods 才可调用原 `_market_contract`；空缓存或受替换 loader 不运行，完整缓存/options/公域路由/SDK/DB 身份前后相同，并比较原投影、typed active、native state。年龄包括来源 reader、最终 DB 位置及全部解析复核耗时，跨度不误用年龄；零预算无隐含宽限。返回原 `chan-native-instrument-evidence-v1`，不另封 ready/PASS。
 
 CPython 3.14.2/3.11.15 关键组合各 1568 passed（446 新消费者＋422 原 instrument 来源＋700 原来源/账户/订单用例），0 failure/error/skip/warning，1568 个唯一用例集合一致；两版 compileall 和 diff 通过。新代码独立于旧 Engine/source，未改其 schema/文件/部署指纹；本地代码字节前后核验仍非加载 runtime 完整证明。S3 默认消费者/账户级原 CAS/逐单资金能力/完整新指纹闭包与 C7 仍待，不能从这一步或 inactive 匹配推导准入。
+
+### S3c 已批准的账户级原 CAS 协议（实施中）
+
+用户已对专门的详细问题答复“批准上述账户级串行协议（推荐）”，见 [协议批准记录](../specs/2026-10-23-native-per-order-admission-protocol.md)。不再以该设计待批阻塞实施；逐单资金规格、候选换代与真实服务/配置门禁保持独立。
+
+先实现原事务可重读的 L0：新增 NativeOrderBoundary，复用 NativeCurrentComponents 的 DB-only 当前快照、原 native check/ledger/journal prefix/risk state、显式完整 policy 与时间核验。capture 在自有 SQLite 视图中生成有限版本基线，assert 只在原 SQLite 事务中重读原数据；拒绝账本/前缀、来源、冻结、DB 位置、源码/输入/窗口漂移及孤立无事件尝试。输出两个 flags=false，不写原订单/冻结或产生资金/发送许可，暂不改旧 v1/v2/v3 字节、表或默认入口。
+
+L0 清理/修复计划：16 项故障注入 RED 已证明最终源码核验后的连接替换缺口。仅在新模块提取同一 DB/连接/table/事务所有权守卫，capture/assert 的最终源码与字节核验后复用；DB 位置查询前后都验证原连接，不查询替换库。复用已通过的 L0/原 CAS/来源回归，不重构旧金融、来源或 SQLite 实现。
+
+随后在同一原 `_order_write`/journal 中消费 L0，只允许具体本单的确定 intent 增量 L1、claim 增量 L2并持久引用；跨记录/市场/表争抢和 unknown 不释放必须用真实原 CAS/双连接证明。不得把独立 L0 helper 或其测试声称完整账户串行协议已完成，也不得通过忽略自身/重封 ledger 通过差异核验。金融规则未完整时继续禁止默认新风险。
+
+L0 子边界已离线实现：153 新用例，双币非空/partial/pending/fee/funding，Binance/OKX × one_way/hedged × 多空；原事务内手动组合 L0 断言＋原 CAS 的双连接/跨记录/市场/表实验只允许一个沿同一 L0 成功，旧 L0 不能自行重采或清除 submitting 无 ACK 尝试。该实验不是默认入口自动消费，也未实现本单 L1/L2 例外。最终 CPython3.14.2/3.11.15 各 493 passed、0 failure/error/skip/warning、集合相等，含原 current/核算/check/冻结/历史/事务回归；两版 compileall/diff 通过。16 项连接切换真实 RED 经共用最终 DB 所有权守卫修复，替换库零 query/write，原源码/表/证明未修改。
 
 ## S4 默认 CLI 多市场合成 E2E 与发布
 

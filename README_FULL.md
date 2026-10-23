@@ -464,12 +464,15 @@ collector-owned 采集进展见下文；完整运行时身份、原 CAS/HTTP 每
 重建复用当前 credential-free SDK 纯 parser 和已有完整单位/metadata 验证；tick/lot 缺失不借小数位数补齐，显式原生币种/类型矛盾不由 SDK 推断覆盖。
 exchangeInfo.serverTime、上架/到期/未来生效时间均不作新鲜时钟，source_ms=None；0..100 精度位数仅是原 wire-number 指数范围内的解析资源边界。
 422 项新用例、两版各 1122 项适用组合通过；核心 import 无可选依赖，显式 reader 则需要相同 SDK 重建，缺失时拒绝。
-这仍是来源层，不是全部平台交易规则、逐单额度/资金锁、默认 Engine fresh metadata 接入或原 CAS 授权；两个 flags=false，预留协议审查与 C7 门禁均保留。
+这仍是来源层，不是全部平台交易规则、逐单额度/资金锁、默认 Engine fresh metadata 接入或原 CAS 授权；两个 flags=false，账户级串行协议已获批准，资金能力及 C7 门禁仍保留。
 `Trade.NativeInstrumentCurrent.collect_native_instruments_for_engine` 再提供显式本地消费边界：自行采一次新 instrument 来源，
 与实际原 Engine 的完整 metadata/active/原生状态比对，并前后核现有 SDK cache/options、public route、方法与 SQLite 身份。
 只复用原投影的已初始化缓存分支；缺缓存/旧规格/受替换方法拒绝，不 reload、不 set_markets、不写 DB/订单。
 两个 age/span 整毫秒预算必填，无默认宽限；年龄包含最终解析和 DB 复核耗时。446 项新用例、两版关键组合各 1568 passed，集合一致。
 返回的仍是原来源字节、两个 flags=false，不是可转交授权；原默认 prepare/发送及常量阻断未改，完整 CAS/逐单资金/新版本指纹和 C7 仍未完成。
+账户级串行协议已获专门批准；`Trade.NativeOrderBoundary` 先实现 DB-only L0：从原持久 native check、完整 ledger/journal、来源、冻结与显式政策捕获基线，
+只在原 SQLite 自有事务内严格重读；没有 SDK I/O、资金公式、新订单表或授权结果。153 项新用例、两版适用组合各 493 passed，集合一致。
+这是 L1/L2 的前置核验，不是原 CAS 的自动集成；尚未持久绑定本单唯一 intent/claim 增量，不能默认发送或把 caller 自封 L0 当许可。
 版本化 API 见下文，本入口的命令完成状态不是完整验收或生产授权。
 
 非 dry-run 还必须同时满足以下门禁：

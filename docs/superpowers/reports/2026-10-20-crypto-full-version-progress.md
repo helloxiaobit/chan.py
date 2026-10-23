@@ -36,7 +36,7 @@
 | C2 | 已完成离线实现与验收 | 父 K/原始关系发布边界、不可变决策、完整身份对账、真实三层策略 future/prefix 变异；非外部认证 |
 | C3 | 已完成离线实现与验收 | UTC purge/unknown、三模型身份、write-once 部署、三阶段评分与 SQLite 版本链；非实盘/外部认证 |
 | C4 | 已完成离线实现与验收 | 有界实际样本→三模型→搜索/独立验证→部署→全 trial 重放；93 项组合、608 项全仓离线通过，非经济采用 |
-| C5 | 进行中 | 单位/原生恢复/历史/来源、区间核对与持久冻结已离线验收；cross/lot paper 已接原状态机与显式持久恢复；鲜活准入链、原生同义模型及外部认证仍待 |
+| C5 | 进行中 | 单位/原生恢复/历史/来源、区间核对与持久冻结已离线验收；cross/lot paper 已接原状态机与显式持久恢复；账户级串行协议已获批且 L0 前置层已验，原 CAS 的 L1/L2/资金/默认鲜活准入与外部认证仍待 |
 | C6 | 进行中（仍未完成） | 配置运行壳/失败传播/OS 锁、输入/报价、API、显式软件 paper 进程级路径、通知摘要/脱敏与 Windows 3.11/3.14 核心/完整安装已验；原生账户/mark/book 证明、信号显式换代、更广 E2E、迁移和外部通知送达仍待 |
 | C7 | 待前置验收 | 公共行情与有准入后的外部认证；代码发布按阶段进行 |
 
@@ -831,3 +831,14 @@ C1 收尾清理计划：迁移校验由两份全表内存列表改为有序逐�
 - 最终 CPython3.14.2/3.11.15 关键十模块组合各 1568 passed，耗时 209.98s/206.41s，0 failure/error/skip/warning；446 新＋422 原 instrument＋700 原来源/current/核算/政策/订单，unique=1568，两版集合差异0。两版 Trade＋新测试 compileall 与 diff 通过。未变模块按 bb3aa29/242d36e/db75c5e 的原适用范围复用，非本轮全仓重跑。当前 Config/config.yaml 与 CHANPY_CONFIG 均未存在；未读取实际配置。
 - JUnit（Temp=C:\Users\yangj\AppData\Local\Temp）：chanpy-instrument-current-final-py314-e6074b54c8af49a5bb07a0293a88fd5f.xml SHA256 2207e24189539b3a1401a9b9d2331b931ce64d652aac69d3a51f067d0d0f08e5；chanpy-instrument-current-final-py311-1f8d3759c6a744cf9f8ac8687a999de3.xml SHA256 734fe44a59a1205328f767fc34d681aab2ba47ec6a03331dd8b340fcd0216c4d。
 - 简化为复用原投影/来源及只读身份检查；无第二套 parser、金融、冻结、订单或 PASS 包装。文件前后字节/MRO 文件 SHA/方法核验非加载 runtime 完整证明或服务器签名；结果返回后仍可能变化，不能绕过后续 per-order/CAS/HTTP 重验。默认 Engine/壳入口、新指纹闭包、逐单资金与详细并发协议仍未接通，两个 flags=false，全部 gates、C7 与 Goal active 保留。
+
+### 2026-10-23 / 专门批准账户级串行协议，S3c L0 子边界
+
+- 用户对已提交协议的专门确认问题明确答复“批准上述账户级串行协议（推荐）”。已更新协议/当前计划和审计顶部批准状态，不再因同一设计等待批准；不包含资金公式、候选换代、配置/权限/依赖或真实 I/O。起始 HEAD/origin 为 clean f678ece06a6c9b10d5a65f62befb28cb3c5281fb。
+- 新增 NativeOrderBoundary 和对应 153 项测试。复用原 NativeCurrentComponents._snapshot、native check、全 ledger、显式 journal prefix/原冻结与原 policy/windows；新 schema=chan-native-order-boundary-v1，包含原 check/market/policy、账本/前缀/原检查 IDs、DB/边界代码身份，coverage=exact_native_component_l0_only，两个 flags=false。捕获开始时间不作来源时钟或刷新年龄。
+- capture 仅在自有 SQLite 视图捕获；assert 仅在原 owned SQLite 事务内重读，均无 SDK GET/订单/冻结写入。无事件孤立 attempt 不得从 prefix 消失，旧 matched check、较新未整合 balance、原 sticky freeze、重封 ledger/DB/check 身份或超龄不能替代新 L0。没有原 CAS 自动消费者或本单合法 L1/L2 例外，尚不能默认开仓。
+- RED/GREEN：直接缺模块 API 1 failed（56 deselected）；首组 8 failed/49 passed 源于 fixture 漏 payload 层，修正后8正向通过。扩展组16 failed/121 passed 源于 hedged prepare 未传原信号记录/leg，只补实际record与契约leg，32相关项通过。主线程审查另获真正16 RED：最终源码核验回调换连接，capture会查询替换库、assert会错误接受；仅新模块提取共用 DB/conn/table/事务所有权守卫，最终检查和位置 query 前后复验，16 GREEN。保留上述区别，不伪称 fixture 错误为生产 RED。
+- 双币非空/partial/pending/fee/funding、Binance/OKX × one_way/hedged × 多空；真实原事务中手动组合 L0 assert＋原 CAS，跨记录/市场/表/连接只有一个能沿同一 L0 获得 intent。原外层 rollback、submitting 无 ACK/时间推移不清空、重启/core-only 无 SDK/配置文件、严格预算/释放耗时和替换库零 query/write 均覆盖。该前置实验不代表完成账户级原 CAS 自动接入。
+- 最终八模块组合 CPython3.14.2/3.11.15 各493 passed（238.85s/233.54s），153新＋340原 current/组件/check/区间/冻结/历史/事务，0failure/error/skip/warning，493唯一集合相等。两版 Trade＋新测试 compileall 和 diff 通过；旧 Engine/db_util/OrderAudit/NativeCurrentComponents/NativeAccountCheck 没有 diff，其余未变模块复用 f678ece/bb3aa29/242d36e 的适用证据，不称本轮全仓重跑。全程主线程串行、活 pytest 不编辑。
+- JUnit（Temp=C:\Users\yangj\AppData\Local\Temp）：chanpy-native-order-boundary-final-py314-0555cda13b9941fb8b34d902acea67d6.xml SHA256 cbfcd89c186139b7f37a4acf3d849937a41e717075290b0b56482b5f7effa71b；chanpy-native-order-boundary-final-py311-665096f8ad444aa79fe66d7d07fbd402.xml SHA256 736970c9f51525be3d1b476b36391e8ed25d744fcdac9cdf1a3ed2cd8d88279c。
+- 简化/范围：不复制资金/撮合/状态机，不改旧表/证明/原 gate；只增加原数据 L0 前置一致性和共用最终 DB 所有权检查。L1/L2 精确增量＋原意图持久引用＋完整新版本/加载身份/default E2E仍待，资金不足或规格缺失继续 fail closed。SDK内部HTTP、真实服务/容量与C7未认证，完整版未完成；新文件仍未被旧模型/部署指纹自动覆盖，禁止重封/重臂旧产物。
