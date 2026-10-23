@@ -800,3 +800,11 @@ C1 收尾清理计划：迁移校验由两份全表内存列表改为有序逐�
 - CPython 3.14.2 适用广组合1753 passed/1既有 skipped（325.24s）；3.11.15 同为1753 passed/1既有 skipped（322.96s），均exit=0，0 failure/error/warnings，1754 unique classname/name用例集合差异0，含全部78新用例。唯一skip仍为Binance income未提供isolated position cash channel。包含原来源/账户/金融/订单/冻结/SQLite；未变model/deployment/persistent paper继续沿用db75c5e既有适用证据，不称本次全仓回归。两版compileall及diff通过；无活测试期间编辑/并发pytest/子代理。
 - JUnit：Temp/chanpy-native-owned-regression-py314-23137e086d10461fad4a8bd18a738937.xml SHA256 e41d3e07dc2cbd2b3ca47627d09d6dd098b41726bb70591bc066b24adb8a1410；py311为chanpy-native-owned-regression-py311-49159ff8dd9648e3a487bc609183d334.xml SHA256 4870d26596a67a09a4717407e6d1ae37b6773c5d9a0a187d930112e4c21281ee。Temp为C:\Users\yangj\AppData\Local\Temp。实际Config/config.yaml与CHANPY_CONFIG仍不存在（只查布尔），没有配置文件改动。
 - 主线程按计划/代码/异常/兼容性复核，无独立审计声明。后续S3必须绑定实际instrument metadata、候选/部署/配置、DB/加载runtime及原每单intent/CAS/HTTP并冻结预占规则；source文件SHA不等于全部运行时身份，原生available/margin不能自行分摊或套用软件杠杆公式。新collector尚无默认生产调用，未变旧candidate/testnet/live门禁/常量阻断，未做真实端点/外部C7，S2/C5/C6/C7/完整Goal仍active。验证后的Lore提交及精确身份推送不改变这些边界。
+
+### S3 接入前详细预留协议复核（设计审查点，未实施 CAS）
+
+- 起点242d36ea5715093fbece5368f3e1f6e1ad78becf已推送/clean；提交后两版自采各78 passed（49.01s/50.94s），远端SHA与HEAD/origin相同。此次原代码核对发现：原 acquire/claim 是record级竞争，native current完整ledger在合法自身intent/claim后也会改变；v3显式契约分支同时存在Engine、NativePendingOwnership、AccountReconcile、ExecutionReconcile，不能只改一个schema集合。
+- 只读取公开官方文档及本机CCXT4.5.89源码，没有交易所数据/账户/订单请求。Binance test-order文档说明不进入撮合，不能由此推导本地账户资金锁；OKX order-precheck文档适用于Multi-currency/Portfolio而非当前acctLv2，不能切换模式或借用其PASS。OKX max-size是候选原生数量观察，不是跨venue通用资金模型。OKX全文因工具页面大小限制未读，模式/权限/端点条件由官方定向检索核对，细节和来源链接见草案，不冒称全面外部验收。
+- 实际SDK的load_markets默认命中cache，reload=True可能先fetch_currencies；两venue默认fetch_markets还有跨产品读取。拒绝简单全局reload补丁作为“原生metadata已当前”的证明；后续须限制明确原生public endpoint/目标池及观测身份，不改用户配置以绕过。
+- 新增specs/2026-10-23-native-per-order-admission-protocol.md并在S3计划关联：建议对尚未被原生观察的新风险意图做账户级原CAS串行化，L0→本单唯一intent增量L1→唯一claim增量L2逐项校验，unknown不释放；完整已观察多币种持仓/挂单不被裁成空仓。逐单资金能力仍独立硬门槛，缺规格不发明金额/费用/档位或admission=true。该账户级并发语义尚待用户审查确认；不重问已批准的来源/鲜活性方向，也未依其修改runtime、订单、配置、权限、依赖或常量阻断。
+- 本轮仅文档/证据收敛，采用相对链接/存在性与diff结构检查，无虚构RED或把旧测试称本轮新跑；242d36e代码、依赖和环境未变，沿用其适用回归。完整Goal保持active，详细预留协议审查不等于C5/C6/C7完成或任何真实I/O/候选授权。

@@ -1,0 +1,84 @@
+# S3 原生逐单准入：账户预留与原 CAS 协议草案
+
+日期：2026-10-23（Asia/Shanghai）。状态：**待审查的详细协议，不是已批准的资金规则或运行权限**。
+
+主目标仍为 [C0–C7 完整版](../plans/2026-10-20-crypto-full-version-completion.md)；已批准的来源/鲜活性方向及实施边界见 [原生准入计划](../plans/2026-10-22-native-fresh-admission.md)。本次代码基线为已推送、clean 的 `242d36ea5715093fbece5368f3e1f6e1ad78becf`。S2b6 的本地自采已完成，完整 S2/S3/S4、C5/C6/C7 均未完成。
+
+## 1. 这次需要确认什么
+
+此前批准解决了独立来源、显式鲜活性、零默认容差及原 CAS 每单复验的方向，但未固定**账户级同时在途的新风险意图如何占用可用资金**。原审计 §4.3 已要求该详细协议在集成前审查。
+
+推荐确认以下并发协议：同一稳定原生账户、全部市场共享一个“尚未被原生来源完整观察的新风险意图”边界；原 intent/CAS 一次只能取得一个这样的在途位置。未知提交、未在 native pending/执行中证明的本地意图不自动释放，不按 TTL 过期或网络异常重新创建。已完整归属的原生未决单以及已有多币种持仓可以继续存在，不把目标改成空仓、单币或无挂单。
+
+这会影响不同 symbol 同时提交的行为，故不能视为普通函数拆分细节。它不代表 native_available>0 就足以支付任意新订单，也不证明该订单一定被交易所接受。**逐单资金能力仍是独立硬门槛**：需要按确定的 order role/方向/数量/价格/费用与账户规则取得可复核的额度或明确冻结的金额模型；未补全该规格前，不产生 admission=true、不接默认新风险发送、不解除常量阻断。
+
+待用户确认的问题仅为：是否批准上述“账户级原 CAS 串行化未观察意图＋资金能力独立硬门槛”的详细方向，随后按本文件逐项 TDD 实施？不是再次征求已批准的来源/鲜活性方向，也不请求真实 I/O、配置或候选权限。
+
+## 2. 已核对的当前代码事实
+
+| 原边界 | 当前实现 | S3 必须补足 |
+|---|---|---|
+| `CCXTTradeEngine._market_contract` | `load_markets()` 默认可返回 SDK cache，再读完整执行 metadata | 新风险使用实际原生 instrument 来源；不能把 cache 当作一次新观察 |
+| `TradeEngine.add_trade` | prepare 后写原 intent，再调用 place_order | 冻结具体单、候选/输入、当前来源、runtime 与 DB 身份，原事务复核后才能取得新风险意图 |
+| `CChanDB._order_write` | 原 SQLite 事务内核历史、更新投影、写原 journal；v3 intent/claim 检查 sticky freeze | 在相同事务中验证完整账户基线及本单唯一允许的增量，而非仅同 record_id 的竞争 |
+| `acquire_open_intent` / `claim_order_submission` | WHERE 约束各自记录/原状态 | 不同信号行/不同市场之间需要账户级一致性；不能各自沿用同一份早期可用额 |
+| `NativeCurrentComponents` | 所选 check 的全 ledger 必须与当前完全一致 | intent/claim 正常追加后旧 check 必然不同；必须识别本单的精确允许增量，不能直接忽略自身或全部新记录 |
+| `NativePendingOwnership` / `AccountReconcile` / `ExecutionReconcile` | 原生契约分支明确只接受 v3 | 新版本须显式接入这些原 reader/共享核算体；只扩 Engine 或把新 schema 加到宽松集合不足以证明兼容 |
+| 当前余额/预占 | native 账户汇总保证金、可用额与原挂单剩余数量可以复核 | `per_order_allocation=not_inferred` / `native_margin_amount=None` 不是可分配的新单额度 |
+
+原 v1/v2/v3 契约、来源和 journal 不重封、不自动迁移。旧查询/恢复/撤单/降风险继续原已验证路径。新风险的版本升级不能把旧候选或旧运行时证明自动重新武装。
+
+## 3. 官方接口与本机 SDK 证据
+
+这里只阅读公开文档和本机 CCXT 4.5.89 源码，没有调用任何行情、账户或订单端点。
+
+- [Binance Test Order](https://developers.binance.com/en/docs/catalog/core-trading-derivatives-trading-usd-s-m-futures/api/rest-api/trade#test-order-trade) 声明 `/fapi/v1/order/test` 不进入撮合。当前文档给出测试订单响应字段，但没有据此给本地 CAS 提供账户资金锁/预占身份的契约。因此不能将其回执当作真实订单 ACK、资金锁或逐单资金充分证明。这是对文档证明范围的限制，不推断服务器未公开的全部校验行为。
+- [OKX Order precheck](https://www.okx.com/docs-v5/en/#order-book-trading-trade-post-order-precheck) 文档限定 Multi-currency/Portfolio margin，且为 Trade 权限 POST。当前已支持/观察的是 `acctLv=2` Futures mode，不能为复用该接口而切换用户账户模式，或把它放进现有只读 GET 自采协议。全页读取被工具的页面大小上限拒绝；上述条件由官方页面的定向检索内容核对，未将未读部分冒称完成验证。
+- [OKX Maximum order quantity](https://my.okx.com/docs-v5/#trading-account-rest-api-get-maximum-order-quantity) 的 `/api/v5/account/max-size` 是原生订单数量候选来源，导数单位为 contracts；该数量观察不是账户资金锁，也不能移用为 Binance 的金额模型。若后续采用，必须绑定单一标的/明确价格与账户/模式/观测窗口，而非采用省略价格后的原生默认价作本地指定价格的证明。
+- 本机 `ccxt.Exchange.load_markets(reload=False, params={})` 在已有 markets 时直接返回 cache；`reload=True` 可能先执行 `fetch_currencies`。Binance 默认 `fetch_markets` 还可能读取 spot/linear/inverse，OKX 默认覆盖多种 instrument type。因此不采用“在所有旧调用上加 reload=True”这一未经范围约束的修复；它不能证明只读取本轮 USDT linear 所需的原生 metadata。
+
+后续 native instrument 来源应限制为明确公共 endpoint（Binance fapi exchangeInfo / OKX public instruments SWAP）和明确目标池，复用环境/SDK/finite/单位边界，不修改实际 SDK/用户配置或借旧 cache 补缺。具体 schema/时钟/预算在其 TDD 前冻结；此草案不提前认定其已实现。
+
+## 4. 推荐原事务协议
+
+### 4.1 prepare：本次自采与执行身份
+
+1. 以原 CChanDB/原连接和完整声明池读取有效 before、全 ledger、原冻结，固定 typed account/mode、DB 位置和本次调用身份。
+2. 锁外取得实际 instrument metadata，再直接调用本地原生自采。不能接受 caller 的 wrapper/check/PASS 作为“本次已采集”。独立 mark/book、pending/balance、全部实际持仓及执行/wallet 来源仍完整核验。
+3. 冻结实际候选/部署/模型/输入、显式政策、配置的脱敏身份、依赖源码与加载 runtime，冻结 order role/方向/两单位数量/价格/post-only/执行设置。新文件不自动包含在旧 opening/model/deployment 指纹内；版本化记录，不回写旧产物以制造新证据。
+4. 取得原始基线 `L0`（原 journal 显式边界、全部 history/projection 和 source IDs），并确定拟提交单的完整身份。逐单资金能力规格缺失时，此步仍不能产生有效新风险证明。
+
+### 4.2 acquire intent：同一原 CAS 验证账户基线
+
+1. 进入原 `CChanDB._order_write` 所属 SQLite 事务，重读 `L0`、sticky freeze、来源身份/时间、实际信号与候选/运行条件；必须与锁外自采的原基线一致。
+2. 对全部 trade-shaped 表/同稳定账户核未被原生完整观察的本地新风险意图。未知/无可验证归属者不能按零金额排除；不得仅按当前 symbol/table 筛选。
+3. 原 CAS 成功后，仍由原 `record_transition` 写意图。形成 `L1` 时只允许**这一具体单**的确定 intent/journal/projection 增量。原子核对/持久引用与意图一起提交，不另建撮合/订单引擎或可重置资金表。
+4. 两个进程以同一 `L0` 争抢不同信号时，只能一个取得这个未观察意图；另一个拒绝，不自动重采/刷新为重试。不同稳定账户的排除必须由可验证 typed identity 支持，不能按 caller account_scope 名称排除。
+
+### 4.3 claim 与 HTTP 前：不把自身增量当全部差异豁免
+
+1. 原 claim 事务内校验 `L1` 和所有硬门槛；仅允许该单的原 claim 追加形成 `L2`。不能只把自身从 ledger 删掉后比较余项，也不能重封任意新 ledger 作为 expected。
+2. HTTP 前在锁外复查当前 route/account/metadata/runtime/候选/kill 等，最后重读同一原 DB、`L2`、全部引用来源和预算。任何其他连接写入/来源或政策漂移均拒绝；网络不进入 writer lock。
+3. claim 后失败继续原 submitting/unknown 边界，只允许按原 ID 查询/恢复，不退回 created、删除意图、补假 ACK 或自动重发。来源异常仍沿原失败发布；无可写原库/身份不确定时拒绝且不声称已冻结。
+4. server 响应、真实订单归属、原 ACK/累计成交/恢复始终使用原状态机。完整新来源能力未纳入默认壳与全部直接新风险入口前，原常量阻断不移除。
+
+### 4.4 预留何时变为已观察
+
+- 本地 created/submitting/unknown 不能因一次 pending 空列表或时间推移释放。
+- 原生 pending 必须与原单 ID/账户/市场/方向/条款/两单位累计量完整对应，或者有原 native execution/终态和原状态机的完整证据；不凭原生测试单回执放行。
+- 已完整观察的旧未决单由原 native available/aggregate margin 反映，不能再按猜测分摊金额或重复扣 ordFrozen/IMR。下一新风险单仍须重新自采，不能复用其更早的账户点。
+- 账户级串行协议不是全账户服务器锁，也不能阻止用户/外部机器人或交易所状态在观察后变化；实际来源覆盖、单级资金能力、外部容量/持续运行和 C7 仍独立验收。
+
+## 5. TDD 与兼容验收（尚未执行）
+
+1. 单独证明已加载 SDK cache 不构成新 instrument 读取；fake 最底层原生方法返回新 tick/contract/status/limits 时应拒绝旧 metadata。拒绝错路由、额外私有/跨产品请求、缺/重复市场、非有限/未来/倒退时钟；不为恢复旧单强制获取新模型。
+2. 用已有两币非空/partial/pending/fee/funding fixture 扩展完整 prepare→原 intent→claim→HTTP；用真实原 SQLite/CAS，而非 mock 一个 passed helper。
+3. 同账户不同记录/市场/表的双连接竞争，以及 acquire/claim/HTTP 前各边界的输入、冻结、来源、runtime/配置变化，均不得产生两个未观察新风险意图或额外 HTTP。
+4. 本单唯一合法 intent/claim 增量可验证，任意零成交遗失尝试、第三方记录/字段/事件变化仍拒绝；不能以忽略自身/全部新行来消除 RED。
+5. claim 后断连/拒绝/未知返回不重创，pending 消失不释放；原 v1/v2/v3 恢复/撤单/reduce-only/累计成交和 append-only 历史回归保持。
+6. 逐单资金能力须有单独的不足/恰界/费用/方向/档位/已有挂单/并发占用与来源缺失夹具。没有明确可证明输入或公式时维持拒绝，不把本并发协议的 PASS 替代它。
+7. 新版本 reader/源码指纹/default 全入口 E2E、双解释器适用回归、源码/迁移/支持矩阵、Lore/精确提交/远端核对后，才按原批准范围评估是否移除壳常量阻断。没有正式 C7 证据仍不得宣称测试网/实盘认证或关闭主 Goal。
+
+## 6. 明确不做
+
+不修改实际配置/权限/规则/依赖；不创建真实会话或实际请求；不重封旧候选、模型、部署、证明或订单；不引入隐含年龄、epsilon、手续费/档位/汇率、名义额÷杠杆或全额抵押替代规则；不自动解冻；不把股票/Spot/Portfolio/借贷/未知账户模式并入初始支持范围。

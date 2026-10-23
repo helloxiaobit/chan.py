@@ -147,6 +147,8 @@ CPython 3.14.2/3.11.15 各 1753 passed / 1 既有 isolated cash channel skip，1
 
 文件：CCXTTradeEngine、OrderAudit、db_util 及对应原状态机回归。
 
+2026-10-23 接入前复核：原 CAS 仅约束单 record，且旧 check 的完整 ledger 在合法 intent/claim 后也会变化；不能直接复用 None 或忽略自身新行。详细 [账户级预留/原 CAS 协议草案](../specs/2026-10-23-native-per-order-admission-protocol.md) 记录当前代码、公开官方接口与 SDK 证据。推荐串行化每稳定账户尚未被原生观察的新风险意图，并将逐单资金能力保留为独立硬门槛；账户级并发语义尚待审查确认，不将已批准的来源方向解释成已批准的新增金融规则。未改 runtime/CAS/config 或解除任何 gate；可独立继续明确 instrument/runtime 身份边界。
+
 - 新证明版本绑定账户/模式、DB、候选/部署/配置/代码、role/qty/price 与全部 source IDs；持久化原 intent 引用。
 - 新增 NativeAdmission/NativeMarketEvidence 目前未纳入旧模型/部署/输入/paper 的指纹列表，也未被默认入口消费；S3 必须显式版本化并绑定新消费者及依赖源码，不能假设旧 workflow SHA 已覆盖它们，更不能重封旧模型/部署/订单来续用旧授权。
 - 网络在 SQLite 写锁外；原事务内复核历史/投影/reservation/年龄，原 claim 和 HTTP 前再核 route/account/kill/candidate/freeze/实际意图。
