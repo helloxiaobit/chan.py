@@ -320,3 +320,15 @@ signal仅初始化以供原受控prepare使用；原intent另须在原owned视�
 另取e65d0f9精确提交后两venue的实际binding-v2临时测试库，仅在新副本以原finished_ms+1000合成时钟用当前reader读取，原完整文档相等且claim拒绝，原文件SHA不变；旧implementation缺factory条目保持原样，不冒称当前/冷启动准入。这里只证明历史读取兼容，未延长旧来源或迁移旧绑定，详细路径/身份见台账。
 
 结论：本显式冷初始化/原L1非执行子层可提交，生产就绪仍为否。成功依赖原完整SDK摘要可由当前允许的原生数据/配置重建；任意外部cache/options、代码/凭据/SDK/输入时代或旧来源超龄均拒绝，不自动刷新补造。fake运输未验证真实签名、HTTP、平台容量/内部重试或服务端原子性；本地源码hash不认证全部加载闭包/宿主。资金能力/可执行L2/HTTP/全部reader/default/S4/C7、完整S3e/C5/C6/C7和Goal仍未完成；两个flags=false、v2 claim/默认资金阻断不变，无实际配置/权限/依赖/规则/候选/研究数据改动或真实I/O。
+
+## 30. 冷启动末尾SDK复验与尾段年龄上界（2026-10-24）
+
+基线6ce2c92563e6af5c50817384ff601ab0bad4242a已推送且clean；其资金设计选择仍待用户确认，不将继续Goal解释为批准金额公式。本次独立修复已批准冷启动路径，不增加资金依赖代码或任何运行权限。
+
+追溯发现最后一次_client_binding之后仍有业务clock/local_view回调，而owners只核凭据等所有权，不再核完整原SDK摘要。先在真实SDK/fake底层运输的双venue×signal/原L1上注入最后时钟改options：4项DID NOT RAISE真实RED；最小末尾SDK复验后4 GREEN，再扩markets/public route晚变异。随后2项真实RED证明新增末尾SDK核验本身的耗时仍可漏出原instrument age。最终使用核心库monotonic_ns覆盖最后业务时钟/本地视图/SDK核验、原事务退出及终末owner的完整尾段，不再在原SDK比较后调用另一个业务时钟。
+
+使用时刻上界为最后typed guard检查时刻加ceil(尾段单调纳秒差/1,000,000)。这是保守本地完成界，不是原生来源时间或服务器时钟；因包含重叠尾段可能比实际完成更晚而更早拒绝。正1ns向上计入1ms不提供额外预算/epsilon；非法或倒退单调采样拒绝，原age/span参数与来源字节不改。继续复用原_client_binding/local_view/完整ledger，不新增helper、订单状态机、金额规则、schema或外部依赖。
+
+24新增回归：12项双venue×signal/原L1×options/markets/public-route末尾变异、2项末尾SDK耗时、4项整毫秒恰界/正1ns超界、6项bool/倒退单调钟。最后两组手工控制精确纳秒差，正常原factory/parser/SQLite及allowlisted GET路径仍实际执行；失败不改订单/引用、不释放unknown，cleanup仍限自有新SDK。14项SDK/耗时GREEN及10项计时边界GREEN之后，双解释器相同8模块各392 passed、0failure/error/skip、2既有小样本XGB警告（445.47s/467.88s），唯一用例集合一致；双版compileall/diff通过，详情/身份见台账。未变其余证据按原范围复用，不冒称全仓回归。
+
+主线程按review模板核原边界、计时单位、失败与原模型/历史/恢复分流；全部fake、无独立代理审计、无真实交易所I/O或研究绩效读取。源码hash/选定callable核验仍非整个加载闭包/宿主真实性证明，当前initializer只返回None而非资金或HTTP许可。两个flags=false、v2 claim/默认资金拒绝及实际配置/权限/candidate等门禁全部保留；金融方向待确认，完整S3e/C5/C6/C7/Goal未完成。

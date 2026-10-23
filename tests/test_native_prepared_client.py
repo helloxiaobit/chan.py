@@ -348,3 +348,100 @@ def test_actual_cold_factory_is_part_of_the_original_prepared_implementation_ide
     assert initialize(case) is None and acquire(case)
     binding = read_native_order_transition(case["db"], case["key"])["payload"]["root"]["preparation"]
     assert 'DataAPI/ccxt.py' in binding['implementation_sha256'], 'cold factory code is outside the prepared identity'
+
+
+@pytest.mark.parametrize("venue", ["binance", "okx"])
+@pytest.mark.parametrize("persisted", [False, True])
+@pytest.mark.parametrize("damage", ["options", "markets", "public_route"])
+def test_final_cold_clock_cannot_change_sdk_state_after_its_last_binding_check(store, tmp_path, monkeypatch, venue, persisted, damage):
+    from Trade import NativePreparedClient
+    case = cold_case(store, tmp_path, monkeypatch, venue)
+    original = None
+    if persisted:
+        assert initialize(case) is None and acquire(case)
+        original = read_native_order_transition(case["db"], case["key"])
+        case["trade"].exchange = None
+    ticks = []
+    def late():
+        ticks.append(1)
+        if len(ticks) == 3:
+            client = case["trade"].exchange
+            if damage == "options":
+                client.options["unobserved-final-clock-change"] = True
+            elif damage == "markets":
+                client.markets["TEST/USDT:USDT"]["active"] = False
+            else:
+                client.urls["api"]["fapiPublic" if venue == "binance" else "rest"] = "https://unapproved.invalid"
+        return case["clock"]["now"]
+    monkeypatch.setattr(NativePreparedClient, "utc_now_ms", late)
+    before = case["db"].get_record(case["key"])
+    with pytest.raises(CChanException):
+        client_api()(case["trade"], case["key"], instrument_max_age_ms=2000, instrument_max_observation_span_ms=2000)
+    assert len(ticks) >= 3 and case["trade"].exchange is None
+    assert case["db"].get_record(case["key"]) == before
+    if original is not None:
+        assert read_native_order_transition(case["db"], case["key"]) == original
+
+
+@pytest.mark.parametrize("venue", ["binance", "okx"])
+def test_terminal_original_sdk_recheck_work_is_not_outside_the_use_time_budget(store, tmp_path, monkeypatch, venue):
+    from Trade import NativePreparation, NativePreparedClient
+    case = cold_case(store, tmp_path, monkeypatch, venue)
+    original, calls, elapsed_ns = NativePreparation._client_binding, [], [0]
+    monkeypatch.setattr(NativePreparedClient, "_monotonic_ns", lambda: elapsed_ns[0], raising=False)
+    def delayed(client):
+        result = original(client)
+        calls.append(1)
+        if len(calls) == 3:
+            elapsed_ns[0] += 2_001_000_000
+        return result
+    monkeypatch.setattr(NativePreparation, "_client_binding", delayed)
+    before = case["db"].get_record(case["key"])
+    with pytest.raises(CChanException):
+        initialize(case)
+    assert len(calls) >= 3 and case["trade"].exchange is None
+    assert case["db"].get_record(case["key"]) == before
+
+
+@pytest.mark.parametrize("venue", ["binance", "okx"])
+@pytest.mark.parametrize("excess_ns", [0, 1])
+def test_terminal_elapsed_budget_keeps_the_exact_boundary_and_rounds_positive_nanoseconds_up(store, tmp_path, monkeypatch, venue, excess_ns):
+    from Trade import NativePreparedClient
+    case = cold_case(store, tmp_path, monkeypatch, venue)
+    collector = NativePreparedClient.Instrument.source.collect_native_instrument_evidence
+    source_start, samples = [], []
+    def observed(*args, **kwargs):
+        result = collector(*args, **kwargs)
+        source_start.append(result["payload"]["started_ms"])
+        return result
+    def monotonic():
+        samples.append(1)
+        if len(samples) == 1:
+            return 0
+        remaining_ms = 2000-(case["clock"]["now"]-source_start[0])
+        assert remaining_ms > 0
+        return remaining_ms*1_000_000+excess_ns
+    monkeypatch.setattr(NativePreparedClient.Instrument.source, "collect_native_instrument_evidence", observed)
+    monkeypatch.setattr(NativePreparedClient, "_monotonic_ns", monotonic)
+    before = case["db"].get_record(case["key"])
+    if excess_ns:
+        with pytest.raises(CChanException):
+            initialize(case)
+        assert case["trade"].exchange is None
+    else:
+        assert initialize(case) is None and type(case["trade"].exchange) is getattr(ccxt, venue)
+    assert len(source_start) == 1 and len(samples) == 2
+    assert case["db"].get_record(case["key"]) == before
+
+
+@pytest.mark.parametrize("venue", ["binance", "okx"])
+@pytest.mark.parametrize("samples", [(True, 1), (0, True), (1, 0)])
+def test_terminal_elapsed_clock_requires_integer_samples_and_cannot_go_backwards(store, tmp_path, monkeypatch, venue, samples):
+    from Trade import NativePreparedClient
+    case = cold_case(store, tmp_path, monkeypatch, venue)
+    values = iter(samples)
+    monkeypatch.setattr(NativePreparedClient, "_monotonic_ns", lambda: next(values))
+    before = case["db"].get_record(case["key"])
+    with pytest.raises(CChanException):
+        initialize(case)
+    assert case["trade"].exchange is None and case["db"].get_record(case["key"]) == before

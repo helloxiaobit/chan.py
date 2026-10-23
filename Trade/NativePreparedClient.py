@@ -4,6 +4,7 @@ Only a newly created client may receive its initial market cache. An existing
 client is never refreshed, and fresh startup GETs never renew an old intent.
 """
 import copy
+from time import monotonic_ns as _monotonic_ns
 
 from Common.KLineTime import utc_now_ms
 from CustomBuySellPoint.Decision import canonical_bytes
@@ -130,16 +131,27 @@ def initialize_native_prepared_client(engine, record_id, *, instrument_max_age_m
             owners(owned=True)
             if Prepare._client_binding(client) != client_binding:
                 Prepared._fail()
+            tail_started_ns = _monotonic_ns()
+            if type(tail_started_ns) is not int:
+                Prepared._fail()
             finished = utc_now_ms()
             owners(owned=True)
             current, _ = local_view()
             if (canonical_bytes(Prepare._stable_local_view(current)) != local or _sha(Transition._records(chan)) != records
                     or Transition._prefix(database) != prefix or type(finished) is not int
-                    or not finished <= current["opening_inputs"]["checked_at_ms"] < 2**63):
+                    or not finished <= current["opening_inputs"]["checked_at_ms"] < 2**63
+                    or Prepare._client_binding(client) != client_binding):
                 Prepared._fail()
             finished = current["opening_inputs"]["checked_at_ms"]
             owners(owned=True)
         owners()
+        tail_finished_ns = _monotonic_ns()
+        if type(tail_finished_ns) is not int or tail_finished_ns < tail_started_ns:
+            Prepared._fail()
+        # Bound all final checks/transaction exit without another business
+        # clock callback after the complete SDK comparison. This is a local
+        # use-time upper bound, never a renewed native observation time.
+        finished += (tail_finished_ns-tail_started_ns+999_999)//1_000_000
         if (type(finished) is not int or not started <= p["started_ms"] <= p["finished_ms"] <= finished < 2**63
                 or finished-p["started_ms"] > instrument_max_age_ms
                 or p["finished_ms"]-p["started_ms"] > instrument_max_observation_span_ms):

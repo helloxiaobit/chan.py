@@ -81,6 +81,8 @@
 
 2026-10-24冷启动子层补充：新增显式initialize_native_prepared_client，仅在原Engine.exchange=None时沿实际factory创建新SDK，自取公共instrument并用原纯parser初始化该新缓存，再GET核原账户设置/身份。原L1复核仍须匹配完整旧SDK摘要/账本/旧时钟，新观察不能续期、重封或释放未知状态；已有client不刷新，本入口成功仅None。54新用例含两venue全新Python进程；双版8模块各368 passed/0failure/error/skip/2既有模型警告，全部fake transport，非真实服务认证。未自动接默认发送，资金/claim/HTTP、全部执行reader与完整加载闭包继续阻断或未验收；原协议及以下整体要求不变，详见审计§29。
 
+冷启动收尾复查：最后业务时钟/本地视图之后再次核原SDK摘要，并以monotonic_ns尾段差向上换算毫秒形成保守使用时刻上界，包含尾段核验与原owned退出耗时；不改变native时间、显式budget、资金规则或原schema。近边界可能更早拒绝，不能解释为允许额外1ms。24新增回归，双版8模块各392 passed/0failure/error/skip/2既有模型警告，原claim/default仍拒绝；金融方向选择尚未确认，以下完整验收仍未通过。详见审计§30。
+
 1. 单独证明已加载 SDK cache 不构成新 instrument 读取；fake 最底层原生方法返回新 tick/contract/status/limits 时应拒绝旧 metadata。拒绝错路由、额外私有/跨产品请求、缺/重复市场、非有限/未来/倒退时钟；不为恢复旧单强制获取新模型。
 2. 用已有两币非空/partial/pending/fee/funding fixture 扩展完整 prepare→原 intent→claim→HTTP；用真实原 SQLite/CAS，而非 mock 一个 passed helper。
 3. 同账户不同记录/市场/表的双连接竞争，以及 acquire/claim/HTTP 前各边界的输入、冻结、来源、runtime/配置变化，均不得产生两个未观察新风险意图或额外 HTTP。

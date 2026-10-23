@@ -285,6 +285,16 @@ signal可为后续原受控prepare提供已初始化SDK，但成功只None、不
 
 最终CPython3.14.2/3.11.15相同8模块各368 passed、0failure/error/skip、2既有小样本XGB警告（411.46s/433.15s），368唯一用例集合差异0；双版compileall/diff通过。组成54新＋70原current＋72原intent＋22原联合来源＋47venue＋26account＋63recovery＋14safety；未变更的其余2357基线证据只在原范围复用，不冒称本轮全跑。主线程按review模板串行复核，无代理/实际HTTP。源码hash不证明整个宿主可信，fake新SDK不认证真实服务；新GET不续旧来源，未完整重建的外部options/cache拒绝，不自动刷新或补造旧绑定。此入口不接默认发送，不计算资金；L2/HTTP、全执行reader/加载闭包、逐单资金与S4/C7及整个Goal仍未完成。
 
+### S3e冷启动收尾复查（6ce2c92之后，24项补充回归已离线验收）
+
+资金方向尚待新的专门确认，不写其依赖代码。独立复查已批准的冷启动边界：最后_client_binding之后仍有clock/local_view回调，owners只核SDK凭据等所有权，可能遗漏晚options/cache变化。先以双venue、signal/原L1真实SDK与底层fake运输注入最后时钟变异，观察应拒绝却返回的RED；若复现，只补末尾完整原SDK身份核验并保留最终来源年龄、原完整行/账本和原owned约束。不为该修复重采来源、续期原L1、增加资金许可/重试或另造状态机；适用原54及current/intent回归后再记录结果。若假设未证实，不凭静态猜测修改产品。
+
+4项options晚变异已真实RED（DID NOT RAISE），最小追加原SDK摘要核验后4 GREEN。再扩完整SDK字段回归，并单独RED验证新增尾段核验耗时：不能仅将一个hash移到最后却仍以它之前的clock作为完成时间。拟以核心库单调纳秒差覆盖最后clock/local_view/完整SDK/原owned退出及终末owner的尾段，向上换算毫秒加到最后typed guard检查时间，作为保守使用时刻上界；不生成新来源时间、不设新budget/容差、不再调用可变业务时钟。上界可能比实际完成更晚而更早拒绝，不能延长旧来源或放宽年龄；typed/倒退与整毫秒/正1ns边界须有回归。只有这些证据GREEN后接受本修复，不扩资金设计范围。
+
+实际结果：末尾SDK检查新增耗时未纳入原budget，另有2项真实DID NOT RAISE RED；补核心库monotonic_ns尾段上界后14项SDK/耗时GREEN，再加10项typed/倒退/恰界/正1ns GREEN。24新增组成双venue×signal/原L1×options/markets/public-route晚变异12、尾段SDK耗时2、恰界与1ns超界4、非法/倒退单调钟6；原订单/引用不改、不释放未知状态。没有新增helper/状态机/依赖、资金模型或政策参数，只复用原摘要与本地视图。
+
+最终CPython3.14.2/3.11.15相同8模块各392 passed、0failure/error/skip、2既有小样本XGB警告（445.47s/467.88s），392唯一用例集合一致。78冷启动（原54＋24新增）＋70current＋72intent＋22sources＋47venue＋26account＋63recovery＋14safety；双版compileall/diff通过。两活pytest均确认exit0后才编辑，源码/测试摘要在两版期间一致。金融设计仍待本次单独确认，源/旧绑定不重封，完整加载闭包、L2/HTTP/资金/全reader/default/S4/C7与完整Goal仍未完成；主线程复核、全部fake，非独立审计或真实服务认证。
+
 ## S4 默认 CLI 多市场合成 E2E 与发布
 
 沿真实 RunTradeCycle/RunTradeStage，fake 最底层原生运输，验证 Binance/OKX × one_way/hedged × 多市场的账户/准入/意图/恢复链。只有全部新风险入口不可绕过消费者后，才有条件替换原常量阻断。
