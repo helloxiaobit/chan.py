@@ -306,3 +306,17 @@ stored reader严格核schema/字段/typed请求、原attempt两单位/条款/输
 最终双解释器相同26模块各2357 passed、0failure/error/skip、9模型警告（1184.74s/1235.38s），2357唯一用例集合一致；覆盖原438 prepare/313 context/446 instrument current/381 transition及订单/恢复/SQLite/报告CAS/账户/冻结/执行/safety/opening/model/persistent-paper/cycle。5个小样本XGB AUC、4个MLP收敛如实保留，双版compileall/diff通过，JUnit及旧库SHA见台账，非全仓验收。全fake/合成/临时SQLite，活pytest不编辑；主线程按review模板复核，无独立代理审计。实际config/权限/依赖/candidate/研究数据和交易门禁未变，无真实交易所I/O或绩效读取。
 
 结论：该非执行子层可提交，生产就绪=否。所有v2 claim仍在原SQL前拒绝、两个flags=false，旧v1诊断/原v1-v3恢复保持原分流。冷启动SDK重建、L2/HTTP前/全新执行reader与指纹、逐单资金能力、默认全入口/S4/C7和整个加载闭包仍未完成；源码/本地hash不是服务器签名、整个宿主可信或原子账户锁。C5/C6/C7和完整S3e保持未完成，原Goal active，不重封旧候选或解除默认阻断。
+
+## 29. S3e 显式新SDK冷启动与原L1重建（2026-10-24，仅离线非执行子层）
+
+基线e65d0f9d40851de0374e329bb47bb22d43de2b6d已推送且clean，原Goal active。新增NativePreparedClient显式入口，只接实际原Engine/record_id与必填instrument年龄/跨度；只允许exchange=None、原owned事务外、实际输入/候选/门禁和原库有效的冷启动。沿原get_exchange→DataAPI.ccxt.create_exchange创建新SDK，公共instrument采集选择原目标池允许字段，再用原纯parse_market和set_markets初始化该新对象；原_execution_settings/_observe_account及observe_account_context核账户。所有GET在writer锁外，不进入缺缓存load_markets、跨产品loader/费用猜测或set_leverage，不修改已有client或实际配置。
+
+signal仅初始化以供原受控prepare使用；原intent另须在原owned视图核完整binding-v2、原after-record/full-ledger/journal、原SDK完整摘要及旧来源窗口。新instrument/设置GET不能续旧来源、替代原client基线或重封旧binding-v1。失败只清掉本入口新建且仍由Engine持有的client，不覆盖外部替换对象；原订单/引用/未知状态不释放。已知原L1账户且原库身份可核时沿原sticky失败publisher，原库未知/不可写不声称已冻结。该API不写订单/收据，不接默认sender、不产生PASS/权限或资金额度。
+
+按事前清理计划，将重复本地核验提为同一owned closure，复用原local/cache/transition/ledger，而非新增parser、金融或订单状态机。真实RED包括缺API、6项最后时钟之后记录/候选/client变异、2项SDK摘要收尾耗时未计入instrument年龄，以及实际factory未纳入原preparation实现身份。最小修复后54 GREEN。原真实SDK的Entry.api为单元素list、缺password默认为None，最初fixture的路由映射/缺原component端点和凭据默认假设分别修正，不计为生产RED；调试命令曾遇默认pytest临时清理symlink WinError5，后续GUID basetemp通过，未删除或据此修改产品。
+
+54新用例含Binance/OKX×one_way/hedged×多空新SDK→原intent→销毁→新SDK原L1、两个fresh Python进程仅从原配置/临时库和fake native wire packets重建（不传markets/options/cache）、source/account/settings/超龄失败、显式预算/已有client/caller事务/伪receipt拒绝、已知冻结在创建SDK/GET前拒绝、核心无SDK/Config/ML导入。最终双版8模块各368 passed、0failure/error/skip、2既有XGB小样本警告（411.46s/433.15s），唯一用例集合一致；双版compileall/diff通过，JUnit身份见台账。未变其余基线按原适用范围复用，不称本轮全仓或2357整组重跑；主线程按review模板复核，无独立代理审计，活pytest不编辑。
+
+另取e65d0f9精确提交后两venue的实际binding-v2临时测试库，仅在新副本以原finished_ms+1000合成时钟用当前reader读取，原完整文档相等且claim拒绝，原文件SHA不变；旧implementation缺factory条目保持原样，不冒称当前/冷启动准入。这里只证明历史读取兼容，未延长旧来源或迁移旧绑定，详细路径/身份见台账。
+
+结论：本显式冷初始化/原L1非执行子层可提交，生产就绪仍为否。成功依赖原完整SDK摘要可由当前允许的原生数据/配置重建；任意外部cache/options、代码/凭据/SDK/输入时代或旧来源超龄均拒绝，不自动刷新补造。fake运输未验证真实签名、HTTP、平台容量/内部重试或服务端原子性；本地源码hash不认证全部加载闭包/宿主。资金能力/可执行L2/HTTP/全部reader/default/S4/C7、完整S3e/C5/C6/C7和Goal仍未完成；两个flags=false、v2 claim/默认资金阻断不变，无实际配置/权限/依赖/规则/候选/研究数据改动或真实I/O。

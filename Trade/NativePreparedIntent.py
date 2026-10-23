@@ -31,7 +31,8 @@ _IDENTITY_FIELDS = {"record_sha256", "config_sha256", "engine_config_sha256", "e
 _COMPONENT_FIELDS = {"coverage", "economics_complete", "native_admission_verified", "account_context", "source_ids", "check_id",
     "market_evidence", "policy", "operations", "observed_sdk_calls", "sdk_call_upper_bound", "implementation_sha256", "database_location_sha256", "started_ms", "finished_ms"}
 _ROOT = Path(__file__).resolve().parents[1]
-_FILES = ("Trade/NativePreparedIntent.py", "Trade/NativeInstrumentCurrent.py", "Trade/NativeInstrumentEvidence.py")
+_FILES = ("Trade/NativePreparedIntent.py", "Trade/NativeInstrumentCurrent.py", "Trade/NativeInstrumentEvidence.py",
+          "Trade/NativePreparedClient.py", "DataAPI/ccxt.py")
 
 
 def _fail():

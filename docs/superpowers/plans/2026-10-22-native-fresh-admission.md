@@ -271,6 +271,20 @@ S3e后续本地重建/清理计划（基线67e72ef）：从原持久v2 intent与
 
 最终CPython3.14.2/3.11.15相同26模块各2357 passed、0failure/error/skip、9warnings（1184.74s/1235.38s），唯一集合差异0；双版compileall/diff通过。含70新、72上步绑定、381原transition、313原context、438原prepare、22原联合、446原instrument消费者及615原订单/来源/模型/paper等，非全仓或外部认证。旧67e72ef两venue原测试库在副本上以同合成时钟读取等于原文档，claim拒绝、原文件SHA不变；首轮真实墙钟小于fixture未来时间而拒绝，仅修诊断调用时钟、不改产品reader或旧事实。新Engine/guard/连接重建复核已测但仍复用相同SDK缓存，不声称冷启动新SDK完整初始化或整个宿主可信；源过期、配置/SDK/缓存/输入时代变更均拒绝。后续继续冷启动/完整L1-L2及新执行reader/HTTP/default集成；逐单资金、S4/C7和整个S3e/C5/C6/C7仍未完成，主Goal保持active。
 
+### S3e接续：显式新SDK冷启动（e65d0f9之后，离线子层已验收）
+
+新增initialize_native_prepared_client(engine,record_id,*,instrument_max_age_ms,instrument_max_observation_span_ms)，只在原Engine.exchange为None、无外层事务且原配置/信号/候选/门禁有效时工作。复用原get_exchange/create_exchange建立新对象，自己取得单一instrument公共来源、用原纯parse_market和set_markets初始化该新对象的声明池，再用原_execution_settings/_observe_account和原native账户身份GET核设置。不得调用load_markets的缺缓存分支、fetch_markets/currencies、set_leverage或prepare_order；不从旧来源伪造新观察，不修改已有client或实际配置。显式年龄/跨度沿原规则，无默认预算。
+
+signal可为后续原受控prepare提供已初始化SDK，但成功只None、不写订单/收据；已有完整binding-v2的created诊断意图须额外在原owned视图按原L1完整记录/ledger、原client摘要和旧来源窗口核验，新的instrument/设置GET不能延长旧证明或补造旧binding-v1摘要。冷启动只重建新进程的SDK缓存，完整原摘要不匹配就拒绝；不复制任意options、旧cache或凭据到输出。失败仅清掉本入口实际新建且仍由该Engine持有的client，不覆盖外部替换对象/连接，不改原订单和未知状态。原Engine/默认资金、claim与HTTP阻断保留；source失败沿可验证原库/账户的现有失败publisher（若具备原L1），不假称未知库已冻结。
+
+先API缺失RED，再真实create_exchange/SDK类与底层fake native transport完成新client→初始signal→原自采intent→销毁client→冷启动新SDK→原L1检查；双venue/持仓模式/多空、raw metadata/账户/设置/原配置/缓存/来源时间/DB变化拒绝，额外产品/实际HTTP/资金变更/下单硬拒绝。先有这些证据再主线程复核，复用适用未变回归；旧来源/订单/manifest不重封，完整加载闭包、资金、L2/HTTP与外部C7仍独立未完成。
+
+冷启动末尾收束清理：8类正常原路径已有GREEN后，将新模块重复的本地视图调用提为一份owned closure；6项最后时钟变异和2项SDK摘要收尾耗时RED已观察，最后读取时钟之后再次用同一原view核原完整行/候选/配置及完整ledger/前缀，再以其guard完成时刻覆盖本地核验耗时。不得删除SDK原摘要或放宽budget，不把时钟移到GET之前伪造年轻来源；原L1另保留原current/source窗口核验。
+
+有限结果：54项新用例，双venue×one_way/hedged×多空新SDK→原intent→销毁SDK→重建原L1，另有两个fresh Python子进程从原配置/原临时库与fake原生wire packets重建，不传markets/options/cache。source/account/settings/超龄失败不改原订单、清理自有新client；已有client、caller事务/替代cache或receipt/缺预算拒绝。开始前已冻结或旧来源过期时不创建SDK、不GET。源码指纹增加本冷启动模块和实际DataAPI/ccxt.py factory，旧订单/来源不重封；完整原摘要不可重建就拒绝。
+
+最终CPython3.14.2/3.11.15相同8模块各368 passed、0failure/error/skip、2既有小样本XGB警告（411.46s/433.15s），368唯一用例集合差异0；双版compileall/diff通过。组成54新＋70原current＋72原intent＋22原联合来源＋47venue＋26account＋63recovery＋14safety；未变更的其余2357基线证据只在原范围复用，不冒称本轮全跑。主线程按review模板串行复核，无代理/实际HTTP。源码hash不证明整个宿主可信，fake新SDK不认证真实服务；新GET不续旧来源，未完整重建的外部options/cache拒绝，不自动刷新或补造旧绑定。此入口不接默认发送，不计算资金；L2/HTTP、全执行reader/加载闭包、逐单资金与S4/C7及整个Goal仍未完成。
+
 ## S4 默认 CLI 多市场合成 E2E 与发布
 
 沿真实 RunTradeCycle/RunTradeStage，fake 最底层原生运输，验证 Binance/OKX × one_way/hedged × 多市场的账户/准入/意图/恢复链。只有全部新风险入口不可绕过消费者后，才有条件替换原常量阻断。
