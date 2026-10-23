@@ -820,3 +820,14 @@ C1 收尾清理计划：迁移校验由两份全表内存列表改为有序逐�
 - 最终CPython3.14.2/3.11.15各1122 passed（188.22s/188.25s），0failure/error/skip/warning；各422新来源＋700原市场/自采/联合当前性/核算/政策/订单单位用例，unique=1122且集合差异0。其余未变代码的242d36e两版1753pass/1既有skip等证据按原适用范围复用，不称本轮全仓重跑。两版compileall与diff通过；全程串行、活测试不编辑、主线程复核，无子代理/独立审计声明。
 - JUnit：Temp/chanpy-native-instrument-final-py314-1f7fbe1aca35431e9afd59c55681e6df.xml SHA256 f83c603f5cd4e5ffb0f08bebdb16590350c721a49b6e24d582b8b842765019f1；py311为chanpy-native-instrument-final-py311-0c910867b4f34ab8ab50af78b1d5bc3e.xml SHA256 6bb1f512b0850a950e96ec8fa2f223f0f32bbde2c28f83b48c1e84b20eaa9586，Temp为C:\Users\yangj\AppData\Local\Temp。
 - 仍缺新来源实际per-order/currentSDKcache/加载runtime/完整版本指纹/原CAS与默认全入口消费；独立source不替代逐单资金能力或详细预留协议。未经批准不实施账户级并发语义，不把可用汇总分摊/名义额÷杠杆/测试单PASS当资金锁，不改旧证明或自动解冻。所有candidate/testnet/live门禁及常量阻断保留；真实服务、SDK内部HTTP重试/容量、C7未认证，S3/C5/C6/C7和完整Goal未完成。
+
+### 2026-10-23 / S3b 原 Engine instrument 当前消费子边界
+
+- 基线：clean、HEAD/origin 同为 bb3aa29814c04e156dbc7243923838e8e241dc0e。账户级 CAS/资金详细协议仍待确认，不把旧来源方向的批准或自动续行视为细化协议确认；本步只做独立 instrument 当前使用核验。
+- 新增 Trade/NativeInstrumentCurrent.py 与专项测试，复用实际原 Engine `_market_contract` 和 S3a 自采/reader；不改原 Engine/source/NativeComponentCollector/金融/订单/schema。实际原 Engine、现 SDK 的已初始化缓存、原方法与 SQLite 连接/位置先后相同才返回；旧 metadata/active/state 不匹配即拒绝，不自动刷新、推断或新建授权包装。
+- age/span 显式必填整毫秒，无默认容差：age 为最终所有解析、reader、DB/身份核验后时刻减 source.started_ms，span 为原 source.finished-started；零预算/恰界/超1ms、完成时钟倒退/坏类型均验证。未获取 native source time，不制造 server skew。整个路径无写入、无账户/订单 I/O、无自动重试，公共 fake GET 只在 SQLite writer lock 外。
+- RED 为直接 API 缺失的 1 failed（132 deselected），随后最小实现首组 133 passed；扩展守卫 398 passed，主线程再补独立 age/span、最终时钟、代码漂移与未选缓存变更后 446 passed。后续保护性测试验证已有守卫，不把这些 GREEN 误报为额外已观察 RED。
+- 446 项专项使用真实 SDK 类、原 Engine 方法与原 temp SQLite，覆盖 binance/binanceusdm/OKX × live/testnet 标签/双币、全部投影/active/state、空缓存/方法替换、SDK/options/完整缓存/route/input/DB 漂移、替换连接零 query/write、事务入口零 GET、异常脱敏和无可选 SDK/Config 核心 import。全为 fake，未触实际配置/凭据/权限/依赖或服务。
+- 最终 CPython3.14.2/3.11.15 关键十模块组合各 1568 passed，耗时 209.98s/206.41s，0 failure/error/skip/warning；446 新＋422 原 instrument＋700 原来源/current/核算/政策/订单，unique=1568，两版集合差异0。两版 Trade＋新测试 compileall 与 diff 通过。未变模块按 bb3aa29/242d36e/db75c5e 的原适用范围复用，非本轮全仓重跑。当前 Config/config.yaml 与 CHANPY_CONFIG 均未存在；未读取实际配置。
+- JUnit（Temp=C:\Users\yangj\AppData\Local\Temp）：chanpy-instrument-current-final-py314-e6074b54c8af49a5bb07a0293a88fd5f.xml SHA256 2207e24189539b3a1401a9b9d2331b931ce64d652aac69d3a51f067d0d0f08e5；chanpy-instrument-current-final-py311-1f8d3759c6a744cf9f8ac8687a999de3.xml SHA256 734fe44a59a1205328f767fc34d681aab2ba47ec6a03331dd8b340fcd0216c4d。
+- 简化为复用原投影/来源及只读身份检查；无第二套 parser、金融、冻结、订单或 PASS 包装。文件前后字节/MRO 文件 SHA/方法核验非加载 runtime 完整证明或服务器签名；结果返回后仍可能变化，不能绕过后续 per-order/CAS/HTTP 重验。默认 Engine/壳入口、新指纹闭包、逐单资金与详细并发协议仍未接通，两个 flags=false，全部 gates、C7 与 Goal active 保留。

@@ -169,6 +169,18 @@ schema `chan-native-instrument-evidence-v1` 固定保存 venue/mode/codes、endp
 
 字段依据为 [Binance Exchange Information](https://developers.binance.com/en/docs/catalog/core-trading-derivatives-trading-usd-s-m-futures/api/rest-api/market-data#exchange-information) 和 [OKX instruments](https://www.okx.com/docs-v5/en/#public-data-rest-api-get-instruments) 及本机 SDK 4.5.89 的原 parse_market；未调用实际端点。reader 显式重建需要对应 SDK，不做无 SDK 解析降级；核心 import 无可选依赖。原 cache/default prepare 路径未改，新来源尚未接逐单消费者/原 CAS/源码指纹闭包，未证明全部平台过滤规则或资金能力。详细协议仍待审，两个 flags=false、全部 gates 与完整 Goal active 保留。
 
+### S3b 原 Engine 当前 instrument 使用边界（已实现，限独立消费子层）
+
+范围只新增 NativeInstrumentCurrent 及 fake/SQLite 回归，不改旧 source schema/哈希、Engine、金融或 CAS。复用原 `_market_contract` 完整投影，不复制 metadata/parser，也不自动 reload/set_markets；原 Engine、现有 SQLite 连接和已初始化 SDK cache 都须明确存在且无调用者事务。固定入口 `collect_native_instruments_for_engine(engine, codes, *, max_age_ms, max_observation_span_ms)` 自行调用 S3a 公共来源，不接受 caller receipt/PASS；实际 Engine 的 mode/swap/非 dry-run、SDK 路由/类型与原方法、完整 cache/options/目标池及 DB 连接/位置在调用前后必须不变。
+
+两个预算均显式必填非负整数毫秒（bool 不算），不借 account 默认；age 为最终全部复核完成时刻减 source.started_ms，span 为 source.finished_ms-source.started_ms，恰界允许、超 1ms 拒绝。没有原生生成时间，不能伪造 server skew。当前实际 Engine 投影、active 和原生状态必须逐字节匹配新采来源；缓存空缺/不完整、受替换方法、来源或输入/DB/client 漂移均拒绝，不尝试刷新补救。返回原来源字节，两个 flags 仍 false，不产生新授权包装或持久写入。
+
+先缺 API RED，再以真实 Engine 方法、SDK 类型及底层 fake 公共 endpoint 验证双币/三 SDK × 两模式的匹配与过期缓存、全部单位/精度/限额/状态字段、严格时钟/预算、方法替换与 cache/DB/input 漂移及失败零 I/O/零写入。固定 GET 只在无 writer lock 时运行；主线程串行，活 pytest 不编辑。此子边界不接默认发送，不证明资金、服务器原子性或已加载 runtime 完整性，账户级 CAS/资金详细协议继续待审。
+
+实现结果：先直接缺 API 测试观察 1 failed，再最小实现；首组 133 passed，保护性补查后 398、最终 446 项专项用例全部通过。已初始化的 markets/markets_by_id 和原 bound methods 才可调用原 `_market_contract`；空缓存或受替换 loader 不运行，完整缓存/options/公域路由/SDK/DB 身份前后相同，并比较原投影、typed active、native state。年龄包括来源 reader、最终 DB 位置及全部解析复核耗时，跨度不误用年龄；零预算无隐含宽限。返回原 `chan-native-instrument-evidence-v1`，不另封 ready/PASS。
+
+CPython 3.14.2/3.11.15 关键组合各 1568 passed（446 新消费者＋422 原 instrument 来源＋700 原来源/账户/订单用例），0 failure/error/skip/warning，1568 个唯一用例集合一致；两版 compileall 和 diff 通过。新代码独立于旧 Engine/source，未改其 schema/文件/部署指纹；本地代码字节前后核验仍非加载 runtime 完整证明。S3 默认消费者/账户级原 CAS/逐单资金能力/完整新指纹闭包与 C7 仍待，不能从这一步或 inactive 匹配推导准入。
+
 ## S4 默认 CLI 多市场合成 E2E 与发布
 
 沿真实 RunTradeCycle/RunTradeStage，fake 最底层原生运输，验证 Binance/OKX × one_way/hedged × 多市场的账户/准入/意图/恢复链。只有全部新风险入口不可绕过消费者后，才有条件替换原常量阻断。

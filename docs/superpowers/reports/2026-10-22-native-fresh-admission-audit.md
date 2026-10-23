@@ -208,3 +208,13 @@ NativeComponentCollector 已沿原 collectors 的固定顺序自取完整来源�
 主线程复核先以10项实际RED证明：环境在请求开始读时变化后，不应仍发GET；Binance错误包即使带有效rows也不能接受。最小前置环境复查/错误envelope拒绝后绿色。其余真实RED包括目标池变异、缺filter时SDK补值、显式单位/有限数字/typed时间/环境bool别名与缺原约束字段。422项新用例覆盖三SDK类×live/testnet标签、两市场与64/65边界、cache投毒/不变、raw/派生/重封/SDK/环境/源码/时钟漂移、非交易状态、无HTTP及核心导入；最终双解释器各1122 passed，0 failure/error/skip/warning，集合一致，详情见台账。
 
 两个 flags=false；source_ms=None/clock_kind=local_request_window_only，不提供服务端生成时间或原子性认证，显式reader需要对应SDK。未改旧账户/市场来源、金融、订单、配置、权限或依赖；现有 Engine cache 路径与默认壳阻断不变，新来源还须绑定实际 per-order/runtime/完整政策/原CAS。详细预留协议、逐单资金能力、原生实际吞吐/SDK内部重试与真实C7均未完成，不能重封旧候选/产物或关闭主Goal。
+
+## 21. S3b 原 Engine 当前缓存与自采 instrument 对齐
+
+新增独立 NativeInstrumentCurrent，不改已验 Engine/来源/金融/CAS。入口自己调用原 S3a 一次公共采集，只收原 Engine、显式目标池和必填非负整毫秒 age/span；不收 receipt/PASS。实际 SDK 缓存的完整 markets/markets_by_id/options/索引、public environment、SDK 及原 Engine/SQLite 连接/位置前后必须不变。只在现有缓存完整、原 bound methods 未替换时调用原 `_market_contract`，避免原 SDK loader 走 I/O 或 set_markets 分支；新鲜来源与原投影、typed active、native state 必须逐字节相等。不用自动刷新修补旧 cache，不重新实现 parser/metadata/资金公式。
+
+原来源窗口以本地 started→finished 计算 span，age 则到消费方最后全部核验完成为止；reader 和最终 DB identity 费用不能刷新来源或从年龄里扣除，恰界允许、超 1ms 拒绝、bool/float/缺预算无默认。没有服务器生成时间，不制造 skew 证明。缺 owner/cache/方法或已有事务在 GET 前拒绝，采集期间的 cache/engine/code/SDK/route/input/DB 漂移在返回前拒绝；替换连接不查询或写入，失败无 DB/订单写入和重试。
+
+先 1 failed 的直接缺 API RED，最小实现后 133 passed；保护性补查后 398、最终 446 专项通过。两版关键集合各 1568 passed（446 新＋422 原 instrument＋700 原市场/自采/current/核算/政策/订单），0 failure/error/skip/warning，JUnit 唯一集合差异 0；compileall/diff 通过。主线程审查、严格串行、测试活进程不编辑，无独立审计或真实服务声明。其余未变模块沿原证据适用范围复用，不冒称本轮全仓测试。
+
+输出只保留原 S3a 来源 document，两个 flags=false；matching inactive 仍非许可。新消费者未被默认 prepare/CAS/HTTP 调用，未纳入旧模型/部署/输入/paper 指纹；不能重封旧产物、解除常量阻断或据文件/方法字节核验宣称加载 runtime 可信。账户级预留详细协议尚待确认，逐单资金能力独立缺口、全部平台规则/内部 HTTP 重试/真实容量和 C7 均保留，S3/C5/C6/C7 和完整 Goal 未完成。
