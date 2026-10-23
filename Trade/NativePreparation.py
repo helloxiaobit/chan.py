@@ -143,7 +143,7 @@ def assert_native_prepare_context_current(engine, context):
     try:
         if type(context) is not _NativePrepareContext or context not in _PREPARED:
             _fail()
-        owner, _, check = _PREPARED[context]
+        owner, _, check = _PREPARED[context][:3]
         if engine is not owner:
             _fail()
         check()
@@ -190,7 +190,7 @@ def _capture_native_prepare_context(engine, record_id, amount, price, *, post_on
                     or engine.safety_policy is not policy or guard.now_ms is not original_clock):
                 _fail()
 
-        def current(*, check_implementation=True, owned=False):
+        def current(*, check_implementation=True, owned=False, expected_record=None):
             owners(owned=owned)
             if (canonical_bytes(provided) != frozen_request or (check_implementation and _implementation() != implementation)):
                 _fail()
@@ -209,6 +209,12 @@ def _capture_native_prepare_context(engine, record_id, amount, price, *, post_on
             candidate_raw = Path(candidate["path"]).read_bytes()
             candidate_identity = {**candidate, "file_sha256": hashlib.sha256(candidate_raw).hexdigest()}
             actual = chan.get_record(record_id)
+            if expected_record is not None:
+                # Only the original transition writer supplies its independently
+                # verified, exact full after-row. No arbitrary own-row exclusion.
+                if canonical_bytes(actual) != canonical_bytes(expected_record):
+                    _fail()
+                actual = signal_record
             if (actual is None or actual["status"] != "signal" or actual["watching"] != 1 or actual["is_open"] != 0
                     or actual["open_attempt"] != 0 or actual["open_client_order_id"] is not None):
                 _fail()
@@ -224,6 +230,7 @@ def _capture_native_prepare_context(engine, record_id, amount, price, *, post_on
                     "candidate": candidate_identity, "opening_inputs": stamp, "scope": scope, "runtime": runtime}, actual
 
         first, record = current()
+        signal_record = json.loads(canonical_bytes(record))
         assessment = None
         if record.get("deployment_id") or record.get("model_version"):
             from .Script.Deployment import verify_entry_assessment
@@ -264,12 +271,12 @@ def _capture_native_prepare_context(engine, record_id, amount, price, *, post_on
         client_binding = _client_binding(exchange)
         owners()
 
-        def recheck():
+        def recheck(*, expected_record=None):
             owners(owned=True)
             begin = utc_now_ms()
             if type(begin) is not int or not result["payload"]["finished_ms"] <= begin < 2**63:
                 _fail()
-            observed, actual = current(owned=True)
+            observed, actual = current(owned=True, expected_record=expected_record)
             if canonical_bytes(stable(observed)) != canonical_bytes(stable(last)) or _client_binding(exchange) != client_binding:
                 _fail()
             if assessment is not None and canonical_bytes(verify_entry_assessment(actual, entry_assessment, price, engine)) != canonical_bytes(assessment):
@@ -281,7 +288,7 @@ def _capture_native_prepare_context(engine, record_id, amount, price, *, post_on
                 _fail()
             # Reuse the same local reader after code/entry checks. It performs
             # no prepare or profile lookup, and does not advance order state.
-            observed, _ = current(owned=True)
+            observed, _ = current(owned=True, expected_record=expected_record)
             if (canonical_bytes(stable(observed)) != canonical_bytes(stable(last)) or _client_binding(exchange) != client_binding
                     or not end <= observed["opening_inputs"]["checked_at_ms"] < 2**63):
                 _fail()

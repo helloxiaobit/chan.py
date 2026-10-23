@@ -478,8 +478,10 @@ exchangeInfo.serverTime、上架/到期/未来生效时间均不作新鲜时钟�
 `Trade.NativePreparation.capture_native_prepare_identity` 已补本地身份前置层：自行重读原信号、配置、候选与行情输入，调用原 Engine prepare/精度/限额；适用时核原部署和真实 entry 评分，并检查选定加载函数的 code、defaults、globals 与 owner。
 它不接受 caller receipt/check/PASS，不写意图或资金，不调用下单；缺现有client时在创建会话前拒绝。输出 `chan-native-prepare-identity-v1`，两个 flags=false。438 项新用例，两解释器各754项适用组合通过（7个小样本模型警告）；源码检查不是整个解释器可信证明，身份采样不是当前来源窗口，JSON不能转交当准入。完整instrument/component自采→原CAS/HTTP、逐单资金、默认入口和C7仍未完成。
 版本化 API 见下文，本入口的命令完成状态不是完整验收或生产授权。
-另有22项原生单位联合夹具验证实际SDK prepare、双币非空账户自采及L0：Binance contractSize=1、OKX保留ctVal，原历史含部分平仓、未决单、fee/funding和非零预占；最终双解释器通过。它仍是测试中的手动组合，不是生产受控入口、prepare持久CAS绑定或逐单资金证明，详见台账S3e。
-`assert_native_prepare_context_current` 已可在原SQLite自有事务内复核实际prepare的活上下文，重用原输入/候选/模型和冻结检查，不调用SDK/prepare、不写表、不接受JSON或复制对象，成功仅返回None。313项新用例，双版12模块各1089通过（7个已知模型警告）；上下文回收不释放原订单。它仅适用于intent前本地一致性，不是跨重启凭证、当前原生资金证明或已接默认CAS/HTTP；完整受控自采/持久引用和资金能力仍待。
+先前22项原生单位联合夹具验证实际SDK prepare、双币非空账户自采及L0：Binance contractSize=1、OKX保留ctVal，原历史含部分平仓、未决单、fee/funding和非零预占；最终双解释器通过。这22项手动组合本身不证明生产入口、持久CAS绑定或逐单资金能力；后续受控调用见下段，详见台账S3e。
+`assert_native_prepare_context_current` 已可在原SQLite自有事务内复核实际prepare的活上下文，重用原输入/候选/模型和冻结检查，不调用SDK/prepare、不写表、不接受JSON或复制对象，成功仅返回None。313项新用例，双版12模块各1089通过（7个已知模型警告）；上下文回收不释放原订单。该公开断言仍仅适用于intent前本地一致性，不是跨重启凭证或当前原生资金证明。
+`Trade.NativePreparedIntent.acquire_native_prepared_diagnostic_intent` 现将同次实际prepare→instrument自采→原component自采→L0→原intent CAS绑定起来；不收caller receipt/check/PASS。原writer在同一事务保存 `chan-native-order-transition-v2` 的完整preparation引用，严格核本单整行唯一增量、全账本/原journal，并在引用INSERT/回读及本地回调后再核全部来源预算。只复用原核验体和现有引用表，没有第二套资金/订单状态机。
+72项新增用例覆盖双venue/持仓模式/多空非空账户、真实小合成模型、来源/引用变异、原事务回滚与重启读取；CPython3.14.2/3.11.15相同24模块各1841 passed、0failure/error/skip、9个模型警告，非全仓或外部认证。历史v2 reader需对应SDK纯解析、无需client/GET；原v1不受此新增要求影响。v2仍使用不可执行 `chan-native-cas-order-v1`，claim在原SQL前明确拒绝，两个flags=false；完整L1/L2后本地重建、逐单资金、新执行版本全reader、HTTP/default/S4/C7仍未完成。多次GET不是服务器原子快照，本地handle/源码摘要不认证整个宿主；不得据此解除门禁或重臂旧候选。
 
 非 dry-run 还必须同时满足以下门禁：
 

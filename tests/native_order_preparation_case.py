@@ -32,18 +32,21 @@ HOUR = 3_600_000
 CODES = ["TEST/USDT:USDT", "ALT/USDT:USDT"]
 
 
-def native_order_case(db, db_conf, tmp_path, monkeypatch, venue, *, mode="one_way", side=True):
-    at = NOW//(4*HOUR)*(4*HOUR)
+def native_order_case(db, db_conf, tmp_path, monkeypatch, venue, *, mode="one_way", side=True, at_ms=None):
+    at = NOW//(4*HOUR)*(4*HOUR) if at_ms is None else at_ms
     clock = {"now": at}
     for module in ("Trade.AccountSources", "Trade.AccountStore", "Trade.ExecutionFacts", "Trade.ExecutionStore", "Trade.OrderAudit", "Trade.db_util",
                    "tests.test_crypto_order_contract", "Trade.NativeInstrumentEvidence", "Trade.NativeInstrumentCurrent",
                    "Trade.NativePreparation", "Trade.NativeComponentCollector", "Trade.NativePendingOrders",
                    "Trade.NativeBalanceReservations", "Trade.NativeMarketEvidence", "Trade.NativeAdmission",
-                   "Trade.NativeCurrentComponents", "Trade.NativeAccountCheck", "Trade.NativeAccountStore", "Trade.AccountRiskStore", "Trade.NativeOrderBoundary"):
+                   "Trade.NativeCurrentComponents", "Trade.NativeAccountCheck", "Trade.NativeAccountStore", "Trade.AccountRiskStore", "Trade.NativeOrderBoundary",
+                   "Trade.NativeOrderTransition"):
         monkeypatch.setattr(module+".utc_now_ms", lambda: clock["now"])
     client, positions, account, settings, _, _ = snapshot_client(monkeypatch, venue)
     client.options["defaultType"] = "swap"
     raw = [raw_instrument(venue, base) for base in ("TEST", "ALT")]
+    for row in raw:
+        row["listTime" if venue == "okx" else "onboardDate"] = str(at-1000) if venue == "okx" else at-1000
     client.set_markets([client.parse_market(copy.deepcopy(row)) for row in raw])
     trade = venue_engine(db, tmp_path, venue, mode)
     fake = trade.exchange

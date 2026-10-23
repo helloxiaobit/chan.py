@@ -75,6 +75,8 @@
 
 当前实施记录：独立 instrument 来源/原缓存消费已在 bb3aa29/f678ece 离线验收；L0 前置基线及原事务断言已完成153项专项。新增 NativeOrderTransition 已将显式本单 L1/L2 引用接入原 intent/claim 事务，381项新测试与两版54模块各3688 passed/1既有skip/13小样本模型警告；只有不可执行的 `chan-native-cas-order-v1` 诊断意图可使用新引用，旧 v1/v2/v3 字节不重封。该子层不是完整4.1 prepare/4.3 HTTP 消费或资金协议验收；完整实际候选/加载runtime/来源调用绑定、新可执行契约及全部reader、额度规则和默认入口仍未完成，不得把下列各项全部标为通过。细节见主验收台账和实施计划 S3c。
 
+2026-10-24补充实施状态：NativePreparedIntent已把同次实际本地prepare、instrument与原component自采接到原intent CAS；v2引用在原事务内核完整原行/账本、唯一intent增量和最终来源窗口，未新增表/金额模型。仅原writer内部可在精确expected after-row核对后复用冻结signal，公开pre-intent断言仍不适用于L1之后。72项新增及原兼容24模块，两版各1841 passed、0failure/error/skip、9模型警告，集合一致。v2历史可在无client/GET时用对应SDK重读，但v2 claim在原SQL前明确拒绝；原v1诊断claim/旧v1-v3恢复仍沿原路径。完整4.3的L1/L2后本地重建、HTTP/新执行版本全reader/default、逐单资金及完整加载闭包尚未通过；多次来源读取不证明服务器原子性，以下完整联合验收仍不能标为完成。实施详见S3e及审计§27，不改变已批准协议或任一真实交易门禁。
+
 1. 单独证明已加载 SDK cache 不构成新 instrument 读取；fake 最底层原生方法返回新 tick/contract/status/limits 时应拒绝旧 metadata。拒绝错路由、额外私有/跨产品请求、缺/重复市场、非有限/未来/倒退时钟；不为恢复旧单强制获取新模型。
 2. 用已有两币非空/partial/pending/fee/funding fixture 扩展完整 prepare→原 intent→claim→HTTP；用真实原 SQLite/CAS，而非 mock 一个 passed helper。
 3. 同账户不同记录/市场/表的双连接竞争，以及 acquire/claim/HTTP 前各边界的输入、冻结、来源、runtime/配置变化，均不得产生两个未观察新风险意图或额外 HTTP。

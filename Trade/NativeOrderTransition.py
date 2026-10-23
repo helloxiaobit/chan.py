@@ -22,6 +22,7 @@ from .OrderAudit import ATTEMPTS, EVENTS, _identity, _key, _load, _read_attempt,
 
 TABLE = "chanpy_native_order_transitions"
 DOCUMENT_SCHEMA = "chan-native-order-transition-v1"
+PREPARED_DOCUMENT_SCHEMA = "chan-native-order-transition-v2"
 # Deliberately not an executable CCXT schema. Old strict readers reject it too.
 CONTRACT_SCHEMA = "chan-native-cas-order-v1"
 _LOCAL_SOURCES = ("Trade/NativeOrderTransition.py", "Trade/CCXTTradeEngine.py")
@@ -135,13 +136,14 @@ def _read(chan, record):
         document = json.loads(row["payload"])
         p = document["payload"]
         root, stage = p["root"], "intent" if ordinal == 1 else "claim"
-        if (set(document) != {"schema", "payload", "payload_sha256"} or document["schema"] != DOCUMENT_SCHEMA
+        prepared = document["schema"] == PREPARED_DOCUMENT_SCHEMA
+        if (set(document) != {"schema", "payload", "payload_sha256"} or document["schema"] not in {DOCUMENT_SCHEMA, PREPARED_DOCUMENT_SCHEMA}
                 or canonical_bytes(document).decode() != row["payload"] or _sha(document) != row["payload_sha256"]
                 or _sha(p) != document["payload_sha256"]
                 or set(p) != {"root", "binding_sha256", "boundary", "stage", "previous_sha256", "after_record_sha256",
                               "ledger_sha256", "records_sha256", "journal_prefix", "event_sha256", "coverage",
                               "economics_complete", "native_admission_verified"}
-                or set(root) != {"boundary", "target", "before_record_sha256", "requested_updates_sha256", "implementation_sha256"}
+                or set(root) != {"boundary", "target", "before_record_sha256", "requested_updates_sha256", "implementation_sha256"} | ({"preparation"} if prepared else set())
                 or canonical_bytes(root["target"]) != canonical_bytes(dict(zip(("trade_table", "record_id", "phase", "attempt"), target_key)))
                 or canonical_bytes(p["boundary"]) != canonical_bytes(root["boundary"]) or p["stage"] != stage or row["stage"] != stage
                 or p["binding_sha256"] != reference or row["binding_sha256"] != reference or _sha(root) != reference
@@ -149,6 +151,9 @@ def _read(chan, record):
                 or p["coverage"] != "exact_original_cas_delta_only"
                 or p["economics_complete"] is not False or p["native_admission_verified"] is not False):
             _fail()
+        if prepared:
+            from .NativePreparedIntent import validate_stored_preparation
+            validate_stored_preparation(chan, root, attempt)
         event_row = database.query_one(f"SELECT * FROM {EVENTS} WHERE event_id=?", (row["event_id"],))
         event = _load(event_row)
         if (tuple(event_row[k] for k in ("trade_table", "record_id", "phase", "attempt")) != target_key
@@ -192,10 +197,12 @@ def _current(chan, document):
     Boundary._windows(inputs, snapshot, boundary["captured_ms"], utc_now_ms())
 
 
-def prepare_transition(chan, before, kind, updates, boundary, *, history):
+def prepare_transition(chan, before, kind, updates, boundary, *, history, prepared_context=None):
     """Internal original writer hook, not a stand-alone approval API."""
     try:
         if kind == "intent" and boundary is None:
+            if prepared_context is not None:
+                _fail()
             return None
         reference = _reference(history, before["open_attempt"])
         if kind == "claim" and (reference is None or before["open_order_status"] != "created"):
@@ -233,9 +240,14 @@ def prepare_transition(chan, before, kind, updates, boundary, *, history):
             CCCXTTradeEngine._check_execution_evidence(contract, expected, "open")
             root = {"boundary": json.loads(canonical_bytes(boundary)), "target": dict(zip(("trade_table", "record_id", "phase", "attempt"), _key(identity))),
                     "before_record_sha256": _sha(before), "requested_updates_sha256": _sha(updates), "implementation_sha256": _implementation()}
+            if prepared_context is not None:
+                from .NativePreparedIntent import consume_prepared_context
+                root["preparation"] = consume_prepared_context(chan, before, updates, boundary, prepared_context)
             reference, previous = _sha(root), None
         else:
             previous_document = _read(chan, before)
+            if previous_document["schema"] == PREPARED_DOCUMENT_SCHEMA:
+                _fail()  # Post-intent local reconstitution/funding is not implemented.
             if previous_document["payload"]["stage"] != "intent":
                 _fail()
             _current(chan, previous_document)
@@ -247,6 +259,7 @@ def prepare_transition(chan, before, kind, updates, boundary, *, history):
         return {"root": root, "binding_sha256": reference, "previous_sha256": previous, "stage": kind,
                 "expected": expected, "expected_records": expected_records, "prefix": _prefix(database),
                 "native_delta": {"schema": "chan-native-cas-delta-v1", "record_sha256": _sha(expected), "records_sha256": _sha(expected_records)},
+                "prepared_context": prepared_context,
                 "database": database, "connection": database.conn, "table": chan.table, "started_ms": start}
     except Exception:
         _fail()
@@ -296,13 +309,18 @@ def finish_transition(chan, before, after, transition):
                    "previous_sha256": t["previous_sha256"], "after_record_sha256": _sha(after), "ledger_sha256": _sha(actual_ledger),
                    "records_sha256": _sha(expected_records), "journal_prefix": current_prefix, "event_sha256": event_row["payload_sha256"],
                    "coverage": "exact_original_cas_delta_only", "economics_complete": False, "native_admission_verified": False}
-        document = {"schema": DOCUMENT_SCHEMA, "payload": payload, "payload_sha256": _sha(payload)}
+        document = {"schema": PREPARED_DOCUMENT_SCHEMA if "preparation" in t["root"] else DOCUMENT_SCHEMA,
+                    "payload": payload, "payload_sha256": _sha(payload)}
         database.execute(f"INSERT INTO {TABLE}(trade_table,record_id,phase,attempt,stage,binding_sha256,event_id,payload,payload_sha256) VALUES(?,?,?,?,?,?,?,?,?)",
                          (*target, stage, t["binding_sha256"], event_row["event_id"], canonical_bytes(document).decode(), _sha(document)))
         if _read(chan, after) != document:
             _fail()
         Boundary._same_database(chan, t["database"], t["connection"], t["table"], owned=True)
-        _current(chan, document)  # Publication/readback must not escape source budgets.
+        if "preparation" in t["root"]:
+            from .NativePreparedIntent import finish_prepared_context
+            finish_prepared_context(chan, t["prepared_context"], t["expected"], document)
+        else:
+            _current(chan, document)  # Publication/readback must not escape source budgets.
     except Exception:
         _fail()
 

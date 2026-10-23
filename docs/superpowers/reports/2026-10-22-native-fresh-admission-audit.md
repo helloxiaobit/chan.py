@@ -278,3 +278,17 @@ TDD证据：缺API 1 RED；使用时钟倒退/非法类型与末尾clock变异72
 313项新上下文用例；最终CPython3.14.2/3.11.15相同12模块各1089 passed、0failure/error/skip、7已知小样本警告（433.36s/455.12s），1089唯一用例集合一致。7警告是3个XGB AUC和4个MLP收敛；双版compileall/diff通过，JUnit身份见台账。全fake/临时SQLite，无SDK实际请求/下单、实际配置/权限/依赖/候选改变或研究绩效读取；主线程审查，无独立代理审计声明。
 
 限制：handle并非可抵御宿主任意globals改写的能力隔离，更非服务器原子性或跨重启凭证；本地检查未变不证明native来源年龄/每单资金。新代码未接默认consumer，也未将prepare身份持久绑定至原CAS。当前仅intent前严格完整记录，合法intent后须拒绝而非忽略自身；L1/L2之后必须按新版本原事件独立重建和全部reader/指纹验收。完整同次自采→L0/CAS、HTTP前/默认全入口、逐单资金与S4/C7仍待，两个flags=false、常量阻断和完整Goal active保持。
+
+## 27. S3e 同次prepare/自采与原intent持久绑定（2026-10-24，有限子层）
+
+基线01d4c54已推送且clean，原Goal active。新增NativePreparedIntent，入口只取实际原Engine、原请求和完整显式政策/预算/before ID，不接caller receipt/check/PASS。首次owned视图先核原before/mode/sticky freeze、固定完整trade-shaped行与journal前缀；实现身份固定在任何来源读取前。锁外实际prepare、原instrument消费者及原component自采，然后用同一活上下文进入原L0/intent CAS。原writer同事务核精确整行/唯一intent增量、原attempt/journal和全ledger，并保存完整preparation引用；不新建表、金融公式、额度或订单状态机。
+
+新文档schema=chan-native-order-transition-v2，仍在原append-only表，root只增加preparation；原v1形状/读取与旧v1-v3契约不重封。原NativePreparation三项关联/公开JSON保留，内部只为原writer已经独立验证的expected after-row增加分支：实际DB完整行必须恰等expected，随后才用冻结signal复核原输入/候选/entry。公开pre-intent断言不接受expected、intent后仍拒绝。最后本地回调后再次核原完整transition，来源窗口还包括原引用INSERT/回读时间，不能用自身记录排除来消除差异。
+
+stored reader严格核schema/字段/typed请求、原attempt两单位/条款/输入、原check来源链接、instrument raw与组件metadata、policy及固定操作顺序/时钟；重启时无需client/GET/重新prepare，但raw instrument重建需要对应SDK。原v1没有这个新增SDK要求。失败回滚原intent/attempt/journal/引用，已采原始观察可保留；来源失败沿原sticky publisher，原库不可写或身份不明不冒称冻结，已知sticky在新GET前拒绝。
+
+72项新用例涵盖两venue×one_way/hedged×多空非空历史、两个真实小合成模型、候选/现金/未决/第三方行变异、SQL/引用/晚1ms失败回滚、假上下文/重封字段、原合法Binance client ID、显式预算、第二未观察意图拒绝和核心无可选依赖import。真实RED后修复晚本地回调改第三方行、实现固定过晚、已知冻结/非法开始时钟到GET、独立stored字段/政策别名及组件字段/顺序。最初clock/contextmanager/venue方法名、模型fixture跨过原1h有效期仅修测试；未放宽政策。GET之后的未观察服务器现金变化另设限制用例：可以形成历史一致的诊断引用，但不能因此claim，不虚构服务器原子快照。
+
+最终相同24模块两版各1841 passed、0failure/error/skip、9warnings；CPython3.14.2为983.66s、3.11.15为1019.22s，1841唯一用例集合一致。包含原381 transition/313 context/438 prepare/22联合、原状态机/SQLite/报告CAS/历史/恢复/账户绑定/冻结/执行、安全、opening/模型部署和持久paper/cycle；非全仓。警告为5个小样本XGB AUC与4个MLP收敛，双版compileall/diff通过，JUnit身份见台账。全fake/合成/临时SQLite，活pytest不编辑，主线程审查、无独立代理审计；实际Config/config.yaml与CHANPY_CONFIG仍不存在（仅查存在性），无真实I/O/订单/研究绩效读取或实际配置/权限/依赖/candidate改动。
+
+当前v2 intent仍是不可执行chan-native-cas-order-v1；原Engine/旧严格reader不把它当v3，v2 claim即使重启也在原SQL前拒绝，原v1诊断claim不被新分支重写。两个flags=false，未知状态不自动释放。本地handle/源码指纹不抵御宿主任意globals改写或认证整个加载闭包；完整L1/L2后本地重建、新可执行版本全reader/指纹、逐单资金能力、HTTP/default/S4/C7与真实容量仍待，完整S3e/C5/C6/C7未完成，Goal保持active。不能重封旧模型/部署/candidate或移除任何默认阻断。

@@ -169,7 +169,7 @@ class CChanDB:
         return self.db.query(sql, args)
 
     # ===== 可恢复订单状态机 =====
-    def _order_write(self, record_id, prefix, kind, sql, args, *, native_boundary=None, native_updates=None):
+    def _order_write(self, record_id, prefix, kind, sql, args, *, native_boundary=None, native_updates=None, native_preparation=None):
         if self.db_type != "sqlite":
             return self.db.execute(sql, args)  # Legacy only; no crypto migration certification.
         from .OrderAudit import read_history, record_transition
@@ -179,7 +179,8 @@ class CChanDB:
             transition = None
             if prefix == "open" and kind in {"intent", "claim"}:
                 from .NativeOrderTransition import prepare_transition
-                transition = prepare_transition(self, before, kind, native_updates, native_boundary, history=history)
+                preparation = {} if native_preparation is None else {"prepared_context": native_preparation}
+                transition = prepare_transition(self, before, kind, native_updates, native_boundary, history=history, **preparation)
             changed = self.db.execute(sql, args)
             if changed == 1:
                 after = self.get_record(record_id)
@@ -388,6 +389,7 @@ class CChanDB:
         snapshot: Optional[dict] = None,
         order_contract: Optional[dict] = None,
         native_boundary: Optional[dict] = None,
+        native_preparation=None,
     ) -> bool:
         requested = _positive_qty(requested_qty, "开仓请求量")
         if not client_order_id:
@@ -404,6 +406,8 @@ class CChanDB:
         diagnostic = isinstance(order_contract, dict) and order_contract.get("schema") == CONTRACT_SCHEMA
         if diagnostic != (native_boundary is not None):
             raise CChanException("原生 CAS 诊断契约必须绑定本次 L0，不能替代普通 v3 或资金许可", ErrCode.TRADE_UNLOCK_FAIL)
+        if native_preparation is not None and native_boundary is None:
+            raise CChanException("实际准备上下文必须由原生诊断 CAS 消费", ErrCode.TRADE_UNLOCK_FAIL)
         if native_boundary is not None and score_before is not None and (type(score_before) not in (int, float) or not math.isfinite(score_before)):
             raise CChanException("原生 CAS 分数须是有限数字，不接受隐式类型转换", ErrCode.TRADE_UNLOCK_FAIL)
         contract_clause = ", open_order_contract=?, open_intent_ms=?" if self.db_type == "sqlite" else ""
@@ -442,6 +446,7 @@ class CChanDB:
                 *contract_args,
                 record_id,
             ), native_boundary=native_boundary, native_updates=native_updates,
+            **({} if native_preparation is None else {"native_preparation": native_preparation}),
         )
         return changed == 1
 

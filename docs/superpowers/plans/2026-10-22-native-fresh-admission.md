@@ -245,6 +245,22 @@ TDD 先用真实 fake/SQLite 的双币非空 fixture 观察缺 API RED；正向�
 
 双解释器相同12模块各1089 passed/0failure/error/skip/7既有小样本模型警告（433.36s/455.12s），唯一集合相同；双版compileall/diff通过。活句柄不是密码学隔离、服务器证明或持久授权，不抵御任意改写模块globals的宿主；没有新增来源年龄预算，不能把本地未变当native账户当前/资金充分。下一步继续同一次受控prepare/instrument/component自采与原L0/版本化CAS持久引用；该pre-intent断言不忽略本单合法增量、不自动适配claim或重启，完整S3e/S3/S4及C5/C6/C7仍未完成。
 
+同次自采/原intent引用实施与复用计划（2026-10-24）：新增NativePreparedIntent.acquire_native_prepared_diagnostic_intent，入口只接实际Engine、record/两单位前请求、before ID、account_scope、完整显式component policy、显式instrument age/span和client ID，池/模式从真实输入取。初始原owned视图固定before/完整trade-shaped行与journal；锁外实际prepare→独立instrument→原component collector，最后用同一活上下文/L0在原CAS内复核，不能接受caller receipt/check/PASS。沿现有弱键注册表关联本次自采的冻结包，不增加资金/订单生命周期或新表。
+
+原writer只添加可选native_preparation活上下文；NativeOrderTransition新增chan-native-order-transition-v2，root仅多preparation绑定，原v1读取分支和既有字段不改。原intent/attempt/journal与完整引用同事务；stored reader从原check/attempt和raw instrument独立核两单位/信号/来源/窗口/执行条款，不以重封摘要替代事实。v2仍沿不可执行chan-native-cas-order-v1，原Engine/旧严格reader继续拒绝；在合法L1/L2后的完整本地状态重建及资金消费者完成前，v2 claim须在原SQL前明确拒绝，不默认继承v1 claim或丢prepare标记。旧v1诊断/原v1-v3恢复继续回归。
+
+复用/清理限定：保留NativePreparation原三项tuple位置及旧JSON接口，只允许受控调用追加内部源绑定，原断言读取前三项；复用原ledger/records/prefix、source raw readers、component失败publisher和原CAS更新集合，不复制金融/metadata parser或并行订单引擎。准备源年龄包含最终original引用INSERT/回读；source异常沿原sticky发布，本地参数/候选早拒绝不假称冻结。先缺API RED，再双venue/模式/方向非空联跑、来源/候选/metadata/账本/引用变异、原事务失败回滚及绕过/claim拒绝、重启历史读取；适用双版本/主线程审查/Lore后再记有限子层结果。完整S3e、资金、HTTP/default/S4/C7不因该诊断引用通过关闭。
+
+原CAS后局部检查的有界复用：只由原finish_transition独立核验的完整expected after-row进入内部闭包；每次先严格比较DB实际整行等于该expected，再用冻结原signal读取原输入/候选/模型。公开pre-intent断言仍不接受expected参数、合法intent后仍拒绝；不暴露caller record排除/更新字段豁免。原journal、全部trade-shaped整行/ledger验证仍负责其唯一增量；本地检查之后须再核原完整transition，不能漏掉模型/风险读取期间第三方行变化。9项初次正向已过后删除测试临时context展开，仅用正常异常边界继续故障验证。
+
+2026-10-24 同次自采/原intent引用子层已实现：72项新用例，两个venue×one_way/hedged×多空非空账户及两个真实小合成模型正向。原capture闭包只增加原writer专用expected整行分支，原三项tuple位置/公开JSON和pre-intent断言保留；v2只在现有append-only表的root增加preparation，原v1形状与旧契约不重封。失败原子回滚intent/attempt/journal/引用，原raw观察可保留；来源异常沿原sticky publisher，已知冻结在任何新GET前拒绝。最终年龄包括原引用INSERT/回读及全部本地复核耗时。
+
+真实RED/GREEN保护缺API、after-CAS本地回调晚改第三方行、开始前实现固定、已知冻结/非法时钟提前拒绝、独立stored链接/严格字段及policy别名、组件字段/操作顺序。原Binance合法client ID字符保留。初期时钟、CChanDB contextmanager及错误venue方法名仅修夹具；真实模型的原1h候选有效期不扩大，只把历史放在先前4h边界并在close+15m调用。另明确测试：对应GET之后未被再次观察的服务器变化不能被本地历史证明发现，诊断引用一致也不允许claim；不将这个限制伪装成检测能力。
+
+CPython3.14.2/3.11.15相同24模块各1841 passed、0failure/error/skip、9warnings（983.66s/1019.22s），1841个唯一用例集合差异0；双版compileall/diff通过。范围包含原381项transition、313项context、438项prepare、22项联合及原状态机/SQLite/报告CAS/恢复/账户/冻结/执行、安全、opening、模型部署、持久paper/trade-cycle，非全仓验收。5个小样本XGB AUC与4个MLP收敛警告如实保留，全部fake/合成/临时SQLite、主线程审查，无真实I/O或独立代理审计。
+
+当前仍为不可执行诊断：v2 claim即使重启也在原SQL前拒绝；stored reader从原check/attempt/raw instrument核历史，但不是重新准入或服务端签名，需对应SDK而不需要client/GET。完整L1/L2后的fresh本地重建、全部可执行reader/指纹、逐单资金能力、HTTP/default/S4/C7及宿主完整可信仍待；不得扩大为完整S3e完成或解除常量阻断。源码变更不允许重封旧模型/部署/candidate；主Goal保持active。
+
 ## S4 默认 CLI 多市场合成 E2E 与发布
 
 沿真实 RunTradeCycle/RunTradeStage，fake 最底层原生运输，验证 Binance/OKX × one_way/hedged × 多市场的账户/准入/意图/恢复链。只有全部新风险入口不可绕过消费者后，才有条件替换原常量阻断。
