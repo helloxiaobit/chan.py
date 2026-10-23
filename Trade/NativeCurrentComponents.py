@@ -4,7 +4,7 @@ import json
 from Common.ChanException import CChanException, ErrCode
 from Common.KLineTime import utc_now_ms
 from CustomBuySellPoint.Decision import canonical_bytes
-from .NativeAdmission import (POLICY_SCHEMA as LEGACY_POLICY_SCHEMA, _assert_current_windows, _current_interval_snapshot,
+from .NativeAdmission import (POLICY_SCHEMA as LEGACY_POLICY_SCHEMA, _assert_current_windows, _current_interval_sources,
                               _fail_sources, assert_native_account_market_freshness, read_native_freshness_policy)
 from .NativeMarketEvidence import verify_native_market_evidence
 
@@ -53,7 +53,8 @@ def _known_facts(document, selected, start, end):
             _fail_sources()  # A post-endpoint fact also makes the point stale.
 
 
-def _snapshot(chan, context, check_id, market):
+def _sources_snapshot(chan, context, check_id, market):
+    """Original current sources only. Consumers must separately bind a ledger."""
     from .AccountRiskStore import account_key
     from .AccountStore import TABLE as ACCOUNT_EVIDENCE, read_evidence
     from .AccountSources import WALLET_SCHEMA
@@ -62,7 +63,7 @@ def _snapshot(chan, context, check_id, market):
     from .NativeAccountStore import read_account_observations
     from .NativePendingOrders import SCHEMA as PENDING_SCHEMA
     with chan.db.transaction():
-        check, executions = _current_interval_snapshot(chan, context, check_id, market)
+        check, executions = _current_interval_sources(chan, context, check_id, market)
         if check["schema"] != CHECK_SCHEMA:
             _fail_sources()
         saved, key = check["payload"]["inputs"], account_key(context)
@@ -99,6 +100,16 @@ def _snapshot(chan, context, check_id, market):
             if at > latest or (at == latest and canonical_bytes(receipt) not in {canonical_bytes(value) for value, _ in selected}):
                 _fail_sources()
         return {"check": check, "execution_observations": executions}
+
+
+def _snapshot(chan, context, check_id, market):
+    from .AccountRiskStore import _ledger
+    with chan.db.transaction():
+        snapshot = _sources_snapshot(chan, context, check_id, market)
+        saved = snapshot["check"]["payload"]["inputs"]
+        if canonical_bytes(_ledger(chan)) != canonical_bytes({key: saved[key] for key in ("histories", "projections")}):
+            _fail_sources()
+        return snapshot
 
 
 def assert_native_components_current(chan, exchange, *, mode, markets, account_context, check_id, market_evidence, policy):

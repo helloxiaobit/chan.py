@@ -228,3 +228,17 @@ NativeComponentCollector 已沿原 collectors 的固定顺序自取完整来源�
 主线程故障注入发现新模块的最终代码核验后连接切换缺口：8 个 capture 已拒绝但查询了替换库，8 个 assert 未拒绝。先真实 16 RED，再共用原 DB/conn/table/事务所有权守卫，在最终代码检查后、位置查询前后执行；16 GREEN，替换库零 query/write。此前 fixture 的 positions 路径和 hedged 缺 record/leg 分别导致 8/16 失败，只修测试构造，不放宽原引擎；不把它们计为生产缺陷 RED。
 
 153 新用例＋340 原 current/核算/检查/冻结/历史/事务用例，两版各 493 passed，0 failure/error/skip/warning，唯一集合一致；双解释器 compileall/diff 通过，均 fake/主线程串行。实验在同一真实事务中组合 L0 assert 和原 CAS，验证跨记录/市场/表/连接不能复用旧 L0，外层回滚仍归调用者；但这并非已接默认原 CAS，更没有已完成本单唯一 L1/L2 增量、持久引用或资金能力证明。后续继续这些已批准工作，不再重复要求账户级设计批准；全部真实服务/资金/候选门禁和完整版未完成状态保留。
+
+## 23. S3c 原 intent/claim 精确增量与持久引用（限诊断子边界）
+
+用户另已明确恢复原Goal自动串行执行；当前Goal工具已返回active，未创建替代目标或缩减C0–C7。以clean、已推送d839f5c为起点，新增NativeOrderTransition，在原 `_order_write` 所有权事务内核L0→本单一个intent/attempt→L1、原claim→本单一个claim event→L2。原journal追加新版本引用和独立整行delta摘要；新append-only表只引用对应显式event_id，并保存完整原ledger/全部trade-shaped行摘要及前缀，失败回滚原CAS与引用。claim从原持久行取L1，不接受caller expected ledger/PASS，不忽略自己或任意其他行；跨market/table/connection同L0仅一个成功。
+
+原current来源核验与L0账本断言最小分离；所有旧公开入口仍强制L0完整账本，新增消费者必须重建原检查＋本单完整原attempt/事件的唯一差异后才能核来源/冻结/时间。重封后的投影/账本摘要不能代替原事件；孤立无event的attempt、后来的信号或任意其他整行字段/历史、原来源、sticky freeze或超预算均拒绝。最终时间检查在引用INSERT/回读之后，包含该耗时；仍非事务退出后/HTTP边界的完成证明。
+
+主线程真实RED覆盖缺API、重封投影与孤立attempt16项、直接Engine lookup及代码回调换连接16项、版本/typed字节/原更新集合/SQLite分数56项、市场与leg16项、写入/回读晚1ms32项和旧无引用子类兼容1项，逐项GREEN。初组8失败为夹具订单时钟落后当前账户40ms，只统一fake时间、不放宽生产预算，未计为生产缺陷。删除重复finish ledger组装，复用原检查＋已核不可变事件重建；没有第二套资金/撮合/订单引擎。
+
+新意图使用独立且不可执行的 `chan-native-cas-order-v1`，原已存v1/v2/v3不改。当前Engine在exchange lookup前拒绝新一致性引用；不认识新标记的旧严格contract reader也拒绝新schema，避免旧程序按普通v3执行。旧原生订单的query/ACK/累计报告/恢复/减仓和paper仍按原已验契约。新增表由原SQLite原子schema初始化/保留名保护；foreign同名表不收编，append-only UPDATE/DELETE/REPLACE不通过，删引用表不能降级原journal绑定。
+
+381项新测试；最终CPython3.14.2/3.11.15各3688 passed/1既有skip/13小样本训练警告，54模块/3689唯一用例集合相等，0failure/error。包含原安全/状态机/账户/执行/冻结/native sources、opening/deployment和多市场配置化/持久paper；两版compileall/diff通过，详细JUnit身份见台账。测试全fake/合成/临时SQLite，串行且活测试不编辑；无独立代理审计或真实服务声明。
+
+两个flags仍false。该层只完成原CAS精确增量与不可变引用，不完成来源本次调用权、实际信号/候选/部署/config/loaded-runtime prepare绑定、全新可执行版本与所有reader/ownership/指纹、逐单资金能力、HTTP/default全入口和S4/C7；真实容量/SDK内部重试/服务器原子性未证。旧模型/部署指纹受db_util/OrderAudit/CCXT等实际代码变更影响，不能重封旧产物继续用；无配置/权限/依赖/候选变更，常量阻断保留，完整版未完成。

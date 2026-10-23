@@ -201,10 +201,27 @@ def _read_attempt(db, row):
         previous = event_row["payload_sha256"]
     if not events or events[0]["kind"] != ("intent" if row["origin"] == "new_intent" else "legacy_snapshot"):
         _fail()
+    reference = events[0].get("native_boundary_sha256")
+    for event in events:
+        if "native_boundary_sha256" in event:
+            value = event["native_boundary_sha256"]
+            delta = event.get("native_delta")
+            if (type(value) is not str or len(value) != 64 or set(value)-set("0123456789abcdef")
+                    or identity["phase"] != "open" or payload["origin"] != "new_intent"
+                    or event["kind"] not in {"intent", "claim"} or value != reference
+                    or type(delta) is not dict or set(delta) != {"schema", "record_sha256", "records_sha256"}
+                    or delta["schema"] != "chan-native-cas-delta-v1"
+                    or any(type(delta[k]) is not str or len(delta[k]) != 64 or set(delta[k])-set("0123456789abcdef")
+                           for k in ("record_sha256", "records_sha256"))):
+                _fail()
+        elif "native_delta" in event:
+            _fail()
+        if reference is not None and event["kind"] == "claim" and event.get("native_boundary_sha256") != reference:
+            _fail()
     return {**payload, "events": events}
 
 
-def _append(db, row, kind, state):
+def _append(db, row, kind, state, *, native_boundary_sha256=None, native_delta=None):
     identity = _load(row)["identity"]
     key = _key(identity)
     digest = _hash(_encode(state))
@@ -214,13 +231,17 @@ def _append(db, row, kind, state):
     ordinal = previous["ordinal"]+1 if previous else 1
     previous_sha = previous["payload_sha256"] if previous else None
     observed = utc_now_ms()
-    raw = _encode({"identity_sha256": row["payload_sha256"], "kind": kind, "ordinal": ordinal,
-                   "previous_sha256": previous_sha, "observed_ms": observed, "state": state})
+    event = {"identity_sha256": row["payload_sha256"], "kind": kind, "ordinal": ordinal,
+             "previous_sha256": previous_sha, "observed_ms": observed, "state": state}
+    if native_boundary_sha256 is not None:
+        event["native_boundary_sha256"] = native_boundary_sha256
+        event["native_delta"] = native_delta
+    raw = _encode(event)
     db.execute(f"INSERT INTO {EVENTS}(trade_table,record_id,phase,attempt,ordinal,kind,observed_ms,data_sha256,previous_sha256,payload,payload_sha256) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
                (*key, ordinal, kind, observed, digest, previous_sha, raw, _hash(raw)))
 
 
-def _ensure(db, table, record, prefix, *, new=False):
+def _ensure(db, table, record, prefix, *, new=False, native_boundary_sha256=None, native_delta=None):
     if not _identified(record, prefix):
         if new:
             _fail()
@@ -237,17 +258,19 @@ def _ensure(db, table, record, prefix, *, new=False):
     db.execute(f"INSERT INTO {ATTEMPTS}(trade_table,record_id,phase,attempt,client_order_id,origin,observed_ms,payload,payload_sha256) VALUES(?,?,?,?,?,?,?,?,?)",
                (*_key(identity), identity["client_order_id"], origin, observed, raw, _hash(raw)))
     row = db.query_one(f"SELECT * FROM {ATTEMPTS} WHERE trade_table=? AND record_id=? AND phase=? AND attempt=?", _key(identity))
-    _append(db, row, "intent" if new else "legacy_snapshot", _state(record, prefix))
+    _append(db, row, "intent" if new else "legacy_snapshot", _state(record, prefix),
+            native_boundary_sha256=native_boundary_sha256, native_delta=native_delta)
     return row
 
 
-def record_transition(db, table, before, after, prefix, kind):
+def record_transition(db, table, before, after, prefix, kind, *, native_boundary_sha256=None, native_delta=None):
     """Caller owns the same transaction as the winning projection CAS."""
     for old_prefix in ("open", "cover"):
         _ensure(db, table, before, old_prefix)
-    row = _ensure(db, table, after, prefix, new=kind == "intent")
+    row = _ensure(db, table, after, prefix, new=kind == "intent",
+                  native_boundary_sha256=native_boundary_sha256 if kind == "intent" else None, native_delta=native_delta)
     if row is not None and kind != "intent":
-        _append(db, row, kind, _state(after, prefix))
+        _append(db, row, kind, _state(after, prefix), native_boundary_sha256=native_boundary_sha256, native_delta=native_delta)
 
 
 def read_history(db, table, record):

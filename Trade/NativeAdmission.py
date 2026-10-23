@@ -134,9 +134,9 @@ def assert_native_account_market_freshness(exchange, *, mode, markets, account_s
         _fail_sources()
 
 
-def _current_interval_snapshot(chan, context, check_id, market_document):
-    """Shared DB-only binding; caller owns the same SQLite transaction."""
-    from .AccountRiskStore import _ledger, account_key, read_check, risk_state
+def _current_interval_sources(chan, context, check_id, market_document):
+    """Sources/freeze only; not a ledger assertion or an order permission."""
+    from .AccountRiskStore import account_key, read_check, risk_state
     from .AccountStore import TABLE as ACCOUNT_EVIDENCE, read_evidence
     from .ExecutionStore import read_scan_with_account
     check = read_check(chan.db, check_id)
@@ -144,8 +144,6 @@ def _current_interval_snapshot(chan, context, check_id, market_document):
     saved = check["payload"]["inputs"]
     if (state["frozen"] or canonical_bytes(check["payload"]["account_context"]) != canonical_bytes(context)
             or saved is None or check["payload"]["report"]["payload"]["status"] != "matched_observations"):
-        _fail_sources()
-    if canonical_bytes(_ledger(chan)) != canonical_bytes({key: saved[key] for key in ("histories", "projections")}):
         _fail_sources()
     market, after = market_document["payload"], saved["after"]["payload"]
     after_bytes = canonical_bytes(saved["after"])
@@ -181,6 +179,16 @@ def _current_interval_snapshot(chan, context, check_id, market_document):
                 or canonical_bytes(linked["observation"]["account_context"]) != canonical_bytes(context)):
             _fail_sources()
         observations.append(linked["observation"])
+    return check, observations
+
+
+def _current_interval_snapshot(chan, context, check_id, market_document):
+    """Shared original L0 binding; caller owns the same SQLite transaction."""
+    from .AccountRiskStore import _ledger
+    check, observations = _current_interval_sources(chan, context, check_id, market_document)
+    saved = check["payload"]["inputs"]
+    if canonical_bytes(_ledger(chan)) != canonical_bytes({key: saved[key] for key in ("histories", "projections")}):
+        _fail_sources()
     return check, observations
 
 

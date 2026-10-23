@@ -497,6 +497,11 @@ class CCCXTTradeEngine(CTradeEngine):
                 "下单参数与持久化意图不一致",
                 ErrCode.TRADE_UNLOCK_FAIL,
             )
+        if phase == "open" and getattr(self.chan_db, "db_type", None) == "sqlite":
+            history = self.chan_db.get_order_history(record["id"])
+            if any(a["identity"]["phase"] == "open" and a["identity"]["attempt"] == record["open_attempt"]
+                   and a["events"][0].get("native_boundary_sha256") is not None for a in history["attempts"]):
+                raise CChanException("原生逐单引用仅证明一致性，资金能力及完整发送消费者尚未验收", ErrCode.TRADE_UNLOCK_FAIL)
         return intent
 
     def _market_contract(self, code):

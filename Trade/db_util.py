@@ -169,13 +169,17 @@ class CChanDB:
         return self.db.query(sql, args)
 
     # ===== 可恢复订单状态机 =====
-    def _order_write(self, record_id, prefix, kind, sql, args):
+    def _order_write(self, record_id, prefix, kind, sql, args, *, native_boundary=None, native_updates=None):
         if self.db_type != "sqlite":
             return self.db.execute(sql, args)  # Legacy only; no crypto migration certification.
         from .OrderAudit import read_history, record_transition
         with self.db.transaction():
             before = self.get_record(record_id)
-            read_history(self.db, self.table, before)
+            history = read_history(self.db, self.table, before)
+            transition = None
+            if prefix == "open" and kind in {"intent", "claim"}:
+                from .NativeOrderTransition import prepare_transition
+                transition = prepare_transition(self, before, kind, native_updates, native_boundary, history=history)
             changed = self.db.execute(sql, args)
             if changed == 1:
                 after = self.get_record(record_id)
@@ -184,7 +188,13 @@ class CChanDB:
                     contract = json.loads(after["open_order_contract"])
                     if contract.get("schema") == "chan-ccxt-order-v3":
                         assert_new_risk_allowed(self.db, contract["account_context"])
-                record_transition(self.db, self.table, before, after, prefix, kind)
+                if transition is None:
+                    record_transition(self.db, self.table, before, after, prefix, kind)
+                else:
+                    from .NativeOrderTransition import finish_transition
+                    record_transition(self.db, self.table, before, after, prefix, kind,
+                                      native_boundary_sha256=transition["binding_sha256"], native_delta=transition["native_delta"])
+                    finish_transition(self, before, after, transition)
         return changed
 
     def get_order_history(self, record_id):
@@ -377,6 +387,7 @@ class CChanDB:
         score_before: Optional[float] = None,
         snapshot: Optional[dict] = None,
         order_contract: Optional[dict] = None,
+        native_boundary: Optional[dict] = None,
     ) -> bool:
         requested = _positive_qty(requested_qty, "开仓请求量")
         if not client_order_id:
@@ -389,8 +400,24 @@ class CChanDB:
             raise CChanException("风险乘数必须大于 0", ErrCode.PARA_ERROR)
         if order_contract is not None and self.db_type != "sqlite":
             raise CChanException("MySQL 订单单位契约迁移尚未验收", ErrCode.TRADE_UNLOCK_FAIL)
+        from .NativeOrderTransition import CONTRACT_SCHEMA
+        diagnostic = isinstance(order_contract, dict) and order_contract.get("schema") == CONTRACT_SCHEMA
+        if diagnostic != (native_boundary is not None):
+            raise CChanException("原生 CAS 诊断契约必须绑定本次 L0，不能替代普通 v3 或资金许可", ErrCode.TRADE_UNLOCK_FAIL)
+        if native_boundary is not None and score_before is not None and (type(score_before) not in (int, float) or not math.isfinite(score_before)):
+            raise CChanException("原生 CAS 分数须是有限数字，不接受隐式类型转换", ErrCode.TRADE_UNLOCK_FAIL)
         contract_clause = ", open_order_contract=?, open_intent_ms=?" if self.db_type == "sqlite" else ""
         contract_args = (canonical_bytes(order_contract).decode() if order_contract is not None else None, utc_now_ms()) if contract_clause else ()
+        if native_boundary is not None and self.db_type != "sqlite":
+            raise CChanException("原生逐单边界仅适用原 SQLite 事务", ErrCode.TRADE_UNLOCK_FAIL)
+        updated_at = now_str()
+        snapshot_raw = json.dumps(snapshot or {}, ensure_ascii=False, default=str)
+        native_updates = None if native_boundary is None else {
+            "status": "submitted", "open_client_order_id": client_order_id, "open_requested_qty": requested,
+            "open_filled_qty": 0.0, "current_qty": 0.0, "open_order_status": "created", "order_last_update": updated_at,
+            "position_side": side, "strategy_version": strategy_version, "risk_multiplier": risk,
+            "model_score_before": None if score_before is None else float(score_before), "snapshot_before": snapshot_raw,
+            "open_order_contract": contract_args[0], "open_intent_ms": contract_args[1]}
         changed = self._order_write(record_id, "open", "intent",
             f"UPDATE {self.table} SET status='submitted', "
             "open_client_order_id=?, open_requested_qty=?, "
@@ -406,15 +433,15 @@ class CChanDB:
             (
                 client_order_id,
                 requested,
-                now_str(),
+                updated_at,
                 side,
                 strategy_version,
                 risk,
                 score_before,
-                json.dumps(snapshot or {}, ensure_ascii=False, default=str),
+                snapshot_raw,
                 *contract_args,
                 record_id,
-            ),
+            ), native_boundary=native_boundary, native_updates=native_updates,
         )
         return changed == 1
 
@@ -476,12 +503,13 @@ class CChanDB:
 
     def claim_order_submission(self, record_id: int, phase: str) -> bool:
         if phase == "open":
+            updated_at = now_str()
             changed = self._order_write(record_id, "open", "claim",
                 f"UPDATE {self.table} SET open_order_status='submitting', "
                 "order_last_update=? WHERE id=? "
                 "AND status IN ('submitted', 'partially_filled') "
                 "AND open_order_status='created' AND open_order_id IS NULL",
-                (now_str(), record_id),
+                (updated_at, record_id), native_updates={"open_order_status": "submitting", "order_last_update": updated_at},
             )
         elif phase == "close":
             changed = self._order_write(record_id, "cover", "claim",

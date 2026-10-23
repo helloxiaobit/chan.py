@@ -77,7 +77,7 @@ def _sources(db, request):
     return sources
 
 
-def _ledger(chan):
+def _trade_tables(chan):
     db = chan.db
     # Discover trade-shaped tables rather than reconciling just the caller's
     # table. A second CChanDB(table_name=...) cannot hide an account's positions.
@@ -87,10 +87,16 @@ def _ledger(chan):
         columns = {r["name"] for r in db.query("SELECT name FROM pragma_table_info(?)", (row["name"],))}
         if required <= columns:
             tables.add(row["name"])
-    histories, projections = [], []
     for table in sorted(tables):
         if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", table) is None:
             _fail()
+    return sorted(tables)
+
+
+def _ledger(chan):
+    db = chan.db
+    histories, projections = [], []
+    for table in _trade_tables(chan):
         for row in db.query(f"SELECT * FROM {table} ORDER BY id"):
             history = read_history(db, table, row)
             if not history["attempts"] and not row["current_qty"] and not history["gaps"]:

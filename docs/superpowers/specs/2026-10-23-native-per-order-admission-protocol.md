@@ -73,7 +73,7 @@
 
 ## 5. TDD 与兼容验收（分项实施，整体未通过）
 
-当前实施记录：独立 instrument 来源/原缓存消费已在 bb3aa29/f678ece 离线验收；L0 前置基线及原事务断言已完成 153 项专项和两版各 493 项组合。原 CAS 的 L1/L2 持久引用与自动消费、资金能力、默认入口仍未完成；不得把下列各项全部标为通过。细节见主验收台账和实施计划 S3c。
+当前实施记录：独立 instrument 来源/原缓存消费已在 bb3aa29/f678ece 离线验收；L0 前置基线及原事务断言已完成153项专项。新增 NativeOrderTransition 已将显式本单 L1/L2 引用接入原 intent/claim 事务，381项新测试与两版54模块各3688 passed/1既有skip/13小样本模型警告；只有不可执行的 `chan-native-cas-order-v1` 诊断意图可使用新引用，旧 v1/v2/v3 字节不重封。该子层不是完整4.1 prepare/4.3 HTTP 消费或资金协议验收；完整实际候选/加载runtime/来源调用绑定、新可执行契约及全部reader、额度规则和默认入口仍未完成，不得把下列各项全部标为通过。细节见主验收台账和实施计划 S3c。
 
 1. 单独证明已加载 SDK cache 不构成新 instrument 读取；fake 最底层原生方法返回新 tick/contract/status/limits 时应拒绝旧 metadata。拒绝错路由、额外私有/跨产品请求、缺/重复市场、非有限/未来/倒退时钟；不为恢复旧单强制获取新模型。
 2. 用已有两币非空/partial/pending/fee/funding fixture 扩展完整 prepare→原 intent→claim→HTTP；用真实原 SQLite/CAS，而非 mock 一个 passed helper。

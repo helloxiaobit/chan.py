@@ -193,6 +193,26 @@ L0 清理/修复计划：16 项故障注入 RED 已证明最终源码核验后�
 
 L0 子边界已离线实现：153 新用例，双币非空/partial/pending/fee/funding，Binance/OKX × one_way/hedged × 多空；原事务内手动组合 L0 断言＋原 CAS 的双连接/跨记录/市场/表实验只允许一个沿同一 L0 成功，旧 L0 不能自行重采或清除 submitting 无 ACK 尝试。该实验不是默认入口自动消费，也未实现本单 L1/L2 例外。最终 CPython3.14.2/3.11.15 各 493 passed、0 failure/error/skip/warning、集合相等，含原 current/核算/check/冻结/历史/事务回归；两版 compileall/diff 通过。16 项连接切换真实 RED 经共用最终 DB 所有权守卫修复，替换库零 query/write，原源码/表/证明未修改。
 
+L1/L2 实施与复用计划（该持久增量子边界已完成下述离线验收，完整 S3 未完成）：新增 NativeOrderTransition 的 append-only 原事务引用，指向原 intent/claim journal 的确切事件；只给新显式 `native_boundary` 调用增加版本引用，不更改旧 v1/v2/v3 契约或历史字节。原 `acquire_open_intent` 负责原 CAS 和实际参数，原 claim 自动检测该意图的持久引用，不能省略参数绕过；不另建资金/订单状态机。新表只保存两次不可变边界事实，不提供释放/重置/额度接口。
+
+最小重构范围为 NativeAdmission/NativeCurrentComponents 的 DB-only 来源读取与原全账本断言分离：旧公开入口仍必须检查原 L0 全账本；新消费者先核持久 L1/L2 的完整原 ledger、journal 前缀与整行摘要，再复用相同来源/冻结/时间检查，不能接 caller 传入 expected ledger。OrderAudit 仅对新意图追加版本引用；旧无引用字节不变。db_util 只在原事务包围本单原 CAS，SqliteDB 仅按既有原子 schema/保留名模式初始化新引用表。
+
+整行复核复用 AccountRiskStore 原 trade-shaped 表发现逻辑，最小提取 `_trade_tables` 供原 `_ledger` 与新边界共同使用，不改变旧账本选行/顺序/内容。L1/L2 附带这些表全部行的摘要，第三方字段或未成交信号的增删也不能在持久引用后被悄悄忽略；不把含任意快照/文本的整行复制进新公开证据。
+
+TDD 先用真实 fake/SQLite 的双币非空 fixture 观察缺 API RED；正向须原 intent→重启→原 claim→L2，核整行允许字段、恰好本单一个 attempt/intent 和一个 claim event。反向覆盖不同记录/市场/表/连接争抢、第三方或本单任意其他字段/历史/来源/冻结漂移、引用缺失/重封/表损坏、事务回滚与 claim 未知不释放，均不得额外 HTTP。新 reader/断言两个 flags=false，仅是并发/字节一致性；资金规格、完整准备身份、新契约消费者/指纹及默认 HTTP/CLI 接入仍待，常量阻断保留。完成适用双解释器回归、compileall/diff 与主线程审查后才记录本子项完成。
+
+主线程复核/简化计划：先用额外 RED 验证旧直接 Engine 不得将新一致性引用当成资金许可、最终检查前后连接替换不得查询替换库；只给带新原 journal 引用的开仓添加显式拒绝，不改变旧无引用 v3 或恢复/减仓语义。已有 249 项保护后，删除 finish 中重复的整份 ledger 组装，改为复用从原检查＋本单已核验 immutable attempt 重建的历史增量；保留实际参数/整行/journal 数量的独立核验，不共享一个 caller expected ledger。
+
+旧程序兼容性补查：新诊断意图须使用独立 `chan-native-cas-order-v1`，它保留本次实际条款，但不是可执行的新资金/交易契约；现有严格 Engine reader（包括不认识新 journal 标记的旧版本）必须拒绝它。不把新增引用挂在普通 v3 上后仅靠新运行时限制，更不重封任何已经保存的 v1/v2/v3。新 schema 缺 L0 或原引用拒绝，旧恢复/减仓用例保持原契约；最终可执行新版本及全部消费者仍需后续单独验收。另核 typed/canonical 数字、原 SQL 允许更新字段精确集合，防止内部调用把任意新增字段声明为合法增量。
+
+最终时间核验位于新引用 INSERT 与完整回读之后；32 项 RED 证明早期检查会漏掉写入/回读晚 1ms。只移动新 finish 的原 current 断言到最后，不改旧消费者或原时间公式。事务内尚未提交的 CAS/引用一起回滚；已提交 submitting/unknown 后的外部失败不退回 created。该 owned-view 检查仍不代替后续 HTTP 前/事务退出后的实际使用边界。
+
+旧接口兼容修正：原 writer 已核验的 history 只作为内部 hook 分流信息；无原生引用的旧 intent/claim 不套用新 native-only 精确 CChanDB 类型限制。新原生分支仍要求原 owned DB、独立重读并逐字节核历史，不接受 public caller 的 expected/PASS。真实子类旧 CAS 的 1 项 RED 保护这一范围，不放宽原生所有权。
+
+最终证据：381项新测试，CPython3.14.2/3.11.15相同54模块各3688 passed/1既有isolated-channel skip/13小样本训练警告，0failure/error、3689个唯一用例集合一致。包含原native来源/核算/check/freeze、执行/订单/SQLite/恢复、safety/state-machine、opening inputs、部署和配置化/持久paper；两版compileall/diff通过。只用fake/合成/临时SQLite，主线程串行且活pytest不编辑。原金融公式与旧契约/schema字节不改，新增引用表由原SQLite原子初始化并保留表/trigger名，foreign同名表拒绝且原初始化回滚；旧程序严格契约reader不能执行新诊断schema。
+
+接续顺序：先把实际准备身份（信号/候选/部署/输入、完整instrument自采及component自采调用、显式政策、配置/代码/加载runtime、role/两单位/价格/post-only）冻结为新的非可执行prepare绑定，并将其原L0/原CAS引用贯穿；逐单资金规则不足时仍拒绝。之后才是新可执行版本的全reader/ownership/源指纹与原HTTP前最终复验、默认多市场S4。不得把本诊断schema更名为可执行或将资金缺口跳过；没有完整资金证据/默认全入口/外部C7不去除阻断，不关闭完整版Goal。
+
 ## S4 默认 CLI 多市场合成 E2E 与发布
 
 沿真实 RunTradeCycle/RunTradeStage，fake 最底层原生运输，验证 Binance/OKX × one_way/hedged × 多市场的账户/准入/意图/恢复链。只有全部新风险入口不可绕过消费者后，才有条件替换原常量阻断。
