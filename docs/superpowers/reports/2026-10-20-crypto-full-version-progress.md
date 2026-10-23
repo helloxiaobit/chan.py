@@ -865,3 +865,14 @@ C1 收尾清理计划：迁移校验由两份全表内存列表改为有序逐�
 - JUnit（Temp=C:\Users\yangj\AppData\Local\Temp）：chanpy-native-prepare-final-py314-d8a740a0d484456a8a33235bc7134c11.xml SHA256 a080b41443c8e8db92fca242b61427f7b05bea603423703e1429518990b7e1c1；chanpy-native-prepare-final-py311-4350b729efbc41c786e63fe993afb72d.xml SHA256 bc4c222d4401f686474cf280b8399efe0f65a82a79c43eda9686aff29bb8a909。
 - 全fake/合成/临时SQLite；普通双venue/模式/方向prepare和真实小合成模型/部署正反例不是完整非空账户自采→CAS E2E。未发真实请求/订单、不读正式研究绩效，实际Config/config.yaml与CHANPY_CONFIG仍不存在（仅查存在性）。主线程审查，无独立代理审计。
 - 下一步继续同一受控prepare内实际instrument/component自采与L0/原CAS绑定，不能把此JSON作为caller准入；逐单资金能力、可执行新版本全reader/源码指纹、HTTP/default全入口、S4/C7仍待。常量阻断及全部门禁保留，C5/C6/C7及完整Goal未完成，不重封旧证明或重新武装候选。
+
+### 2026-10-23 / S3e 原生单位联合夹具，生产受控组装仍未完成
+
+- 以已推送clean的1944a67为基线，仅新增tests/native_order_preparation_case.py及22-case tests/test_native_preparation_sources.py，更新README/原生计划/审计/本台账；没有生产文件、旧fixture、订单/来源schema、配置/权限/依赖或candidate变更。
+- 从native raw metadata开始固定单位，再创建原Engine/SQLite历史：Binance contractSize=1而非旧fake .01，OKX保留ctVal；TEST .06开仓/.02部分平仓、ALT .6请求/.3已成交未决，fee/funding及原生聚合预占10。双币非空、one_way/hedged、多空均测试；原核算验证钱包差额0、TEST量1/25、未实现4/5、可用报告988.969。不将该可用额或原生预占推为本单能力。
+- 真实SDK的prepare/precision/mode/leverage与原instrument/component collectors、L0/原事务核验手动联跑，fake仅具体原生运输、实际HTTP和发送拒绝、GET不得在writer锁内。8正向、12来源/候选变异、2自采期间候选变化均无新增订单；原来源失败按原publisher sticky，metadata/候选早拒绝不冒称冻结。生产受控入口与准备持久CAS绑定未实现，测试helper不是新授权层。
+- 调试命令参数、clock统一、补fake SDK bracket GET与1.0表示预期只修新fixture/命令，不计生产RED。末审2项fixture RED修raw/SDK info别名；8项fixture RED显式清零初始margin/available及一致的OKX汇总。清理按计划删除临时异常展开并共用测试组合；未复制生产parser/金融/订单引擎。
+- 最终双版新22项分别27.15s/27.89s、0failure/error/skip/warning，唯一集合一致，双版compileall/diff通过。修正前两版相同5模块各1137 passed/1小样本XGB AUC警告（318.79s/324.02s）；最后只改新22项fixture，未变1115项复用该已验代码/环境证据，不冒称最后整组重跑，非全仓验收。
+- 最终JUnit（Temp=C:\Users\yangj\AppData\Local\Temp）：chanpy-native-prepare-joint-accepted-py314-04711b4f8a6747f1b08c97a30e139517.xml SHA256 fb4773c985579c27988404fc1617fc1c6f0741d8b97d6606b4e7bb2c585b2629；py311为chanpy-native-prepare-joint-accepted-py311-10368fd2f482434c8d3af2c7b7d061d6.xml SHA256 785f33a30e1794adb748d5640af92ea144524f93990e4484517730c0cc3a2c7f。
+- 先前5模块JUnit：chanpy-native-prepare-joint-py314-702e4794f0e84c9691682aa82e682882.xml SHA256 7c8db654e265338eb6034194e8fee1a3278892f917ee282bf060082537759130；py311为chanpy-native-prepare-joint-py311-d1d44f4acf9849c69f478999c024a623.xml SHA256 6c01cba6ce04eeead69de0936553c15144ac3b9e9c418c698d4056db89975995。
+- 下一生产步骤已记清理计划：保留438项原prepare保护，抽取共用本地当前视图，新增CAS锁内无GET断言，再接同次自采及新版本持久引用；不得让锁内重跑private prepare、接受caller自封JSON或仅堆wrapper。SDK首次杠杆读会改options，最终cache/来源预算仍须核；逐单资金、加载闭包、HTTP/default/S4/C7未完成。全部fake/临时SQLite，无正式研究/绩效/交易所请求、无独立代理审计；主Goal继续active，不关闭或缩小。

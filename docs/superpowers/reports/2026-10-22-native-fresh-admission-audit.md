@@ -254,3 +254,15 @@ fresh AST/compile只读当前解释器源码，不exec、不加载第二份交�
 438项新测试，CPython3.14.2和3.11.15相同10模块各754 passed/0failure/error/skip/7warnings（182.22s/191.57s），唯一用例集合无差异。覆盖原opening inputs/quotes/streaming、contract/venue/account binding、trade safety、model contract/deployment workflow；模型警告为3个小样本XGB AUC和4个MLP收敛。真实小合成模型/部署有正反例；普通prepare夹具不是完整非空账户instrument/component→CAS集成验收。先前1cb330c的54模块双版3688 passed证据仅用于未变旧代码，不冒称本轮重新全跑；先前两版746项是增加client前置拒绝前的中间结果，详尽最终JUnit身份见开发台账。
 
 未修改旧生产文件/默认入口、旧契约或实际配置/规则/权限/依赖/candidate；没有真实交易所请求、订单或研究绩效读取。当前仅完成实际本地prepare身份前置层；同一调用内instrument/component自采绑定、原CAS/HTTP消费、逐单资金能力、可执行新版本全部reader/指纹及S4/C7继续未完成，常量阻断和所有候选/交易门禁保留。主线程复核，无独立代理审计声明。
+
+## 25. S3e 原生单位、非空账户与实际SDK的联合前置验收
+
+从clean且已推送1944a67继续。旧账户夹具的Binance合约大小为.01，不能直接接原生parser的1；本轮只新增tests/native_order_preparation_case.py、test_native_preparation_sources.py和文档，不改旧fixture、生产代码、已发布事实或订单。先从独立raw instrument构造实际SDK metadata，再由原Engine/SQLite生成TEST .06开仓→.02部分平仓、ALT .6请求→.3部分成交未决；两币实际持仓、手续费、资金费和原生预占均非零，原钱包与头寸引擎独立核算。
+
+实际prepare用同一真实SDK client的原fetch_position_mode/fetch_leverage/precision方法，fake只在明确原生运输端点；HTTP和发送硬拒绝，所有GET均断言writer锁外。Binance首次杠杆查询会加载bracket并更新options，需先稳定prepare再采instrument；不将此缓存/测试金额转为资金能力。原组件自采、fresh候选前后读取及原L0/原事务断言手动组合可过，尚未实现生产受控入口或prepare持久CAS引用。
+
+22项覆盖8个venue/模式/方向正向、12项metadata/candidate/pending/wallet/funding/cash拒绝与2项自采期间candidate变化。明确核钱包差额0、TEST quantity=1/25、unrealized=4/5、reported_available=988.969、aggregate_order_margin=10和一个原未决reservation；不是空仓证明，也不推导本单资金。来源错误沿原publisher形成sticky failure，早期metadata/candidate拒绝不冒称已发布账户冻结。
+
+初始命令参数、合成与真实时钟混用、SDK未fake的leverage-bracket GET及1.0字符串预期均是夹具/命令构造问题，未修改原解析器或计生产RED。主线程末审2项fixture RED证明raw与SDK info同引用，改为创建缓存前deepcopy；8项fixture RED要求初始空账户margin=0/available=1000、OKX最终汇总与.8未实现及1000.969权益一致。未放宽任一生产规则。
+
+最终CPython3.14.2/3.11.15各22 passed、0failure/error/skip/warning（27.15s/27.89s），唯一集合相同，compileall/diff通过。此前同5模块两版各1137 passed/1已知小样本XGB警告（318.79s/324.02s）；最后修正只影响22项新fixture，其余1115项代码/依赖/环境未变并复用该证据，不称最终1137整组重跑。JUnit身份见台账。下一步先复用本地prepare当前核验体形成无GET锁内断言，再接受控自采/版本化原CAS引用；完整S3/C5/C6/C7、每单资金/HTTP/default仍未完成，Goal保持active。

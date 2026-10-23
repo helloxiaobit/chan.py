@@ -227,6 +227,18 @@ TDD 先用真实 fake/SQLite 的双币非空 fixture 观察缺 API RED；正向�
 
 选定callable同时核绑定owner、原模块globals、fresh-compiled code和默认参数；不执行源码，不把磁盘hash当整个加载闭包证明。开始/完成时钟只是本地prepare身份采样，非新鲜native来源窗口、完整调用耗时上界或跨线程/服务端原子快照。所有实际配置/candidate只读、原v1/v2/v3和默认入口未改，无新依赖。下一步在同一受控调用内直接取得instrument/component来源并绑定L0/原CAS，不能消费此JSON作为可转交准入；逐单资金/新执行版本与所有reader/指纹/HTTP/default/S4/C7仍待，两个flags=false。
 
+### S3e 受控 prepare 与原生自采组装（实施中）
+
+联合验收先新增独立的原生单位夹具，不改变旧fixtures或已经发布的来源/订单。Binance由raw exchangeInfo解析contractSize=1，OKX保留原生ctVal；在创建任何历史前固定完整metadata，用原Engine/SQLite产生双币非空持仓、部分平仓、非零未决单/保证金、fee/funding原事实。原生snapshot/执行/wallet/pending/balance及独立mark/book均从同一fake账户运输读取，实际prepare使用原SDK缓存/解析，禁止真实网络；不以重封旧.01历史、空仓或caller PASS替代联合证明。
+
+随后固定同一调用中的实际输入/prepare→instrument自采→原component自采及失败发布→实际输入/条款复核→L0/原CAS引用顺序；最终使用时须包含组装和原事务耗时，任何源、账户、市场、信号/候选/配置/runtime或第三方ledger变化拒绝。复用已有collector/current/账本和原CAS，不复制financial/parser/state-machine，不使用隐含预算/金额公式或自动重采；需要抽取旧内部核验体时先写具体清理计划并保护旧回归。完整准备引用须版本化并被原事务实际消费，不能只堆叠可转交wrapper；资金能力仍是独立硬门槛，诊断链通过也不解除默认阻断。
+
+联合夹具清理计划：8项真实SDK/原生单位正向已通过后，删除临时异常context展开，只在测试中提取一次手动组件组合供故障注入，显式先actual prepare稳定SDK options再采instrument。测试helper不是生产受控入口/授权；旧fixture、生产解析器/金融/来源/CAS不改。补现金/资金费/未决/metadata/候选漂移，按原核算检查exact fraction和非零原生预占，再推进生产身份断言复用及真正持久CAS引用。
+
+该联合前置验收现有22项：两venue×one_way/hedged×多空8正向，12项来源/候选变异和2项自采期间候选漂移。原生metadata先固定后才创建原历史；钱包差额精确0、TEST当前量1/25、未实现4/5、原生聚合未决保证金10，不推导每单可分配额。校读另以2项RED修正raw instrument和SDK info共享引用、8项RED显式清零初始margin/available及统一OKX汇总；均是新fixture问题，不计生产缺陷。最终两版22 passed/0警告，未变1115项复用此前两版5模块1137 passed/1小样本警告，非最终1137整组重跑。旧fixture/生产文件/实际配置未改；完整S3e仍未完成。
+
+下一生产清理计划：先把NativePreparation的现有current核验体提为共用本地视图，保留原capture接口、原prepare执行和438项时钟/owner/变异保护；新增的锁内当前性断言不得调用prepare_order或任何private/public GET。然后接同一次受控自采及版本化原CAS持久引用，不能仅返回wrapper或消费caller自封JSON。first prepare的SDK杠杆读取可能加载bracket并改options，实际次序/最终cache及所有源使用时刻必须检验，不把bracket缓存当资金证明；完整加载闭包、逐单资金、HTTP/default/S4/C7继续独立验收。
+
 ## S4 默认 CLI 多市场合成 E2E 与发布
 
 沿真实 RunTradeCycle/RunTradeStage，fake 最底层原生运输，验证 Binance/OKX × one_way/hedged × 多市场的账户/准入/意图/恢复链。只有全部新风险入口不可绕过消费者后，才有条件替换原常量阻断。
