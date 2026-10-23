@@ -482,6 +482,8 @@ exchangeInfo.serverTime、上架/到期/未来生效时间均不作新鲜时钟�
 `assert_native_prepare_context_current` 已可在原SQLite自有事务内复核实际prepare的活上下文，重用原输入/候选/模型和冻结检查，不调用SDK/prepare、不写表、不接受JSON或复制对象，成功仅返回None。313项新用例，双版12模块各1089通过（7个已知模型警告）；上下文回收不释放原订单。该公开断言仍仅适用于intent前本地一致性，不是跨重启凭证或当前原生资金证明。
 `Trade.NativePreparedIntent.acquire_native_prepared_diagnostic_intent` 现将同次实际prepare→instrument自采→原component自采→L0→原intent CAS绑定起来；不收caller receipt/check/PASS。原writer在同一事务保存 `chan-native-order-transition-v2` 的完整preparation引用，严格核本单整行唯一增量、全账本/原journal，并在引用INSERT/回读及本地回调后再核全部来源预算。只复用原核验体和现有引用表，没有第二套资金/订单状态机。
 72项新增用例覆盖双venue/持仓模式/多空非空账户、真实小合成模型、来源/引用变异、原事务回滚与重启读取；CPython3.14.2/3.11.15相同24模块各1841 passed、0failure/error/skip、9个模型警告，非全仓或外部认证。历史v2 reader需对应SDK纯解析、无需client/GET；原v1不受此新增要求影响。v2仍使用不可执行 `chan-native-cas-order-v1`，claim在原SQL前明确拒绝，两个flags=false；完整L1/L2后本地重建、逐单资金、新执行版本全reader、HTTP/default/S4/C7仍未完成。多次GET不是服务器原子快照，本地handle/源码摘要不认证整个宿主；不得据此解除门禁或重臂旧候选。
+在此基础上，`assert_native_prepared_intent_current(engine,record_id)` 已可从原持久L1/不可变事件取得完整after-row和全账本基线，在原owned视图复核实际输入/候选/模型/选定runtime、原SDK缓存和本地路由，不GET、不prepare、不写表，只返回None。原Engine消费该检查后仍执行原资金拒绝；没有放行claim或发送。
+新写入的preparation binding为 `chan-native-prepared-intent-binding-v2`，仅增加原调用的client_binding_sha256（缓存/route/SDK凭据摘要，不保存明文）；原capture identity和来源schema不变。旧binding-v1可历史读取，但不会补摘要、重封或获得新当前性。70项新用例、双版相同26模块各2357 passed/0failure/error/skip/9模型警告，实际旧库副本保持原字节且claim拒绝。新Engine/guard/连接复核已测，冷启动新SDK会话完整缓存重建、L2/HTTP前消费、逐单资金/全部执行reader/default/S4/C7仍待；已有缓存、代码/配置/输入时代与原来源窗口必须匹配，整个S3e和完整版仍未完成。
 
 非 dry-run 还必须同时满足以下门禁：
 

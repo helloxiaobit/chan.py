@@ -23,6 +23,36 @@ def _original_method(owner, name, expected):
         _fail()
 
 
+def _cache_view(engine, targets, reference, ccxt, venue, mode):
+    """Original initialized cache projection only; no endpoint or reload."""
+    from .CCXTTradeEngine import CCCXTTradeEngine
+    exchange = engine.exchange
+    _original_method(engine, "get_exchange", CCCXTTradeEngine.get_exchange)
+    _original_method(engine, "_market_contract", CCCXTTradeEngine._market_contract)
+    _original_method(exchange, "load_markets", ccxt.Exchange.load_markets)
+    _original_method(exchange, "market", reference.market.__func__)
+    if type(exchange.markets) is not dict or not exchange.markets or type(exchange.markets_by_id) is not dict or not exchange.markets_by_id:
+        _fail()
+    cache = {"markets": exchange.markets, "markets_by_id": exchange.markets_by_id,
+             "symbols": exchange.symbols, "ids": exchange.ids, "options": exchange.options,
+             "precision_mode": exchange.precisionMode}
+    frozen = canonical_bytes(cache)
+    environment = source._public_environment(exchange, reference, venue, mode)
+    observations = []
+    for code in targets:
+        if code not in exchange.markets:
+            _fail()
+        definition, market = engine._market_contract(code)
+        if market is not exchange.markets[code] or type(market.get("active")) is not bool:
+            _fail()
+        state = source._text(market["info"]["state" if venue == "okx" else "status"])
+        observations.append({"market": definition, "active": market["active"], "native_state": state})
+    if canonical_bytes(cache) != frozen:
+        _fail()
+    return canonical_bytes({"cache": cache, "environment": environment,
+                            "sdk": source._sdk(exchange, ccxt), "observations": observations}), observations
+
+
 def collect_native_instruments_for_engine(engine, codes, *, max_age_ms, max_observation_span_ms):
     """Collect once, compare actual cache and explicit local age/span budgets.
 
@@ -65,32 +95,7 @@ def collect_native_instruments_for_engine(engine, codes, *, max_age_ms, max_obse
                     or engine.dry_run is not False or engine.market_type != "swap" or engine.mode != values["mode"]
                     or canonical_bytes(provided) != original or [path.read_bytes() for path in paths] != implementation):
                 _fail()
-            _original_method(engine, "get_exchange", CCCXTTradeEngine.get_exchange)
-            _original_method(engine, "_market_contract", CCCXTTradeEngine._market_contract)
-            _original_method(exchange, "load_markets", ccxt.Exchange.load_markets)
-            _original_method(exchange, "market", reference.market.__func__)
-            # Both mappings must already exist: otherwise the original loader
-            # performs I/O or set_markets, neither permitted in this boundary.
-            if type(exchange.markets) is not dict or not exchange.markets or type(exchange.markets_by_id) is not dict or not exchange.markets_by_id:
-                _fail()
-            cache = {"markets": exchange.markets, "markets_by_id": exchange.markets_by_id,
-                     "symbols": exchange.symbols, "ids": exchange.ids, "options": exchange.options,
-                     "precision_mode": exchange.precisionMode}
-            frozen = canonical_bytes(cache)
-            environment = source._public_environment(exchange, reference, venue, values["mode"])
-            observations = []
-            for code in targets:
-                if code not in exchange.markets:
-                    _fail()
-                definition, market = engine._market_contract(code)
-                if market is not exchange.markets[code] or type(market.get("active")) is not bool:
-                    _fail()
-                state = source._text(market["info"]["state" if venue == "okx" else "status"])
-                observations.append({"market": definition, "active": market["active"], "native_state": state})
-            if canonical_bytes(cache) != frozen:
-                _fail()
-            return canonical_bytes({"cache": cache, "environment": environment,
-                                    "sdk": source._sdk(exchange, ccxt), "observations": observations}), observations
+            return _cache_view(engine, targets, reference, ccxt, venue, values["mode"])
 
         before, expected = view()
         document = source.collect_native_instrument_evidence(exchange, targets, mode=values["mode"])

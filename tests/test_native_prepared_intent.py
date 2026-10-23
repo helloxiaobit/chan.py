@@ -51,7 +51,8 @@ def test_actual_nonempty_sources_and_preparation_are_persisted_inside_original_c
     assert transition["schema"] == "chan-native-order-transition-v2"
     p = transition["payload"]
     binding = p["root"]["preparation"]
-    assert binding["schema"] == "chan-native-prepared-intent-binding-v1"
+    assert binding["schema"] == "chan-native-prepared-intent-binding-v2"
+    assert len(binding["client_binding_sha256"]) == 64
     assert binding["identity"]["payload"]["request"]["record_id"] == case["key"]
     assert binding["components"]["payload"]["check_id"] == p["boundary"]["payload"]["check_id"]
     assert p["economics_complete"] is p["native_admission_verified"] is False
@@ -365,6 +366,17 @@ def test_real_two_symbol_model_entry_is_bound_by_original_cas_not_a_caller_pass(
         assert stored["identity"]["payload"]["scope"]["deployment_id"] == deployed.deployment_id
         assert stored["entry_assessment"] == assessment
         assert store[0].get_record(key)["open_order_status"] == "created"
+        with store[0].db.transaction():
+            assert prepared_api().assert_native_prepared_intent_current(case["trade"], key) is None
+        model_path = Path(model["model"].GetModelPath())
+        original_model = model_path.read_bytes()
+        try:
+            model_path.write_bytes(b"damaged-after-intent")
+            with store[0].db.transaction():
+                with pytest.raises(CChanException):
+                    prepared_api().assert_native_prepared_intent_current(case["trade"], key)
+        finally:
+            model_path.write_bytes(original_model)
         with pytest.raises(CChanException):
             store[0].claim_order_submission(key, "open")
 

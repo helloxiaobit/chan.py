@@ -23,7 +23,8 @@ from .NativeInstrumentCurrent import collect_native_instruments_for_engine
 from .NativeInstrumentEvidence import verify_native_instrument_evidence
 
 
-BINDING_SCHEMA = "chan-native-prepared-intent-binding-v1"
+LEGACY_BINDING_SCHEMA = "chan-native-prepared-intent-binding-v1"
+BINDING_SCHEMA = "chan-native-prepared-intent-binding-v2"
 _IDENTITY_FIELDS = {"record_sha256", "config_sha256", "engine_config_sha256", "engine_execution_sha256", "environment_sha256",
     "database_location_sha256", "trade_table", "candidate", "opening_inputs", "scope", "runtime", "request", "quantity", "price",
     "order_contract", "entry_assessment_sha256", "implementation_sha256", "started_ms", "finished_ms", "coverage", "economics_complete", "native_admission_verified"}
@@ -66,7 +67,10 @@ def _live(chan, context):
     entry = Prepare._PREPARED[context]
     if len(entry) != 4 or entry[0].chan_db is not chan:
         _fail()
-    return entry[0], json.loads(entry[3]), entry[2]
+    binding = json.loads(entry[3])
+    if binding["schema"] == BINDING_SCHEMA and Prepare._client_binding(entry[0].exchange) != binding["client_binding_sha256"]:
+        _fail()
+    return entry[0], binding, entry[2]
 
 
 def _windows(chan, binding, boundary):
@@ -86,9 +90,14 @@ def validate_stored_preparation(chan, root, attempt):
     """Independent raw/check/immutable-attempt links, not current admission."""
     try:
         b = root["preparation"]
-        if (type(b) is not dict or set(b) != {"schema", "identity", "instruments", "components", "instrument_policy", "boundary_sha256",
-                "baseline_records_sha256", "baseline_prefix", "entry_assessment", "started_ms", "finished_ms", "implementation_sha256"}
-                or b["schema"] != BINDING_SCHEMA or b["boundary_sha256"] != _sha(root["boundary"])):
+        if (type(b) is not dict or b["schema"] not in {LEGACY_BINDING_SCHEMA, BINDING_SCHEMA}
+                or set(b) != {"schema", "identity", "instruments", "components", "instrument_policy", "boundary_sha256",
+                    "baseline_records_sha256", "baseline_prefix", "entry_assessment", "started_ms", "finished_ms", "implementation_sha256"}
+                    | ({"client_binding_sha256"} if b["schema"] == BINDING_SCHEMA else set())
+                or b["boundary_sha256"] != _sha(root["boundary"])):
+            _fail()
+        if b["schema"] == BINDING_SCHEMA and (type(b["client_binding_sha256"]) is not str
+                or re.fullmatch(r"[0-9a-f]{64}", b["client_binding_sha256"]) is None):
             _fail()
         identity, components, boundary = b["identity"], b["components"], root["boundary"]["payload"]
         p, c, a = identity["payload"], components["payload"], attempt["identity"]
@@ -181,6 +190,93 @@ def finish_prepared_context(chan, context, expected, document):
     _windows(chan, binding, root["boundary"])
 
 
+def assert_native_prepared_intent_current(engine, record_id):
+    """Reconstitute local currentness from original persisted facts, not JSON.
+
+    Requires the original owned SQLite view. No prepare, GET, new observation,
+    claim or allocation; returning None cannot release the funding/send gate.
+    """
+    try:
+        from . import NativeOrderTransition as Transition
+        from . import NativeInstrumentCurrent as Instrument
+        from .AccountIdentity import _environment
+        from .CCXTTradeEngine import CCCXTTradeEngine
+        from .Script.OpeningInputs import COpeningInputs
+        from .SafetyPolicy import TradingSafetyPolicy
+        if (type(engine) is not CCCXTTradeEngine or type(record_id) is not int or record_id <= 0
+                or type(engine.opening_inputs) is not COpeningInputs or type(engine.safety_policy) is not TradingSafetyPolicy
+                or engine.exchange is None):
+            _fail()
+        chan, exchange, guard, policy = engine.chan_db, engine.exchange, engine.opening_inputs, engine.safety_policy
+        database = Transition._owned(chan)
+        connection, table, clock = database.conn, chan.table, guard.now_ms
+
+        def owners():
+            Boundary._same_database(chan, database, connection, table, owned=True)
+            if (engine.chan_db is not chan or engine.exchange is not exchange or engine.opening_inputs is not guard
+                    or engine.safety_policy is not policy or guard.now_ms is not clock):
+                _fail()
+
+        document = Transition._read(chan, chan.get_record(record_id))
+        if document["schema"] != Transition.PREPARED_DOCUMENT_SCHEMA or document["payload"]["stage"] != "intent":
+            _fail()
+        root, after_sha = document["payload"]["root"], document["payload"]["after_record_sha256"]
+        binding = root["preparation"]
+        p, instrument = binding["identity"]["payload"], binding["instruments"]["payload"]
+        if (binding["schema"] != BINDING_SCHEMA or binding["implementation_sha256"] != _implementation() or p["implementation_sha256"] != Prepare._implementation()
+                or exchange.id != instrument["exchange_id"]):
+            _fail()
+        owners()
+        Transition._current(chan, document)
+        reference, ccxt = Instrument.source._reference(exchange.id, engine.mode)
+        original_client = Prepare._client_binding(exchange)
+        if original_client != binding["client_binding_sha256"]:
+            _fail()
+        previous, cache_before = p["finished_ms"], None
+        for step in range(2):
+            owners()
+            runtime = Prepare._selected_runtime(engine, guard, policy)
+            owners()
+            observed, actual = Prepare._local_prepare_view(engine, guard, policy, chan, database, table,
+                record_id, p["request"]["price"], runtime, owners, persisted_record_sha256=after_sha)
+            # Only the independently verified original event supplies this hash.
+            # Every current column is checked, not excluded as an "own" delta.
+            expected = {key: p[key] for key in observed}
+            expected["record_sha256"] = after_sha
+            checked = observed["opening_inputs"]["checked_at_ms"]
+            if (canonical_bytes(Prepare._stable_local_view(observed)) != canonical_bytes(Prepare._stable_local_view(expected))
+                    or type(checked) is not int or not previous <= checked < 2**63):
+                _fail()
+            previous = checked
+            if actual.get("deployment_id") or actual.get("model_version"):
+                from .Script.Deployment import verify_entry_assessment
+                if canonical_bytes(verify_entry_assessment(actual, binding["entry_assessment"], p["request"]["price"], engine)) != canonical_bytes(binding["entry_assessment"]):
+                    _fail()
+            elif binding["entry_assessment"] is not None:
+                _fail()
+            owners()
+            cache, observations = Instrument._cache_view(engine, instrument["codes"], reference, ccxt, instrument["venue"], engine.mode)
+            decoded = json.loads(cache)
+            if (decoded["environment"] != instrument["environment"] or decoded["sdk"] != instrument["sdk"]
+                    or canonical_bytes(observations) != canonical_bytes([{key: row[key] for key in ("market", "active", "native_state")}
+                                                                         for row in instrument["observations"]])
+                    or canonical_bytes(_environment(exchange, reference, instrument["venue"], engine.mode)) != canonical_bytes(p["order_contract"]["account_context"]["environment"])
+                    or (cache_before is not None and cache != cache_before)):
+                _fail()
+            owners()
+            if Prepare._client_binding(exchange) != original_client:
+                _fail()
+            cache_before = cache
+            if step == 0:
+                chan.assert_account_new_risk_allowed(p["order_contract"]["account_context"])
+        owners()
+        Transition._current(chan, document)
+        _windows(chan, binding, root["boundary"])
+        owners()
+    except Exception:
+        _fail()
+
+
 def acquire_native_prepared_diagnostic_intent(engine, record_id, amount, price, *, before_id, account_scope, policy,
         instrument_max_age_ms, instrument_max_observation_span_ms, client_order_id, post_only=False, entry_assessment=None):
     """Own every collection and original intent; never claim or send an order."""
@@ -212,6 +308,7 @@ def acquire_native_prepared_diagnostic_intent(engine, record_id, amount, price, 
             records, prefix = _sha(_records(chan)), _prefix(database)
         context = Prepare._capture_native_prepare_context(engine, record_id, amount, price, post_only=post_only, entry_assessment=entry_assessment)
         identity = json.loads(Prepare._PREPARED[context][1])
+        client_binding = Prepare._client_binding(client)
         account = identity["payload"]["order_contract"]["account_context"]
         if account != before["payload"]["account_context"]:
             _fail()
@@ -226,6 +323,7 @@ def acquire_native_prepared_diagnostic_intent(engine, record_id, amount, price, 
         boundary = Boundary.capture_native_order_boundary(chan, account_context=account, check_id=c["check_id"],
                                               market_evidence=c["market_evidence"], policy=policy_value)
         binding = {"schema": BINDING_SCHEMA, "identity": identity, "instruments": instruments, "components": components,
+            "client_binding_sha256": client_binding,
             "instrument_policy": {"max_age_ms": instrument_max_age_ms, "max_observation_span_ms": instrument_max_observation_span_ms},
             "boundary_sha256": _sha(boundary), "baseline_records_sha256": records, "baseline_prefix": prefix,
             "entry_assessment": entry_assessment, "started_ms": started, "finished_ms": utc_now_ms(), "implementation_sha256": implementation}

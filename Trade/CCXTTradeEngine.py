@@ -501,6 +501,11 @@ class CCCXTTradeEngine(CTradeEngine):
             history = self.chan_db.get_order_history(record["id"])
             if any(a["identity"]["phase"] == "open" and a["identity"]["attempt"] == record["open_attempt"]
                    and a["events"][0].get("native_boundary_sha256") is not None for a in history["attempts"]):
+                from .NativeOrderTransition import PREPARED_DOCUMENT_SCHEMA, read_native_order_transition
+                if read_native_order_transition(self.chan_db, record["id"])["schema"] == PREPARED_DOCUMENT_SCHEMA:
+                    from .NativePreparedIntent import assert_native_prepared_intent_current
+                    with self.chan_db.db.transaction():
+                        assert_native_prepared_intent_current(self, record["id"])
                 raise CChanException("原生逐单引用仅证明一致性，资金能力及完整发送消费者尚未验收", ErrCode.TRADE_UNLOCK_FAIL)
         return intent
 

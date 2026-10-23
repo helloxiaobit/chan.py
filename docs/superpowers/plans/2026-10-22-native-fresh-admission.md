@@ -261,6 +261,16 @@ CPython3.14.2/3.11.15相同24模块各1841 passed、0failure/error/skip、9warni
 
 当前仍为不可执行诊断：v2 claim即使重启也在原SQL前拒绝；stored reader从原check/attempt/raw instrument核历史，但不是重新准入或服务端签名，需对应SDK而不需要client/GET。完整L1/L2后的fresh本地重建、全部可执行reader/指纹、逐单资金能力、HTTP/default/S4/C7及宿主完整可信仍待；不得扩大为完整S3e完成或解除常量阻断。源码变更不允许重封旧模型/部署/candidate；主Goal保持active。
 
+S3e后续本地重建/清理计划（基线67e72ef）：从原持久v2 intent与不可变attempt/event取得精确after-record/full-ledger hash，不尝试从旧before hash反解记录、保存任意opaque before快照或把本单从账本删除。新增assert_native_prepared_intent_current(engine,record_id)仅在原owned视图重读实际Engine/guard/候选/输入/entry/selected runtime、缓存metadata及本地public/private路由；整行须匹配原事件绑定的after hash，来源/冻结/明确窗口仍用原current检查。成功仅None，不产生新收据、资金许可、claim或GET；可跨同代码重启重新建立本地视图，不把活handle序列化或重新prepare旧单。
+
+先RED缺API，再最小提取NativePreparation原current的本地读取体（保留旧signal/expected整行分支和全部公开语义）；NativeInstrumentCurrent的原缓存投影只提取为共用只读体，原collector owner/时钟/GET次序不变，防止复制metadata/金融规则。新路径的expected after hash只能由原持久行/事件取得，公开API不接document/hash/phase/PASS。前后核owner、client本地状态、当前字段和完整原transition，最后来源预算包含本次检查耗时。实际原Engine遇v2意图时消费该核验后仍在原资金阻断处拒绝，v1原诊断路径不附加新要求；不提前接发送或放行v2 claim。小夹具先验证重启/非空账户/零GET零prepare及信号/候选/配置/metadata/路由/账本/时钟/冻结变异，再适用双版回归；完整加载闭包、每单资金与HTTP门禁不因本地重建通过而关闭。
+
+后续RED细化：原绑定没有持久保存SDK/cache/options/凭据的本地基线，仅检查本次核验前后相同不能证明与原调用相同。新写入的preparation binding升级为chan-native-prepared-intent-binding-v2，仅增加client_binding_sha256；摘要覆盖原cache/route和实际SDK apiKey/secret/password，绝不保存明文或以此替代原native账户身份。原capture identity/来源schema不变；旧binding-v1保持历史解码、claim继续拒绝，不补摘要/重封或用当前client替代旧基线。新增stored严格字段/摘要形状及legacy-shaped历史兼容单测；新原Engine检查仅在具有完整新基线的v2绑定上可成功，资金/发送原拒绝仍独立保留。
+
+本轮有限子层结果：70项新用例，缺API先1/11项RED；8项SDK先前漂移、2项原Engine未消费真实RED，补原调用摘要与真实消费者后GREEN。11项初组、21项基线组、134项联合和8项末尾回调/隐私专项依次通过。原current读取体与缓存投影各仅一份，新helper纳入selected runtime；从原事件after hash核实际完整行，不反解before、不忽略本单，公开API不接JSON/hash/phase/PASS。原Engine在v2分支原owned事务中调用后仍拒绝资金/claim/发送；没有新表、金融规则、默认参数或自动解冻。
+
+最终CPython3.14.2/3.11.15相同26模块各2357 passed、0failure/error/skip、9warnings（1184.74s/1235.38s），唯一集合差异0；双版compileall/diff通过。含70新、72上步绑定、381原transition、313原context、438原prepare、22原联合、446原instrument消费者及615原订单/来源/模型/paper等，非全仓或外部认证。旧67e72ef两venue原测试库在副本上以同合成时钟读取等于原文档，claim拒绝、原文件SHA不变；首轮真实墙钟小于fixture未来时间而拒绝，仅修诊断调用时钟、不改产品reader或旧事实。新Engine/guard/连接重建复核已测但仍复用相同SDK缓存，不声称冷启动新SDK完整初始化或整个宿主可信；源过期、配置/SDK/缓存/输入时代变更均拒绝。后续继续冷启动/完整L1-L2及新执行reader/HTTP/default集成；逐单资金、S4/C7和整个S3e/C5/C6/C7仍未完成，主Goal保持active。
+
 ## S4 默认 CLI 多市场合成 E2E 与发布
 
 沿真实 RunTradeCycle/RunTradeStage，fake 最底层原生运输，验证 Binance/OKX × one_way/hedged × 多市场的账户/准入/意图/恢复链。只有全部新风险入口不可绕过消费者后，才有条件替换原常量阻断。

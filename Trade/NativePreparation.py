@@ -89,6 +89,7 @@ def _selected_runtime(engine, guard, policy):
                     for name in ("build_trading_safety_policy", "_load_candidate_receipt"))
     selected.append(("Trade.AccountIdentity", "observe_account_context", engine_module.observe_account_context))
     selected.append(("Trade.Script.Deployment", "verify_entry_assessment", deployment_module.verify_entry_assessment))
+    selected.extend((__name__, name, globals()[name]) for name in ("_local_prepare_view", "_stable_local_view"))
     modules, result = {}, {}
     for module, qualname, function in selected:
         path = _ROOT/(module.replace(".", "/")+".py")
@@ -125,7 +126,54 @@ def _client_binding(client):
         _fail()
     return _sha({name: getattr(client, name, None) for name in (
         "markets", "markets_by_id", "symbols", "ids", "options", "precisionMode", "urls", "headers", "hostname",
-        "verify", "isSandboxModeEnabled", "proxies", "proxyUrl", "httpProxy", "httpsProxy", "socksProxy")})
+        "verify", "isSandboxModeEnabled", "proxies", "proxyUrl", "httpProxy", "httpsProxy", "socksProxy", "apiKey", "secret", "password")})
+
+
+def _stable_local_view(value):
+    return {**value, "opening_inputs": {k: v for k, v in value["opening_inputs"].items() if k != "checked_at_ms"}}
+
+
+def _local_prepare_view(engine, guard, policy, chan, database, table, record_id, price, runtime, owners, *,
+                        signal_record=None, expected_record=None, persisted_record_sha256=None):
+    """One local reader; persisted hashes must come from original CAS events."""
+    env = guard.env
+    owners()
+    if (engine.mode != env.ccxt_conf.get("mode") or engine.dry_run is not False or engine.market_type != "swap"
+            or canonical_bytes(engine.ccxt_conf) != canonical_bytes(env.ccxt_conf)):
+        _fail()
+    from .SafetyPolicy import build_trading_safety_policy
+    fresh_policy = build_trading_safety_policy(engine.ccxt_conf, env.get_section("trade"), policy.environ)
+    if fresh_policy.mode != policy.mode or fresh_policy.strategy_receipt != policy.strategy_receipt:
+        _fail()
+    policy.assert_order_allowed()
+    owners()
+    candidate = fresh_policy.strategy_receipt
+    candidate_identity = {**candidate, "file_sha256": hashlib.sha256(Path(candidate["path"]).read_bytes()).hexdigest()}
+    actual = chan.get_record(record_id)
+    if persisted_record_sha256 is not None:
+        if (actual is None or _sha(actual) != persisted_record_sha256 or actual["status"] != "submitted"
+                or actual["open_order_status"] != "created" or actual["open_attempt"] != 1):
+            _fail()
+    else:
+        if expected_record is not None:
+            if canonical_bytes(actual) != canonical_bytes(expected_record):
+                _fail()
+            actual = signal_record
+        if (actual is None or actual["status"] != "signal" or actual["watching"] != 1 or actual["is_open"] != 0
+                or actual["open_attempt"] != 0 or actual["open_client_order_id"] is not None):
+            _fail()
+    stamp = guard.check(actual, engine=engine, price=price)
+    owners()
+    scope = guard.scope
+    owners()
+    if _sha(scope) != stamp["scope_sha256"]:
+        _fail()
+    return {"record_sha256": _sha(actual), "config_sha256": hashlib.sha256(guard.path.read_bytes()).hexdigest(),
+            "engine_config_sha256": _sha(engine.ccxt_conf), "engine_execution_sha256": _sha({"mode": engine.mode,
+                 "market_type": engine.market_type, "leverage": engine.leverage, "position_side": engine.position_side}),
+            "environment_sha256": _sha({key: policy.environ.get(key) for key in _ENV_KEYS}),
+            "database_location_sha256": _sha(database.query("PRAGMA database_list")), "trade_table": table,
+            "candidate": candidate_identity, "opening_inputs": stamp, "scope": scope, "runtime": runtime}, actual
 
 
 def capture_native_prepare_identity(engine, record_id, amount, price, *, post_only=False, entry_assessment=None):
@@ -161,7 +209,7 @@ def _capture_native_prepare_context(engine, record_id, amount, price, *, post_on
     try:
         from .CCXTTradeEngine import CCCXTTradeEngine
         from .Script.OpeningInputs import COpeningInputs
-        from .SafetyPolicy import TradingSafetyPolicy, build_trading_safety_policy
+        from .SafetyPolicy import TradingSafetyPolicy
         from .db_util import CChanDB
         from .NativeOrderBoundary import _same_database
         if (type(engine) is not CCCXTTradeEngine or type(engine.opening_inputs) is not COpeningInputs
@@ -197,37 +245,9 @@ def _capture_native_prepare_context(engine, record_id, amount, price, *, post_on
             owners(owned=owned)
             runtime = _selected_runtime(engine, guard, policy)
             owners(owned=owned)
-            env = guard.env
-            if (engine.mode != env.ccxt_conf.get("mode") or engine.dry_run is not False or engine.market_type != "swap"
-                    or canonical_bytes(engine.ccxt_conf) != canonical_bytes(env.ccxt_conf)):
-                _fail()
-            fresh_policy = build_trading_safety_policy(engine.ccxt_conf, env.get_section("trade"), policy.environ)
-            if fresh_policy.mode != policy.mode or fresh_policy.strategy_receipt != policy.strategy_receipt:
-                _fail()
-            policy.assert_order_allowed()
-            candidate = fresh_policy.strategy_receipt
-            candidate_raw = Path(candidate["path"]).read_bytes()
-            candidate_identity = {**candidate, "file_sha256": hashlib.sha256(candidate_raw).hexdigest()}
-            actual = chan.get_record(record_id)
-            if expected_record is not None:
-                # Only the original transition writer supplies its independently
-                # verified, exact full after-row. No arbitrary own-row exclusion.
-                if canonical_bytes(actual) != canonical_bytes(expected_record):
-                    _fail()
-                actual = signal_record
-            if (actual is None or actual["status"] != "signal" or actual["watching"] != 1 or actual["is_open"] != 0
-                    or actual["open_attempt"] != 0 or actual["open_client_order_id"] is not None):
-                _fail()
-            stamp = guard.check(actual, engine=engine, price=price)
-            scope = guard.scope
-            if _sha(scope) != stamp["scope_sha256"]:
-                _fail()
-            return {"record_sha256": _sha(actual), "config_sha256": hashlib.sha256(guard.path.read_bytes()).hexdigest(),
-                    "engine_config_sha256": _sha(engine.ccxt_conf), "engine_execution_sha256": _sha({"mode": engine.mode,
-                         "market_type": engine.market_type, "leverage": engine.leverage, "position_side": engine.position_side}),
-                    "environment_sha256": _sha({key: policy.environ.get(key) for key in _ENV_KEYS}),
-                    "database_location_sha256": _sha(database.query("PRAGMA database_list")), "trade_table": table,
-                    "candidate": candidate_identity, "opening_inputs": stamp, "scope": scope, "runtime": runtime}, actual
+            return _local_prepare_view(engine, guard, policy, chan, database, table, record_id, price, runtime,
+                lambda: owners(owned=owned), signal_record=signal_record if expected_record is not None else None,
+                expected_record=expected_record)
 
         first, record = current()
         signal_record = json.loads(canonical_bytes(record))
@@ -239,7 +259,7 @@ def _capture_native_prepare_context(engine, record_id, amount, price, *, post_on
             _fail()
         quantity, order_price, contract = engine.prepare_order(record["stock_code"], amount, price, record=record, post_only=post_only)
         second, _ = current()
-        stable = lambda value: {**value, "opening_inputs": {k: v for k, v in value["opening_inputs"].items() if k != "checked_at_ms"}}
+        stable = _stable_local_view
         if (canonical_bytes(stable(first)) != canonical_bytes(stable(second)) or contract["schema"] != "chan-ccxt-order-v3"
                 or contract["post_only"] is not post_only or contract["reduce_only"] is not False):
             _fail()

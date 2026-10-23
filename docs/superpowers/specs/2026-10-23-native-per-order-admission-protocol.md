@@ -77,6 +77,8 @@
 
 2026-10-24补充实施状态：NativePreparedIntent已把同次实际本地prepare、instrument与原component自采接到原intent CAS；v2引用在原事务内核完整原行/账本、唯一intent增量和最终来源窗口，未新增表/金额模型。仅原writer内部可在精确expected after-row核对后复用冻结signal，公开pre-intent断言仍不适用于L1之后。72项新增及原兼容24模块，两版各1841 passed、0failure/error/skip、9模型警告，集合一致。v2历史可在无client/GET时用对应SDK重读，但v2 claim在原SQL前明确拒绝；原v1诊断claim/旧v1-v3恢复仍沿原路径。完整4.3的L1/L2后本地重建、HTTP/新执行版本全reader/default、逐单资金及完整加载闭包尚未通过；多次来源读取不证明服务器原子性，以下完整联合验收仍不能标为完成。实施详见S3e及审计§27，不改变已批准协议或任一真实交易门禁。
 
+2026-10-24再次补充：原L1的持久本地重建已形成有限子层，由原Engine在资金拒绝前实际消费；原after hash/全ledger和immutable event仍是精确基线，不接受caller JSON或自身排除。新binding-v2仅增加原SDK/cache/route/凭据的摘要，旧binding-v1不补造或重封，原来源/identity schema保留；所有claim/发送门禁不变。70新用例及双版26模块各2357 passed/0failure/error/skip/9模型警告，旧实际测试库副本历史字节相等且claim拒绝。只有已有匹配缓存、代码/配置/输入时代与来源窗口时才能本地复核；冷启动新SDK完整初始化、L2/HTTP/资金/全部reader和正式C7仍未通过，不能把下面完整验收全部标为完成。详见S3e和审计§28。
+
 1. 单独证明已加载 SDK cache 不构成新 instrument 读取；fake 最底层原生方法返回新 tick/contract/status/limits 时应拒绝旧 metadata。拒绝错路由、额外私有/跨产品请求、缺/重复市场、非有限/未来/倒退时钟；不为恢复旧单强制获取新模型。
 2. 用已有两币非空/partial/pending/fee/funding fixture 扩展完整 prepare→原 intent→claim→HTTP；用真实原 SQLite/CAS，而非 mock 一个 passed helper。
 3. 同账户不同记录/市场/表的双连接竞争，以及 acquire/claim/HTTP 前各边界的输入、冻结、来源、runtime/配置变化，均不得产生两个未观察新风险意图或额外 HTTP。

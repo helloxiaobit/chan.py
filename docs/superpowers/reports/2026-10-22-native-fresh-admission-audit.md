@@ -292,3 +292,17 @@ stored reader严格核schema/字段/typed请求、原attempt两单位/条款/输
 最终相同24模块两版各1841 passed、0failure/error/skip、9warnings；CPython3.14.2为983.66s、3.11.15为1019.22s，1841唯一用例集合一致。包含原381 transition/313 context/438 prepare/22联合、原状态机/SQLite/报告CAS/历史/恢复/账户绑定/冻结/执行、安全、opening/模型部署和持久paper/cycle；非全仓。警告为5个小样本XGB AUC与4个MLP收敛，双版compileall/diff通过，JUnit身份见台账。全fake/合成/临时SQLite，活pytest不编辑，主线程审查、无独立代理审计；实际Config/config.yaml与CHANPY_CONFIG仍不存在（仅查存在性），无真实I/O/订单/研究绩效读取或实际配置/权限/依赖/candidate改动。
 
 当前v2 intent仍是不可执行chan-native-cas-order-v1；原Engine/旧严格reader不把它当v3，v2 claim即使重启也在原SQL前拒绝，原v1诊断claim不被新分支重写。两个flags=false，未知状态不自动释放。本地handle/源码指纹不抵御宿主任意globals改写或认证整个加载闭包；完整L1/L2后本地重建、新可执行版本全reader/指纹、逐单资金能力、HTTP/default/S4/C7与真实容量仍待，完整S3e/C5/C6/C7未完成，Goal保持active。不能重封旧模型/部署/candidate或移除任何默认阻断。
+
+## 28. S3e 原L1本地重建与原SDK摘要基线（2026-10-24，资金/claim未开放）
+
+从已推送clean的67e72ef继续，原Goal active。assert_native_prepared_intent_current只接实际Engine和record_id，必须在原owned SQLite视图从原持久transition、不可变attempt/event取得精确after-record/full-ledger基线，再复核实际guard/config/输入时代/候选/模型entry/selected runtime与本地SDK缓存/public-private route；不接受document/hash/expected record/PASS。它不是反解旧before hash或排除自身变化，实际整行仍须与原事件绑定的after hash一致。成功仅None，无GET/prepare/写表/新观察或资金许可；原Engine在v2意图上实际消费后仍执行原资金拒绝。
+
+按事前清理计划，NativePreparation的原current本地读取体及NativeInstrumentCurrent的缓存投影各提取一份，旧capture identity/公开pre-intent断言、原collector owner/GET/时间顺序保留；新增共用helper纳入selected runtime。未复制financial/metadata parser或订单状态机。新写入的preparation binding-v2只增加client_binding_sha256，冻结原调用的完整已观察cache/options/route与实际apiKey/secret/password摘要，不保存明文或替代原native UID。旧binding-v1历史可读但不补摘要/重封，不将新会话的当前SDK状态冒称旧基线；原transition文档v1/v2、原来源schema/SQL表和旧v1-v3订单字节不改。
+
+真实RED/GREEN：缺API 1/11项；初步11 GREEN后，8项“先前SDK/options/凭据已变但本次核验前后相同”以及2项“原Engine未消费检查”RED，补原摘要和真实原入口后21 GREEN。134项绑定/当前性联合、8项末尾risk回调和凭据不落明文专项通过。最终70新用例覆盖双venue/持仓模式/方向的非空L1、无活handle/new Engine/guard/connection、原缓存/路由/输入/候选/冻结/时钟/全部账本漂移、模型文件损坏与严格旧形状/新摘要字段。没有放宽任何源、预算或金融门槛。
+
+额外使用67e72ef精确提交后72项回归留下的两venue原数据库，仅在新副本运行原历史reader，结果与原文档相等、claim拒绝，原文件SHA未变。首轮失败源于诊断未带原合成时钟：当前墙钟1792780882819小于fixture来源1800000000506；恢复同fixture的as-of后成功。不改产品“未来时间拒绝”，不重封旧数据，不计为产品缺陷RED。新Engine/guard/连接重建仍使用相同已初始化SDK缓存；未验证冷启动新SDK完整初始化，不称完整重启发送能力。
+
+最终双解释器相同26模块各2357 passed、0failure/error/skip、9模型警告（1184.74s/1235.38s），2357唯一用例集合一致；覆盖原438 prepare/313 context/446 instrument current/381 transition及订单/恢复/SQLite/报告CAS/账户/冻结/执行/safety/opening/model/persistent-paper/cycle。5个小样本XGB AUC、4个MLP收敛如实保留，双版compileall/diff通过，JUnit及旧库SHA见台账，非全仓验收。全fake/合成/临时SQLite，活pytest不编辑；主线程按review模板复核，无独立代理审计。实际config/权限/依赖/candidate/研究数据和交易门禁未变，无真实交易所I/O或绩效读取。
+
+结论：该非执行子层可提交，生产就绪=否。所有v2 claim仍在原SQL前拒绝、两个flags=false，旧v1诊断/原v1-v3恢复保持原分流。冷启动SDK重建、L2/HTTP前/全新执行reader与指纹、逐单资金能力、默认全入口/S4/C7和整个加载闭包仍未完成；源码/本地hash不是服务器签名、整个宿主可信或原子账户锁。C5/C6/C7和完整S3e保持未完成，原Goal active，不重封旧候选或解除默认阻断。
