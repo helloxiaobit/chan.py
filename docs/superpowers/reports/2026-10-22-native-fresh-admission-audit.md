@@ -266,3 +266,15 @@ fresh AST/compile只读当前解释器源码，不exec、不加载第二份交�
 初始命令参数、合成与真实时钟混用、SDK未fake的leverage-bracket GET及1.0字符串预期均是夹具/命令构造问题，未修改原解析器或计生产RED。主线程末审2项fixture RED证明raw与SDK info同引用，改为创建缓存前deepcopy；8项fixture RED要求初始空账户margin=0/available=1000、OKX最终汇总与.8未实现及1000.969权益一致。未放宽任一生产规则。
 
 最终CPython3.14.2/3.11.15各22 passed、0failure/error/skip/warning（27.15s/27.89s），唯一集合相同，compileall/diff通过。此前同5模块两版各1137 passed/1已知小样本XGB警告（318.79s/324.02s）；最后修正只影响22项新fixture，其余1115项代码/依赖/环境未变并复用该证据，不称最终1137整组重跑。JUnit身份见台账。下一步先复用本地prepare当前核验体形成无GET锁内断言，再接受控自采/版本化原CAS引用；完整S3/C5/C6/C7、每单资金/HTTP/default仍未完成，Goal保持active。
+
+## 26. S3e 活prepare上下文与原owned视图无GET断言（2026-10-24，有限子层）
+
+从clean且已推送9252545续行。NativePreparation原capture实现内部改名为_capture_native_prepare_context，公共capture仍返回原非可执行JSON副本；同一owner/current闭包同时服务原capture和后续owned断言，除显式owned状态外保留原读取/真实prepare/最终检查次序。新空handle仅通过WeakKeyDictionary关联原Engine、冻结JSON字节和实际核验闭包；没有资金/订单/释放/TTL状态、持久表或交易授权。dict/复制/另造handle/借用Engine不能通过；GC只回收本地内存，不修改原created/unknown意图。
+
+assert_native_prepare_context_current仅允许原SQLite wrapper拥有的事务，拒绝raw BEGIN与锁外使用。前后重读原信号完整行、配置/输入epoch/scope、fresh candidate/环境门禁、选定loaded runtime和已初始化client缓存/route属性；适用时原entry verifier重新读真实模型。原freeze读取移到最终本地重读之前，原DB/conn/table/Engine/guard/policy/clock所有权始终保持；不调用prepare、market/load_markets、private/public GET或写表，返回None。实际SDK非空双币来源之后同样可核，不改旧source或金融公式。
+
+TDD证据：缺API 1 RED；使用时钟倒退/非法类型与末尾clock变异72 RED→严格整数及前后本地重读；risk-reader回调最后改record/candidate/kill的24 RED→只移动原风险读取先后位置，复用同一current，不叠第二套校验。8项intent用例首跑误用snapshot_before参数及位置顺序，只改测试为原API，随后16项intent/freeze通过，不把构造错误算生产缺陷。原438项prepare和22项联合夹具继续保护公共行为；真实小合成部署对entry修改/模型文件损坏均拒绝，恢复的仅测试自有临时artifact。
+
+313项新上下文用例；最终CPython3.14.2/3.11.15相同12模块各1089 passed、0failure/error/skip、7已知小样本警告（433.36s/455.12s），1089唯一用例集合一致。7警告是3个XGB AUC和4个MLP收敛；双版compileall/diff通过，JUnit身份见台账。全fake/临时SQLite，无SDK实际请求/下单、实际配置/权限/依赖/候选改变或研究绩效读取；主线程审查，无独立代理审计声明。
+
+限制：handle并非可抵御宿主任意globals改写的能力隔离，更非服务器原子性或跨重启凭证；本地检查未变不证明native来源年龄/每单资金。新代码未接默认consumer，也未将prepare身份持久绑定至原CAS。当前仅intent前严格完整记录，合法intent后须拒绝而非忽略自身；L1/L2之后必须按新版本原事件独立重建和全部reader/指纹验收。完整同次自采→L0/CAS、HTTP前/默认全入口、逐单资金与S4/C7仍待，两个flags=false、常量阻断和完整Goal active保持。

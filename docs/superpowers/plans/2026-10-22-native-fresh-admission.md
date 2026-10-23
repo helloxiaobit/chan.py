@@ -239,6 +239,12 @@ TDD 先用真实 fake/SQLite 的双币非空 fixture 观察缺 API RED；正向�
 
 下一生产清理计划：先把NativePreparation的现有current核验体提为共用本地视图，保留原capture接口、原prepare执行和438项时钟/owner/变异保护；新增的锁内当前性断言不得调用prepare_order或任何private/public GET。然后接同一次受控自采及版本化原CAS持久引用，不能仅返回wrapper或消费caller自封JSON。first prepare的SDK杠杆读取可能加载bracket并改options，实际次序/最终cache及所有源使用时刻必须检验，不把bracket缓存当资金证明；完整加载闭包、逐单资金、HTTP/default/S4/C7继续独立验收。
 
+本地断言实现细化：原capture仍返回相同非可执行JSON；内部_capture_native_prepare_context运行同一实际prepare并保留原owner/输入检查闭包，生成不可由JSON恢复的进程内上下文。弱引用关联只保存该活调用的本地绑定，不是资金/订单状态或持久授权；复制、另造对象、传入dict/bytes/PASS均不能代替本次上下文。assert_native_prepare_context_current只能在原SQLite owned事务、该实际Engine、原signal未取intent时执行，重读同一本地视图/entry/原冻结及已观察client cache/route，返回None、不GET、不重prepare或写表。此阶段不声称已经支持合法L1/L2后的同一signal全行hash变化，后续必须由版本化原CAS原事件独立重建。全部flags/default阻断不变；先缺API RED，再检查网络/prepare零调用、上下文/owner/原始数据/缓存/门禁变异及原438回归。
+
+2026-10-24 本地上下文子层已实现：313项新用例，原JSON接口通过同一内部capture返回副本；实际检查闭包仅一份，不复制金融/输入/订单校验。owned断言前后重读，原freeze检查置于最后本地重读前；1项缺API、72项使用时钟/末尾变异和24项risk-reader尾部变异RED分别修复。8项原CAS测试首次用错参数只修测试，不计生产RED。raw BEGIN、外部JSON/复制/新对象、借用Engine、原模型/entry损坏、原冻结、signal/候选/配置/runtime/client缓存变化拒绝；8项非空双venue/模式/方向证明锁内零GET，GC不释放或改写原created订单。
+
+双解释器相同12模块各1089 passed/0failure/error/skip/7既有小样本模型警告（433.36s/455.12s），唯一集合相同；双版compileall/diff通过。活句柄不是密码学隔离、服务器证明或持久授权，不抵御任意改写模块globals的宿主；没有新增来源年龄预算，不能把本地未变当native账户当前/资金充分。下一步继续同一次受控prepare/instrument/component自采与原L0/版本化CAS持久引用；该pre-intent断言不忽略本单合法增量、不自动适配claim或重启，完整S3e/S3/S4及C5/C6/C7仍未完成。
+
 ## S4 默认 CLI 多市场合成 E2E 与发布
 
 沿真实 RunTradeCycle/RunTradeStage，fake 最底层原生运输，验证 Binance/OKX × one_way/hedged × 多市场的账户/准入/意图/恢复链。只有全部新风险入口不可绕过消费者后，才有条件替换原常量阻断。

@@ -12,6 +12,7 @@ import math
 import platform
 import sys
 import types
+import weakref
 from pathlib import Path
 
 from Common.ChanException import CChanException, ErrCode
@@ -24,6 +25,14 @@ _ROOT = Path(__file__).resolve().parents[1]
 _FILES = ("Trade/NativePreparation.py", "Trade/CCXTTradeEngine.py", "Trade/TradeEngine.py", "Trade/SafetyPolicy.py",
           "Trade/Script/OpeningInputs.py", "Trade/Script/Deployment.py", "Trade/db_util.py", "Trade/OrderAudit.py")
 _ENV_KEYS = ("CHANPY_KILL_SWITCH", "CHANPY_ENABLE_TESTNET", "CHANPY_LIVE_TRADING_UNLOCK")
+
+
+class _NativePrepareContext:
+    """An empty live-call handle, not a reconstructible admission document."""
+    __slots__ = ("__weakref__",)
+
+
+_PREPARED = weakref.WeakKeyDictionary()
 
 
 def _fail():
@@ -109,7 +118,40 @@ def _implementation():
     return {name: hashlib.sha256((_ROOT/name).read_bytes()).hexdigest() for name in _FILES}
 
 
+def _client_binding(client):
+    # Only read initialized data. In particular do not call market(), precision
+    # helpers or load_markets(), which can perform I/O when a cache is absent.
+    if type(client.markets) is not dict or not client.markets or type(client.markets_by_id) is not dict or not client.markets_by_id:
+        _fail()
+    return _sha({name: getattr(client, name, None) for name in (
+        "markets", "markets_by_id", "symbols", "ids", "options", "precisionMode", "urls", "headers", "hostname",
+        "verify", "isSandboxModeEnabled", "proxies", "proxyUrl", "httpProxy", "httpsProxy", "socksProxy")})
+
+
 def capture_native_prepare_identity(engine, record_id, amount, price, *, post_only=False, entry_assessment=None):
+    """Keep the original non-executable JSON interface; do not export a handle."""
+    context = _capture_native_prepare_context(engine, record_id, amount, price, post_only=post_only, entry_assessment=entry_assessment)
+    return json.loads(_PREPARED[context][1])
+
+
+def assert_native_prepare_context_current(engine, context):
+    """Pre-intent local consistency in the original owned view, no SDK calls.
+
+    JSON, copies and freshly constructed lookalikes are not live invocation
+    handles. Success is None, never funding, collector ownership or permission.
+    """
+    try:
+        if type(context) is not _NativePrepareContext or context not in _PREPARED:
+            _fail()
+        owner, _, check = _PREPARED[context]
+        if engine is not owner:
+            _fail()
+        check()
+    except Exception:
+        _fail()
+
+
+def _capture_native_prepare_context(engine, record_id, amount, price, *, post_only=False, entry_assessment=None):
     """Read actual record/config/input/candidate; prepare via the original API.
 
     No SDK replacement, settings mutation, default sender hook, order journal
@@ -142,19 +184,19 @@ def capture_native_prepare_identity(engine, record_id, amount, price, *, post_on
         implementation = _implementation()
         original_clock = guard.now_ms
 
-        def owners():
-            _same_database(chan, database, connection, table, owned=False)
+        def owners(*, owned=False):
+            _same_database(chan, database, connection, table, owned=owned)
             if (engine.chan_db is not chan or engine.exchange is not exchange or engine.opening_inputs is not guard
                     or engine.safety_policy is not policy or guard.now_ms is not original_clock):
                 _fail()
 
-        def current(*, check_implementation=True):
-            owners()
+        def current(*, check_implementation=True, owned=False):
+            owners(owned=owned)
             if (canonical_bytes(provided) != frozen_request or (check_implementation and _implementation() != implementation)):
                 _fail()
-            owners()
+            owners(owned=owned)
             runtime = _selected_runtime(engine, guard, policy)
-            owners()
+            owners(owned=owned)
             env = guard.env
             if (engine.mode != env.ccxt_conf.get("mode") or engine.dry_run is not False or engine.market_type != "swap"
                     or canonical_bytes(engine.ccxt_conf) != canonical_bytes(env.ccxt_conf)):
@@ -219,6 +261,34 @@ def capture_native_prepare_identity(engine, record_id, amount, price, *, post_on
         if canonical_bytes(stable(final)) != canonical_bytes(stable(last)):
             _fail()
         owners()
-        return result
+        client_binding = _client_binding(exchange)
+        owners()
+
+        def recheck():
+            owners(owned=True)
+            begin = utc_now_ms()
+            if type(begin) is not int or not result["payload"]["finished_ms"] <= begin < 2**63:
+                _fail()
+            observed, actual = current(owned=True)
+            if canonical_bytes(stable(observed)) != canonical_bytes(stable(last)) or _client_binding(exchange) != client_binding:
+                _fail()
+            if assessment is not None and canonical_bytes(verify_entry_assessment(actual, entry_assessment, price, engine)) != canonical_bytes(assessment):
+                _fail()
+            chan.assert_account_new_risk_allowed(result["payload"]["order_contract"]["account_context"])
+            owners(owned=True)
+            end = utc_now_ms()
+            if type(end) is not int or not begin <= observed["opening_inputs"]["checked_at_ms"] <= end < 2**63:
+                _fail()
+            # Reuse the same local reader after code/entry checks. It performs
+            # no prepare or profile lookup, and does not advance order state.
+            observed, _ = current(owned=True)
+            if (canonical_bytes(stable(observed)) != canonical_bytes(stable(last)) or _client_binding(exchange) != client_binding
+                    or not end <= observed["opening_inputs"]["checked_at_ms"] < 2**63):
+                _fail()
+            owners(owned=True)
+
+        context = _NativePrepareContext()
+        _PREPARED[context] = (engine, canonical_bytes(result), recheck)
+        return context
     except Exception:
         _fail()

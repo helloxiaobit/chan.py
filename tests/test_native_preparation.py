@@ -227,8 +227,9 @@ class NoOptional(importlib.abc.MetaPathFinder):
         if fullname.split('.')[0] in {'ccxt','yaml','numpy','pandas','torch','sklearn','optuna','xgboost','lightgbm','PyQt6','Config'}:
             raise ImportError('not installed')
 sys.meta_path.insert(0, NoOptional())
-from Trade.NativePreparation import capture_native_prepare_identity
+from Trade.NativePreparation import capture_native_prepare_identity, assert_native_prepare_context_current
 assert callable(capture_native_prepare_identity)
+assert callable(assert_native_prepare_context_current)
 """
     result = subprocess.run([sys.executable, "-c", script], capture_output=True, timeout=30)
     assert result.returncode == 0, result.stderr.decode(errors="replace")
@@ -336,6 +337,27 @@ def test_actual_deployment_and_entry_assessment_are_verified_not_caller_pass_fla
         assert p["scope"]["model_artifact_id"] == deployed.model.artifact_id
         assert p["entry_assessment_sha256"] == hashlib.sha256(canonical_bytes(assessment)).hexdigest()
         assert p["native_admission_verified"] is False
+        context = api._capture_native_prepare_context(engine, key, 0.037, price, entry_assessment=assessment)
+        for name in ("fetch_leverage", "fetch_position_mode", "load_markets", "request"):
+            monkeypatch.setattr(engine.exchange, name, lambda *a, **k: pytest.fail("model context must not do SDK I/O"))
+        with db.db.transaction():
+            assert api.assert_native_prepare_context_current(engine, context) is None
+            original_score = assessment["score"]
+            assessment["score"] = 0.123
+            try:
+                with pytest.raises(CChanException):
+                    api.assert_native_prepare_context_current(engine, context)
+            finally:
+                assessment["score"] = original_score
+            from pathlib import Path
+            model_path = Path(deployment_model["model"].GetModelPath())
+            original_bytes = model_path.read_bytes()
+            model_path.write_bytes(original_bytes+b"corrupt temporary model")
+            try:
+                with pytest.raises(CChanException):
+                    api.assert_native_prepare_context_current(engine, context)
+            finally:
+                model_path.write_bytes(original_bytes)
     else:
         with pytest.raises(CChanException):
             api.capture_native_prepare_identity(engine, key, 0.037, price, entry_assessment=assessment)

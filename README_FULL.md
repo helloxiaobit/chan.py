@@ -479,6 +479,7 @@ exchangeInfo.serverTime、上架/到期/未来生效时间均不作新鲜时钟�
 它不接受 caller receipt/check/PASS，不写意图或资金，不调用下单；缺现有client时在创建会话前拒绝。输出 `chan-native-prepare-identity-v1`，两个 flags=false。438 项新用例，两解释器各754项适用组合通过（7个小样本模型警告）；源码检查不是整个解释器可信证明，身份采样不是当前来源窗口，JSON不能转交当准入。完整instrument/component自采→原CAS/HTTP、逐单资金、默认入口和C7仍未完成。
 版本化 API 见下文，本入口的命令完成状态不是完整验收或生产授权。
 另有22项原生单位联合夹具验证实际SDK prepare、双币非空账户自采及L0：Binance contractSize=1、OKX保留ctVal，原历史含部分平仓、未决单、fee/funding和非零预占；最终双解释器通过。它仍是测试中的手动组合，不是生产受控入口、prepare持久CAS绑定或逐单资金证明，详见台账S3e。
+`assert_native_prepare_context_current` 已可在原SQLite自有事务内复核实际prepare的活上下文，重用原输入/候选/模型和冻结检查，不调用SDK/prepare、不写表、不接受JSON或复制对象，成功仅返回None。313项新用例，双版12模块各1089通过（7个已知模型警告）；上下文回收不释放原订单。它仅适用于intent前本地一致性，不是跨重启凭证、当前原生资金证明或已接默认CAS/HTTP；完整受控自采/持久引用和资金能力仍待。
 
 非 dry-run 还必须同时满足以下门禁：
 
