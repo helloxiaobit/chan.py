@@ -242,3 +242,15 @@ NativeComponentCollector 已沿原 collectors 的固定顺序自取完整来源�
 381项新测试；最终CPython3.14.2/3.11.15各3688 passed/1既有skip/13小样本训练警告，54模块/3689唯一用例集合相等，0failure/error。包含原安全/状态机/账户/执行/冻结/native sources、opening/deployment和多市场配置化/持久paper；两版compileall/diff通过，详细JUnit身份见台账。测试全fake/合成/临时SQLite，串行且活测试不编辑；无独立代理审计或真实服务声明。
 
 两个flags仍false。该层只完成原CAS精确增量与不可变引用，不完成来源本次调用权、实际信号/候选/部署/config/loaded-runtime prepare绑定、全新可执行版本与所有reader/ownership/指纹、逐单资金能力、HTTP/default全入口和S4/C7；真实容量/SDK内部重试/服务器原子性未证。旧模型/部署指纹受db_util/OrderAudit/CCXT等实际代码变更影响，不能重封旧产物继续用；无配置/权限/依赖/候选变更，常量阻断保留，完整版未完成。
+
+## 24. S3d 实际本地 prepare 身份前置层（非完整自采/准入）
+
+从已推送且clean的1cb330c继续；Goal保持active。新增NativePreparation，只接实际原Engine及record_id/数量/价格/post-only/适用entry assessment，不接caller收据、check或PASS。自行重读原信号及状态、原配置/完整行情epoch/scope、fresh candidate和kill/testnet/live门禁，调用原prepare_order取得完整v3执行条款与两单位；原部署/模型entry使用原verifier重建，不相信passed字段。前后核原DB/conn/table/Engine/guard/policy所有权、真实输入和候选字节，禁止writer事务内发private I/O。无订单、资金、冻结或配置写入；失败脱敏。
+
+主线程审查按RED/GREEN补齐scope漂移、最终时钟回调改record/config/candidate、非法开始时钟和最终实现检查换owner/config/kill；同一owner检查与原输入读取复用，未复制金融或订单状态机。48项加载边界RED覆盖env/scope property、静态限额和数量/精确float/契约摘要helper；9项有效RED覆盖同code不同globals和entry verifier替换。末尾8项RED证明未初始化client会触发原Engine会话创建，现已在任何准备调用前拒绝。复制函数测试首次遗漏__class__闭包造成8项fixture构造错误，修正后才观察上述有效RED，未计为生产缺陷。
+
+fresh AST/compile只读当前解释器源码，不exec、不加载第二份交易实现；选定函数核owner、模块globals、code与默认参数。源码与选定函数一致不代表全部传递依赖/解释器/SDK或服务端可信。started/finished为本地身份采样，不是native数据时间或完整耗时预算；最终重复检查也不是跨线程/服务端原子锁。JSON明确coverage=actual_local_prepare_identity_only，economics_complete/native_admission_verified均false，不能作为可转交令牌接原CAS。
+
+438项新测试，CPython3.14.2和3.11.15相同10模块各754 passed/0failure/error/skip/7warnings（182.22s/191.57s），唯一用例集合无差异。覆盖原opening inputs/quotes/streaming、contract/venue/account binding、trade safety、model contract/deployment workflow；模型警告为3个小样本XGB AUC和4个MLP收敛。真实小合成模型/部署有正反例；普通prepare夹具不是完整非空账户instrument/component→CAS集成验收。先前1cb330c的54模块双版3688 passed证据仅用于未变旧代码，不冒称本轮重新全跑；先前两版746项是增加client前置拒绝前的中间结果，详尽最终JUnit身份见开发台账。
+
+未修改旧生产文件/默认入口、旧契约或实际配置/规则/权限/依赖/candidate；没有真实交易所请求、订单或研究绩效读取。当前仅完成实际本地prepare身份前置层；同一调用内instrument/component自采绑定、原CAS/HTTP消费、逐单资金能力、可执行新版本全部reader/指纹及S4/C7继续未完成，常量阻断和所有候选/交易门禁保留。主线程复核，无独立代理审计声明。

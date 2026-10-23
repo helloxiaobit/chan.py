@@ -475,6 +475,8 @@ exchangeInfo.serverTime、上架/到期/未来生效时间均不作新鲜时钟�
 在此前置层之上，`Trade.NativeOrderTransition` 已给原 intent/claim CAS 增加显式本单 L1/L2 持久引用：原事务只允许实际参数的确定整行变化、一个原 intent/attempt 与一个原 claim event，重启后的 claim 自行读取原 L1，不接受 caller expected ledger。
 引用表 append-only、指向原 journal；完整 trade-shaped 整行摘要及来源/冻结/预算一起核验，unknown 不因时间或 pending 空列表释放。381 项新用例，CPython3.14.2/3.11.15 的54模块适用组合各3688 passed/1既有skip/13小样本模型警告，唯一集合相等。
 新诊断意图显式使用不可执行的 `chan-native-cas-order-v1`；当前与旧严格 Engine reader 均拒绝它，原 v1/v2/v3 的已存字节不重封。它只证明原 CAS 增量一致性，两个 flags=false，没有资金能力或 HTTP 许可；逐单资金、完整 prepare/runtime/新指纹、默认自采消费与 S4/C7 仍待，不能默认发送或重臂旧候选。迁移与完整证据见开发台账 S3c 记录。
+`Trade.NativePreparation.capture_native_prepare_identity` 已补本地身份前置层：自行重读原信号、配置、候选与行情输入，调用原 Engine prepare/精度/限额；适用时核原部署和真实 entry 评分，并检查选定加载函数的 code、defaults、globals 与 owner。
+它不接受 caller receipt/check/PASS，不写意图或资金，不调用下单；缺现有client时在创建会话前拒绝。输出 `chan-native-prepare-identity-v1`，两个 flags=false。438 项新用例，两解释器各754项适用组合通过（7个小样本模型警告）；源码检查不是整个解释器可信证明，身份采样不是当前来源窗口，JSON不能转交当准入。完整instrument/component自采→原CAS/HTTP、逐单资金、默认入口和C7仍未完成。
 版本化 API 见下文，本入口的命令完成状态不是完整验收或生产授权。
 
 非 dry-run 还必须同时满足以下门禁：

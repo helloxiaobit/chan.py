@@ -213,6 +213,20 @@ TDD 先用真实 fake/SQLite 的双币非空 fixture 观察缺 API RED；正向�
 
 接续顺序：先把实际准备身份（信号/候选/部署/输入、完整instrument自采及component自采调用、显式政策、配置/代码/加载runtime、role/两单位/价格/post-only）冻结为新的非可执行prepare绑定，并将其原L0/原CAS引用贯穿；逐单资金规则不足时仍拒绝。之后才是新可执行版本的全reader/ownership/源指纹与原HTTP前最终复验、默认多市场S4。不得把本诊断schema更名为可执行或将资金缺口跳过；没有完整资金证据/默认全入口/外部C7不去除阻断，不关闭完整版Goal。
 
+### S3d 实际 prepare 身份（本地身份子层已实现；完整自采/CAS接入未完成）
+
+先新增 `Trade/NativePreparation.py` 的 `capture_native_prepare_identity(engine, record_id, amount, price, *, post_only=False, entry_assessment=None)`，必须自行从原DB读取实际信号、用原COpeningInputs核配置/完整行情epoch/信号/部署，并在原prepare_order前后重读candidate与原门禁。冻结实际Engine/DB/配置摘要、完整执行条款及两单位、原opening stamp、candidate文件身份、策略/部署/entry（适用时）身份与选定关键已加载callable；不接受caller receipt/check/PASS，不写订单、资金或新冻结，不返回可执行授权。该子层还不是本次instrument/component采集权，后续须在同一准备调用内直接采集再接L0/CAS，禁止转交此JSON当准入。
+
+复用/简化范围：复用原SafetyPolicy的candidate和kill/env门禁、原COpeningInputs与entry verifier、原Engine执行/精度/限额，不复制财务/解析或改旧v1/v2/v3。新增加载边界只用stdlib AST/compile读本机当前Python源码，不执行源码、不安装依赖；对选定实际bound methods/输入检查方法验证fresh code及默认参数，实例/类替换均拒绝，前后快照一致。明确这是selected prepare callables覆盖，不宣称整个解释器/插件/服务器可信；完整加载闭包仍属后续接入验收。配置/原candidate只读，不回写旧证明。
+
+先缺API RED；合成配置/行情DB与原fake Engine测两venue×单双向×多空及原信号/执行条款，前后改原行/配置/行情/candidate/门禁/方法/DB/实际参数无新订单；异常脱敏、无caller收据、typed有限数、事务锁内不发I/O、core-only导入。已有S3c双版3688通过证据对未变范围复用；本子层及实际受影响输入/原契约适用回归逐项执行。后续自采/逐单资金/默认HTTP/S4/C7不因本模块通过而省略。
+
+本子层清理/修复计划：282项已通过保护下，80项故障注入RED显示非法开始时钟须在private prepare前拒绝、最终源码检查回调能更换Engine owner/config/kill。只在新模块提取同一owner检查供前后使用；最终序列化/代码检查后再复用同一实际输入/candidate/门禁读取（不再触发重复文件实现回调），不复制第二套校验，不改旧消费者/DB/资金。scope变异8RED和末尾记录/config/candidate与get_exchange替换32RED已修复，仍不宣称全局原子快照。
+
+实际结果：438项新用例；CPython3.14.2/3.11.15相同10模块各754 passed、0failure/error/skip、7小样本模型警告，唯一集合无差异。真实小合成模型/原部署的entry通过、缺失、篡改与加载verifier替换均验收；普通信号夹具覆盖两venue×one_way/hedged×多空，但不是完整非空账户自采→CAS E2E。后续48项真实RED补齐env/scope property、静态限额及三个数量/契约helper；9项真实RED补齐同code不同globals及原entry verifier替换；8项真实RED要求缺现有client时在原Engine自动创建会话前拒绝。复制函数夹具初次遗漏原__class__闭包的8项构造错误已单独修正，不计生产RED。
+
+选定callable同时核绑定owner、原模块globals、fresh-compiled code和默认参数；不执行源码，不把磁盘hash当整个加载闭包证明。开始/完成时钟只是本地prepare身份采样，非新鲜native来源窗口、完整调用耗时上界或跨线程/服务端原子快照。所有实际配置/candidate只读、原v1/v2/v3和默认入口未改，无新依赖。下一步在同一受控调用内直接取得instrument/component来源并绑定L0/原CAS，不能消费此JSON作为可转交准入；逐单资金/新执行版本与所有reader/指纹/HTTP/default/S4/C7仍待，两个flags=false。
+
 ## S4 默认 CLI 多市场合成 E2E 与发布
 
 沿真实 RunTradeCycle/RunTradeStage，fake 最底层原生运输，验证 Binance/OKX × one_way/hedged × 多市场的账户/准入/意图/恢复链。只有全部新风险入口不可绕过消费者后，才有条件替换原常量阻断。
