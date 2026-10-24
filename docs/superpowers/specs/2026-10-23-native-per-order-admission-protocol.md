@@ -83,6 +83,8 @@
 
 冷启动收尾复查：最后业务时钟/本地视图之后再次核原SDK摘要，并以monotonic_ns尾段差向上换算毫秒形成保守使用时刻上界，包含尾段核验与原owned退出耗时；不改变native时间、显式budget、资金规则或原schema。近边界可能更早拒绝，不能解释为允许额外1ms。24新增回归，双版8模块各392 passed/0failure/error/skip/2既有模型警告，原claim/default仍拒绝；金融方向选择尚未确认，以下完整验收仍未通过。详见审计§30。
 
+随后用户已明确批准[本地金额模型＋原生额度方向](2026-10-24-native-per-order-capacity-design.md)，不再待批。首个独立Binance参数来源已补feeBurn/当前commission/symbolConfig/完整raw brackets，186新、双版同六模块各903 passed/0failure/error/skip/0warnings；只输出flags=false的输入，不计算资金或接原CAS/默认发送。实际SDK默认testnet签名拒绝保持，未切demo或改配置。完整金额算术/独立非空账户复算、以下整体验收及C7继续未完成，详见审计§31；原Goal工具仍blocked，不冒称已恢复active。
+
 1. 单独证明已加载 SDK cache 不构成新 instrument 读取；fake 最底层原生方法返回新 tick/contract/status/limits 时应拒绝旧 metadata。拒绝错路由、额外私有/跨产品请求、缺/重复市场、非有限/未来/倒退时钟；不为恢复旧单强制获取新模型。
 2. 用已有两币非空/partial/pending/fee/funding fixture 扩展完整 prepare→原 intent→claim→HTTP；用真实原 SQLite/CAS，而非 mock 一个 passed helper。
 3. 同账户不同记录/市场/表的双连接竞争，以及 acquire/claim/HTTP 前各边界的输入、冻结、来源、runtime/配置变化，均不得产生两个未观察新风险意图或额外 HTTP。

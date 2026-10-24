@@ -2,7 +2,7 @@
 
 日期：2026-10-24（Asia/Shanghai）。基线：已推送且clean的 `97e91a0cee8bc7c3ba1580721a1252bce57dafbe`。
 
-状态：**设计选择待用户确认；没有批准或实现新的金额公式**。此稿不修改实际配置、既有政策、候选、来源/订单历史或任何交易门禁；不宣称资金充分、原生锁额、真实接受或C7认证。
+状态：**用户已明确批准A“本地模型＋原生额度”方向；具体完整金额算术尚待冻结/实现/验收**。批准原文为“批准本地模型＋原生额度方向（推荐）”，对应本文件的专门确认问题。无需再次审批同一方向；批准不包含隐藏价格缓冲、默认费率或运行权限。本稿不修改实际配置、既有政策、候选、来源/订单历史或任何交易门禁；不宣称资金充分、原生锁额、真实接受或C7认证。
 
 主Goal仍按[完整版计划](../plans/2026-10-20-crypto-full-version-completion.md)完成C0–C7，Binance USDT线性永续优先、OKX随后、股票延期。[账户级串行/原CAS协议](2026-10-23-native-per-order-admission-protocol.md)已经批准，不再请求同一批准。本稿只处理该协议明确另留的“逐单资金能力”设计决定。
 
@@ -25,9 +25,9 @@
 
 结论是证明范围的判断，而不是“所有平台都没有某接口”：目前核对的Binance资料尚未提供可直接绑定原CAS的只读本单资金锁/完整数量额度契约；如果后续找到权威接口，须另核字段、单位、覆盖及原子性，不能从搜索未命中推断不存在。
 
-## 3. 需要用户确认的一项新设计选择
+## 3. 已确认的设计选择及未选路线
 
-### A. 明确本地金额模型＋适用的原生数量额度（推荐方向）
+### A. 明确本地金额模型＋适用的原生数量额度（已批准）
 
 允许平台专用、版本固定、可独立复算的**客户端资金风险模型**作为资金门槛的一部分；有适用原生本单数量额度时再交叉核对，不强行把两个平台归成一个简化公式。保持Binance优先，而不是为了已有OKX接口跳过Binance。
 
@@ -35,7 +35,7 @@
 
 “模型足够”只指**给定版本与已核输入下**通过本地资金规则，不改称服务器锁额、服务器必接单或对未来价格/费用/资金费无条件保证。价格假设、风险缓冲或模型支持范围中的实质新选择须明确展示，不得借本方向批准自行增加默认系数或放宽原规格。当前尚未冻结具体价格/费用/档位算术，本稿不是可直接编程的资金公式。
 
-### B. 仅接受交易所原生本单额度
+### B. 仅接受交易所原生本单额度（未选，保留决策背景）
 
 不允许本地金额模型作为资金门槛的充分组成部分，只接受可与本单完整绑定的原生数量/金额额度，并继续原账户/账本/时效与原CAS核验。不能把测试单POST、预检查成功、maxWithdraw或汇总available替代成额度。
 
@@ -54,6 +54,29 @@
 5. **完整消费后才讨论新执行版本。** 新契约的query/ACK/累计成交/pending归属/恢复/reduce-only及源码/加载runtime指纹逐项接原共享核算体；在完整HTTP前复验/default全入口和离线CLI E2E之前，原v2 claim/默认阻断保持。失败和未知不释放、重创或补ACK。
 6. **交付。** 双解释器适用回归、原实际产物兼容、compileall/diff、主线程审查、Lore/精确提交/非强推/远端身份核对。C7仍依赖必要外部授权，fake PASS不能替代；S3/C5/C6/C7及完整Goal不因资金子层通过提前结束。
 
-## 5. 本次交付的实际范围
+## 5. 原选择稿交付的实际范围（历史）
 
 本次只形成上述代码/官方证据审查和设计选择，未新增任何资金代码、测试伪PASS、政策默认值或可执行契约。验收使用文档链接/路径、内容边界、diff与精确Git身份检查；生产代码与依赖未变，复用97e91a0已记录的适用测试证据，不冒称本轮重跑368项或完成资金TDD。
+
+## 6. 批准后首个独立输入子层：Binance原始资金参数（实施前冻结）
+
+从clean的4d31915a39944df956665c3303ee8ed04d778fec继续。先补金额模型必需而现有来源缺少的输入，不提前定义或计算资金充分、assumed-price/缓冲、返佣收益、费用币转换、档位系数应用或本单占额。完整金额算术仍须先冻结再实现；本输入子层不替代它。原Goal工具当前仍为blocked，不能代用户改为active或另建缩小Goal；本轮直接批准的范围内工作继续。
+
+最小文件范围为Trade/NativeCapacityEvidence.py与对应测试，不修改原来源/订单schema、原状态机或默认入口。复用AccountIdentity原私有环境/账户身份、ExecutionFacts精确数字边界及NativeMarketEvidence的声明池/SDK身份。没有适合复用的原始JSON数字token读取体时，仅在新来源内处理该传输差异，不从训练流水线引入金融依赖。
+
+- API：collect_binance_capacity_evidence(exchange,markets,*,mode,max_age_ms,max_observation_span_ms)及verify_binance_capacity_evidence(document,*,max_age_ms,max_observation_span_ms)。两个预算均必填typed非负int，无默认值；以最早started_ms计年龄，采集整窗计跨度，最终reader/本地核验成本另外包含在使用年龄内。恰界允许、超1ms拒绝。独立reader只重算/检时，不GET、改client或写库；调用者重封的字节不构成自采/准入能力。
+- 仅binance/binanceusdm、声明池USDT线性swap；明确模式与原实际SDK类/私有路由/TLS。固定顺序为feeBurn一次，然后按声明池排序逐symbol的commissionRate、symbolConfig、leverageBracket。每项GET均由原账户身份GET前后包围且全部身份相同，总调用数为3×(1+3N)，超过原MAX_REQUESTS=128在任何GET前拒绝。无POST/修改账户/加载metadata或bracket cache补缺；不将SDK返回成功当服务器认证。
+- 以[当前官方账户API](https://developers.binance.com/en/docs/catalog/core-trading-derivatives-trading-usd-s-m-futures/api/rest-api/account)和本机CCXT4.5.89为解释依据：只保留feeBurn；symbol及maker/taker与可选rpi费率；symbol/marginType/isAutoAddMargin/leverage/maxNotionalValue；symbol/可选notionalCoef及每档完整bracket/initialLeverage/notionalFloor/notionalCap/maintMarginRatio/cum。缺必需字段、错symbol、重复/额外响应行、非有限/布尔金额拒绝。可选RPI或coef缺失保留缺失，不补0或1。负费率原样记录，不将其作为可用资金。
+- Python版CCXT原JSON解析可能将原生小数token转成float；不能str(float)冒称精确原始金额。因此在同一原生调用返回后、任何后续GET前读取其保留的原始HTTP正文，用标准库parse_float=str保留token；与该SDK实际返回对象重新解析比较，重复JSON键/非有限数/不匹配/缺正文/禁用正文保留均拒绝。只发布白名单字段，不存完整正文、原生账户标识、签名、headers、凭据或错误体；浮点金额不得直接进入原精确数字helper。
+- collector限定原SDK对应native方法及所选request/fetch/JSON解释路径，fake仅替换最底层session.request；读取后再核原环境/选定client身份。SDK内部重试有效值必须为0，不替用户修改options；这是选定路径检查，不是整个宿主/传输库可信证明。原生参数无生成时间，source_ms=None、clock_kind=local_request_window_only，不能用本地GET时间伪装服务器更新时间；多项观察不原子，后续CAS仍必须自采绑定并核跨来源时差。
+- 输出只为chan-binance-capacity-evidence-v1，economics_complete/native_admission_verified均false；fee_currency与可分配金额未知，不应用notionalCoef、不推断feeBurn关闭即费用充分。纯模型、独立复算、原L0/L1/L2、全部执行reader和HTTP/default接入仍是后续独立验收；旧资金/claim阻断不变。
+
+TDD先观察缺API失败，再实际原SDK＋底层fake的非空两symbol响应逐字段验收；覆盖精确数字token、原生列表/对象、缺项/错币/多行、费率/档位/开关、全私有路由/原账户变化、显式预算/最终reader耗时、原始正文不匹配和异常脱敏。测试不访问真实交易所，不以空仓/零费用或新配置代替缺失金额契约。
+
+### 6.1 本输入子层离线结果与限制
+
+186项新测试，双解释器同六模块各903 passed/0failure/error/skip/0warnings，用例集合差异0，compileall/diff通过，具体身份见[开发台账](../reports/2026-10-20-crypto-full-version-progress.md)。复用原数字/账户/声明池边界；JSON额外保护限制正文1MiB、每symbol最多128个完整档位，不悄悄截断。原始档位系数只保留，不乘入cap、floor或cum；本层也不证明全部档位连续覆盖或任何金额足够，后续纯模型仍须按冻结算术独立核验。
+
+真实原SDK签名/HTTP解析路径＋fake session运输发现：本机CCXT4.5.89默认Binance Futures testnet/sandbox签名在运输前NotSupported；正向只覆盖live模式的离线fake，没有真实live请求。另两项测试保留默认testnet拒绝，不写disableFuturesSandboxWarning、不切demo、不改现有工厂或配置。该SDK限制不等于交易所所有测试环境不存在，也不把旧fake-native-method PASS改称签名/真实服务认证。
+
+完整金额算术/独立非空持仓及partial/pending复算、受控prepare→原CAS自采绑定、L2/发送/所有reader/default、OKX与C7仍未完成。本文件方向批准已记录，不再标为待批；完整Goal没有因此完成或被替换，当前工具blocked状态没有被本轮代为恢复。

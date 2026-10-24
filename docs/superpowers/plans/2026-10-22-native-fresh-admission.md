@@ -295,6 +295,16 @@ signal可为后续原受控prepare提供已初始化SDK，但成功只None、不
 
 最终CPython3.14.2/3.11.15相同8模块各392 passed、0failure/error/skip、2既有小样本XGB警告（445.47s/467.88s），392唯一用例集合一致。78冷启动（原54＋24新增）＋70current＋72intent＋22sources＋47venue＋26account＋63recovery＋14safety；双版compileall/diff通过。两活pytest均确认exit0后才编辑，源码/测试摘要在两版期间一致。金融设计仍待本次单独确认，源/旧绑定不重封，完整加载闭包、L2/HTTP/资金/全reader/default/S4/C7与完整Goal仍未完成；主线程复核、全部fake，非独立审计或真实服务认证。
 
+### S3e资金方向批准后的首个输入子层（2026-10-24）
+
+用户已直接批准“本地模型＋原生额度”方向，见[资金设计§3/§6](../specs/2026-10-24-native-per-order-capacity-design.md)。不再将该方向标为待批；原完整Goal工具仍blocked，不能自行改为active/新建缩小Goal，但本轮授权的工作继续。完整金额公式、价格/费用币/档位支持契约仍须先冻结再实现，不能借方向批准补默认值或按notional/leverage、全额抵押代替。
+
+独立新增NativeCapacityEvidence只解决Binance feeBurn、当前commission、symbolConfig、完整raw brackets的自采输入。复用原AccountIdentity/ExecutionFacts/NativeMarketEvidence，不增金融/订单状态机、原表/schema/reader迁移或默认配置；GET逐项由原账户身份前后包围，typed显式age/span、固定预算。原SDK的原始HTTP正文在后续身份GET前立即重读并严格核decoded对应，标准库保留小数token、拒绝重复键/缺正文/漂移；不是str(float)、cache补缺或服务端签名。选定SDK路径/环境/有效零retry检查只为此输入子层，不认证整个宿主。
+
+缺API先RED；原SDK两venue类×live离线fake运输正向，另保留默认testnet签名NotSupported。未改demo/disableFuturesSandboxWarning或原factory，不能把原fake native方法的testnet PASS当真实签名路径PASS。首次组合92项失败源于这项夹具的未验证假设，查明后仅修支持预期、不放宽SDK阻断；不计作产品缺陷RED。另10项真实RED证明effective validateServerSsl及初始非法clock须在任何GET前拒绝，最小修复后GREEN。
+
+另两项真实RED证实末尾typed clock必须在加单调差之前核验，防止bool被Python算术转为int绕过类型检查；复用原_window前置后GREEN。最终186新用例，双版同六模块各903 passed/0failure/error/skip/0warnings，唯一集合差异0；双版compileall/diff及主线程review通过，详细JUnit/身份见台账。两个flags=false、fee_currency=None、coef未应用，本层不核额度、持仓/pending的金额占用或全部档位覆盖。后续依然依次冻结完整算术→独立非空账户参考复算→原受控来源/prepare/L0/L1/L2绑定→全部reader/发送/default/S4/C7；旧intent/claim资金拒绝保持，整个Goal未完成。
+
 ## S4 默认 CLI 多市场合成 E2E 与发布
 
 沿真实 RunTradeCycle/RunTradeStage，fake 最底层原生运输，验证 Binance/OKX × one_way/hedged × 多市场的账户/准入/意图/恢复链。只有全部新风险入口不可绕过消费者后，才有条件替换原常量阻断。

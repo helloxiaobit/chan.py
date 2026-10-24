@@ -332,3 +332,17 @@ signal仅初始化以供原受控prepare使用；原intent另须在原owned视�
 24新增回归：12项双venue×signal/原L1×options/markets/public-route末尾变异、2项末尾SDK耗时、4项整毫秒恰界/正1ns超界、6项bool/倒退单调钟。最后两组手工控制精确纳秒差，正常原factory/parser/SQLite及allowlisted GET路径仍实际执行；失败不改订单/引用、不释放unknown，cleanup仍限自有新SDK。14项SDK/耗时GREEN及10项计时边界GREEN之后，双解释器相同8模块各392 passed、0failure/error/skip、2既有小样本XGB警告（445.47s/467.88s），唯一用例集合一致；双版compileall/diff通过，详情/身份见台账。未变其余证据按原范围复用，不冒称全仓回归。
 
 主线程按review模板核原边界、计时单位、失败与原模型/历史/恢复分流；全部fake、无独立代理审计、无真实交易所I/O或研究绩效读取。源码hash/选定callable核验仍非整个加载闭包/宿主真实性证明，当前initializer只返回None而非资金或HTTP许可。两个flags=false、v2 claim/默认资金拒绝及实际配置/权限/candidate等门禁全部保留；金融方向待确认，完整S3e/C5/C6/C7/Goal未完成。
+
+## 31. 资金方向已批准；Binance精确原生参数输入子层（2026-10-24）
+
+起点4d31915a39944df956665c3303ee8ed04d778fec已推送且clean。用户对专门资金问题明确答复“批准本地模型＋原生额度方向（推荐）”，已更新原设计稿而非重问；此批准没有给出隐含价格/费率/费用币/档位公式、实际资金或运行权限。工具原Goal仍blocked，本轮未伪造active、另建Goal或关闭完整C0–C7。
+
+新增Trade/NativeCapacityEvidence.py及186测试，仅采集Binance/binanceusdm原参数。固定feeBurn→按完整声明池排序逐symbol commission/config/brackets；各项由原native账户身份GET前后包围，总原SDK调用数3×(1+3N)，超过128在I/O前拒绝。保留所有档位字段与可选notionalCoef/RPI缺失，不补0/1、不应用coef/返佣、不计算可用金额，fee_currency=None、两个flags=false。复用原私有环境、账户context、精确数值、声明池和SDK身份，无新金融/订单状态机、表/旧schema迁移或default集成。
+
+本机CCXT Python JSON会丢小数token精度，故同次native返回后立即读取原保留HTTP正文，用标准库parse_float=str，拒绝重复键/NaN/过大正文/decoded不符，再发布白名单投影；完整正文/凭据/headers/账户原标识/错误不持久。collector核原native/选定sign/request/fetch/JSON函数owner、有效retry=0、全部私有路由/两项TLS开关及调用前后输入/credential/options摘要；不修改这些对象。reader重构严格shape/数值/顺序/SDK/源码和显式年龄/跨度，零GET零写入。终末client核验成本用与原冷初始化相同的monotonic纳秒向上界计入age，无新增容差。它不认证服务器或全部宿主，观察仍非原子；reader接受数据不是caller可转让准入权。
+
+TDD缺API真实RED后实现；首轮92失败/162通过的重复失败均为testnet夹具错误预期：实际SDK4.5.89默认私有签名在fake session前NotSupported。追溯实际sign分支，不替换/关警告、不切demo或改实际配置；正向改为live离线fake，并明确两项testnet零运输拒绝。另10项真实RED为effective TLS开关/非法初始时钟仍尝试GET，补原检查前置后10 GREEN。收尾再以合法合成零时刻证明末尾bool时钟先加整数会变int：2项DID NOT RAISE RED；复用原_window先核typed时刻再加单调差后2 GREEN。最终186新用例还覆盖精确数字不可从float恢复、两币完整原档位、缺项/多行/重复/错symbol、负费率/optional缺失、全身份/输入/SDK/route变异、显式budget与终末耗时、脱敏/核心导入。
+
+双解释器同六模块各903 passed、0failure/error/skip/0warnings，唯一集合完全一致（py314 53.62s/JUnit53.551s；py311 53.51s/JUnit53.455s）。组合为186新＋41账户身份＋166独立mark/book＋422instrument＋66balance＋22原prepare/source；双版compileall/diff通过，产物身份见台账。修复末尾typed时钟前两版901 PASS只是中间证据，未替换为新代码证据。不复跑未改原订单/模型/冷启动全组，也不将可复用旧证据记为新跑；没有真实HTTP、研究/正式绩效读取或实际Config/config.yaml/CHANPY_CONFIG变化。
+
+主线程按review模板逐项审查范围/类型/失败/兼容与预算，未发现本输入子层未解决阻断；可提交此有限层，生产就绪=否。整个金额模型/独立非空持仓及partial/pending复算、跨来源时差、原受控prepare/CAS绑定、全加载闭包/执行reader/HTTP/default、OKX后续及C7仍未完成。新模块故意不纳入旧proof重封或赋权；原资金/claim/发送阻断全部保留，不能以903 PASS关闭S3e/C5/C6/C7或完整Goal。

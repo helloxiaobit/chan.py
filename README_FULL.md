@@ -485,7 +485,9 @@ exchangeInfo.serverTime、上架/到期/未来生效时间均不作新鲜时钟�
 在此基础上，`assert_native_prepared_intent_current(engine,record_id)` 已可从原持久L1/不可变事件取得完整after-row和全账本基线，在原owned视图复核实际输入/候选/模型/选定runtime、原SDK缓存和本地路由，不GET、不prepare、不写表，只返回None。原Engine消费该检查后仍执行原资金拒绝；没有放行claim或发送。
 新写入的preparation binding为 `chan-native-prepared-intent-binding-v2`，仅增加原调用的client_binding_sha256（缓存/route/SDK凭据摘要，不保存明文）；原capture identity和来源schema不变。旧binding-v1可历史读取，但不会补摘要、重封或获得新当前性。70项新用例、双版相同26模块各2357 passed/0failure/error/skip/9模型警告，实际旧库副本保持原字节且claim拒绝。该步的新Engine/guard/连接复核复用了已有缓存；冷启动后续见下段，L2/HTTP前消费、逐单资金/全部执行reader/default/S4/C7仍待。代码/配置/输入时代与原来源窗口必须匹配，整个S3e和完整版仍未完成。
 显式 `Trade.NativePreparedClient.initialize_native_prepared_client` 现可在原Engine无client时，沿原factory、原生instrument GET、原SDK纯parser/set_markets及账户设置/身份GET建立新SDK缓存；已有client一律不刷新、不清除。原L1须完整匹配原SDK摘要、全部账本和旧来源窗口，新GET不能续期、重封或提供发送权；失败只清理本入口仍持有的新client，原订单/未知状态不释放。首轮54项新用例含两个全新Python进程重建；双版8模块各368 passed、0failure/error/skip、2个既有模型警告。全部为fake底层运输，不证明真实签名/网络、完整加载闭包或资金能力；该入口未自动接入默认发送，v2 claim与资金拒绝保持，详见审计§29。
-后续收尾校正增加24项回归：在最后业务时钟/本地回调后再核原SDK摘要，并以单调纳秒差形成覆盖尾段核验/原事务退出的保守使用时刻上界。它不改原生来源时间，不放宽age/span；近边界可能更早拒绝，正1ns向上计1ms不是额外容差。最终双版8模块各392 passed、0failure/error/skip、2个既有模型警告，详见审计§30。资金设计仍未确认，原claim/default及整个S3e/C5/C6/C7门禁不变。
+后续收尾校正增加24项回归：在最后业务时钟/本地回调后再核原SDK摘要，并以单调纳秒差形成覆盖尾段核验/原事务退出的保守使用时刻上界。它不改原生来源时间，不放宽age/span；近边界可能更早拒绝，正1ns向上计1ms不是额外容差。最终双版8模块各392 passed、0failure/error/skip、2个既有模型警告，详见审计§30。该步当时资金方向待批；后续批准与输入子层见下段，原claim/default及整个S3e/C5/C6/C7门禁不变。
+
+用户现已批准[明确本地金额模型＋适用原生额度方向](docs/superpowers/specs/2026-10-24-native-per-order-capacity-design.md)，尚未批准隐藏系数或真实运行。新增 `Trade.NativeCapacityEvidence` 只读Binance feeBurn/当前费率/symbol配置/完整原始档位，原账户身份逐项前后包围，两个显式age/span预算；同次原HTTP正文保留精确JSON小数token，不以float或旧bracket cache造金额。186新增回归，双版同六模块各903 passed/0failure/error/skip/0warnings。只给flags=false的独立输入，尚未接金额模型、原CAS或发送。实际SDK4.5.89默认testnet签名在fake运输前拒绝，另有专门测试保留此拒绝；正向live模式仍全部fake、非真实账户请求或C7认证，不切demo/改配置。完整金额算术与独立复算、全部消费者和C5–C7继续未完成，详见审计§31。
 
 非 dry-run 还必须同时满足以下门禁：
 
