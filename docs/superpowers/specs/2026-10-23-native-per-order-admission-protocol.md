@@ -91,6 +91,8 @@
 
 再接原check只读适配NativeAccountLimits，直接派生signed持仓/完整pending/独立mark/模式并前后assert同一原L0，109新、双版同五模块各696 passed/0failure/error/skip/0warnings。book_bound_to_original_check=true不是受控自采/资金/CAS许可，source_collection_owned及原资金/admission flags仍false；最后时钟后的真实原CAS变更会拒绝旧book，created意图保留不自动释放。原prepare所有权、完整金额、原L1/L2消费/HTTP/default与C7仍待，详见审计§34和[算术规格§6–7](2026-10-24-binance-capacity-arithmetic.md)。
 
+2026-10-24接续：按[raw绑定规格](2026-10-24-native-capacity-prepare-binding.md)将实际prepare同一SDK的capacity自采接到原intent CAS，显式新入口写binding-v3，旧入口v2不新增GET。完整raw源/显式policy与原账户/配置/SDK/联合窗口绑定，历史as-of不续期current，末尾source回调后原client/本地/账本及monotonic预算复验，失败不落intent；仍没有完整金额或可执行contract。85新增、双版同15模块各2059 passed/0failure/error/skip/3既有AUC警告，详见审计§35/台账。用户已另批准算术§2路线P，仅允许具名客户端V1估价，不是原生执行上界/资金锁或交易授权。完整金额、原L1/L2资金消费、全reader/HTTP/default、OKX/S4/C7及整个Goal继续待，既有账户级唯一未知意图协议和全部门禁不变。
+
 1. 单独证明已加载 SDK cache 不构成新 instrument 读取；fake 最底层原生方法返回新 tick/contract/status/limits 时应拒绝旧 metadata。拒绝错路由、额外私有/跨产品请求、缺/重复市场、非有限/未来/倒退时钟；不为恢复旧单强制获取新模型。
 2. 用已有两币非空/partial/pending/fee/funding fixture 扩展完整 prepare→原 intent→claim→HTTP；用真实原 SQLite/CAS，而非 mock 一个 passed helper。
 3. 同账户不同记录/市场/表的双连接竞争，以及 acquire/claim/HTTP 前各边界的输入、冻结、来源、runtime/配置变化，均不得产生两个未观察新风险意图或额外 HTTP。

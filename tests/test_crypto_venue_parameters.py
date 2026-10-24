@@ -50,14 +50,19 @@ class CVenueExchange(COfflineExchange):
         return super().create_order(code, order_type, side, amount, price, fake_params)
 
 
-def venue_engine(db, tmp_path, venue, mode="one_way", margin="cross", *, spot=False):
+def venue_engine(db, tmp_path, venue, mode="one_way", margin="cross", *, spot=False, execution_mode="testnet"):
     exchange = CVenueExchange(venue, mode=mode, margin=margin, spot=spot)
+    if execution_mode == "live":
+        exchange.builder.set_sandbox_mode(False)
+        exchange.urls, exchange.headers = copy.deepcopy(exchange.builder.urls), copy.deepcopy(exchange.builder.headers)
+        exchange.isSandboxModeEnabled = exchange.builder.isSandboxModeEnabled
     result = CCCXTTradeEngine(db, quota_gen=CBenchPriceQuotaGen(3.7),
-        ccxt_conf={"exchange": venue, "mode": "testnet", "testnet": True, "api_key": "key", "secret": "secret",
+        ccxt_conf={"exchange": venue, "mode": execution_mode, "testnet": execution_mode == "testnet", "api_key": "key", "secret": "secret",
                    "default_type": "spot" if spot else "swap", "position_mode": mode,
                    "margin_mode": margin, "leverage": 3},
         trade_conf=enabled_trade_conf(write_candidate_receipt(tmp_path)),
-        environ={"CHANPY_ENABLE_TESTNET": "YES"}, push_msg=False)
+        environ=({"CHANPY_ENABLE_TESTNET": "YES"} if execution_mode == "testnet" else
+                 {"CHANPY_LIVE_TRADING_UNLOCK": "I_ACCEPT_REAL_ORDERS"}), push_msg=False)
     result.exchange, result.api_interval = exchange, 0
     return result
 

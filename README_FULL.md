@@ -495,6 +495,8 @@ exchangeInfo.serverTime、上架/到期/未来生效时间均不作新鲜时钟�
 
 `Trade.NativeAccountLimits` 现可只读原SQLite native check，直接从其signed持仓/完整regular pending、独立mark和原生模式派生book，前后复用同一原L0并合并capacity时间政策。109新增，双版同五模块各696 passed/0failure/error/skip/0warnings；含重启、真实原CAS晚变更、冻结/较新来源及替换库零查询。book_bound_to_original_check只说明原持久数据关联；source_collection_owned/book_origin_verified/economics_complete/native_admission_verified仍false。它未取得原prepare自采所有权，不写订单/资金或接默认发送；合成历史reader输入不冒称SDK testnet采集成功，原签名拒绝和C5–C7门禁不变。见审计§34及[算术规格§6–7](docs/superpowers/specs/2026-10-24-binance-capacity-arithmetic.md)。
 
+显式新入口 `Trade.NativePreparedIntent.acquire_binance_capacity_prepared_diagnostic_intent` 现将同一实际SDK自采的raw capacity连到原prepare/SQLite CAS，写 `chan-native-prepared-intent-binding-v3`；原入口仍写v2且不新增capacity GET。它只保存原资金参数及显式age/span、账户/SDK/配置/联合窗口关联，不是资金通过或可执行契约。历史以原intent时刻审计，当前/CAS仍核当前年龄及末尾完整client/本地/账本；冷启动不续期旧来源。85新增及双解释器同15模块各2059 passed、0failure/error/skip、3既有小样本AUC警告，详见[绑定规格](docs/superpowers/specs/2026-10-24-native-capacity-prepare-binding.md)和审计§35。用户已专门批准[路线P](docs/superpowers/specs/2026-10-24-binance-capacity-arithmetic.md)的具名V1估价，但完整成本、fresh Last/费用币依据、原L1/L2金额消费/全reader/HTTP/default与OKX/S4/C7仍未完成，全部交易门禁不变；fake live模式夹具不是真实运行授权。
+
 非 dry-run 还必须同时满足以下门禁：
 
 - 策略收据是有效 JSON，`status` 必须为 `candidate`，并包含非空

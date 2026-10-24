@@ -390,3 +390,21 @@ TDD：缺API最初位于fixture setup产生4 error，移到行为入口后才记
 主线程依review模板审查原库/窗口/字节/单位/错误/兼容/门禁，无该有限适配的未解决提交阻断，生产就绪仍否。新capacity文档在reader测试中是新合成历史输入，不伪造SDK testnet采集成功、不改警告/路由；collector原SDK＋fake运输及testnet拒绝另有本次重跑的186组。book_bound_to_original_check=true仅指最终owned视图的原数据关联；source_collection_owned/book_origin_verified/economics_complete/native_admission_verified仍false，不承诺读视图释放后无新并发/服务器变化，也不是调用者可传递的准入权。
 
 实际Engine自采/prepare身份、完整价格/费用币/余额、原L0/L1/L2金额消费、全reader/HTTP/default、OKX/S4/C7仍未完成；原常量资金/claim/发送阻断保持。无真实交易所/账户请求、实际配置/权限/规则/候选/旧证明/研究数据改动或绩效读取；完整Goal保持active，不以本关联通过关闭C5–C7。
+
+## 35. 原prepare同次自采capacity并绑定原诊断CAS（2026-10-24）
+
+基线56af5077266e1243cb74b6f7276ddfb4a678e74e已推送且clean，原完整C0–C7 Goal保持active。工作开始时P未回复，续行中用户专门批准“批准路线P：接受明确的V1价格假设”，现已记录于算术§2，不重问A或P/N。本批按[绑定规格](../specs/2026-10-24-native-capacity-prepare-binding.md)只补raw来源所有权，不先写alpha/费用估价、金额通过或交易权限。
+
+NativePreparedIntent新增显式acquire_binance_capacity_prepared_diagnostic_intent，与原入口委托同一实现体；原v2路径无额外capacity GET。新v3在instrument之后、原components之前由同一实际SDK采feeBurn及逐symbol commission/config/brackets（两币21个SDK GET），原L0/原intent CAS内保存完整raw源和显式age/span。账户context、SDK/完整市场池/配置与原check/market严格匹配，capacity整窗和finish端点纳入同一total/skew。容量采集后的DB/client owner先于组件复核，替换库SQL trace为零；缺source不能悄悄退v2。没有新表/订单状态机/金融公式/默认费率。
+
+只由原weak prepare context证明同次本地所有权，不接caller receipt/PASS/client/clock。历史decoder内部按immutable attempt.intent_ms验当时窗，公开capacity reader仍只在末尾取真实当前钟；原current/CAS和cold不能借as-of续期。原v1/v2历史保留、old入口不补cap字段，码/SDK时代不匹配仍拒绝。新source/相关helper进入原implementation闭包；全部实际request.price（含MARKET None）、数量/原契约和原行/ledger/journal/CAS唯一增量保留，输出仍为不可执行native-cas-order-v1/transition-v2，claim/default继续拒绝。
+
+收尾TDD还证明source reader末尾业务钟会留下client漂移缺口：在v3 measured尾段复用原caller完整检查后才采monotonic上界；原current两个local重建体提为一份闭包，前两次行为不变、v3尾段第三次复用，prepare/CAS复用原weak recheck及_current。正1ns向上整毫秒，typed/倒退钟拒绝；不加预算、epsilon或末尾业务clock。历史as-of与实际current用两条明确调用路径，不将readonly decoder返回值当资金权。
+
+TDD证据包括8缺API、4历史过期、1current decoder耗时、2owner/替换库、1缺结果降级、5成本/非法钟、2末尾SDK等真实RED，均观察后最小修复。最初12个fixture setup error不是行为RED；MARKET缺fake ticker handler和cold warm cache的private_unused差异只按异常帧定位夹具。cold正向在绑定前由原初始化建立allowlisted SDK，绑定后不能删额外字段来重建；该拒绝另有保留用例，未忽略字段或改旧证明。
+
+最终CPython3.14.2/3.11.15及CCXT4.5.89相同15模块各2059 passed、0failure/error/skip、3既有小样本XGB AUC警告（1680.11s/JUnit1679.813；1736.70s/JUnit1736.358）。2059唯一用例集合差异0，7个相关源码/测试SHA跨两版不变，双版compileall/diff通过；原句柄92841/33870均exit0、目标pytest进程数0后才写结果文档。85新增含4个原v2无额外GET回归、新v3四种模式/方向与LIMIT/MARKET、非空两币partial/费用/资金费、原SQLite CAS/引用回滚、重启/current/cold、源/配置/原行/SDK/owner/时钟/重封反例。完整模块/失败/产物身份见台账；不冒称全仓、独立代理审计或外部认证。
+
+主线程依review模板核职责/旧兼容/源码与SDK闭包、原owner/nonce/行/完整账本、最终时间、错误脱敏与权限：raw有限子项可提交，生产就绪仍否。实际HTTP全部在底层fake session，live-mode仅隔离对象/临时配置/fake environ；默认SDK Futures testnet签名拒绝、candidate/testnet/live门禁不变。SDK调用路径及本地hash不是服务器签名认证、原子快照、锁额或必接单。没有真实账户/行情/订单、实际配置/规则/权限/candidate/旧产物或研究数据变更及正式绩效读取。
+
+原参数自采现在已与实际prepare/原诊断CAS关联，但完整V1成本、fresh Last/费用币依据、余额与独立金额复算、原L1/L2金额消费、全执行reader/HTTP/default、OKX/S4/C7仍待；经济/admission flags仍false。本次P批准解除的是具名估价选择，不是上述验收或真实运行门禁。下一步整合完整资金路径，不以更多独立diagnostic替代它；完整S3e/C5/C6/C7与原Goal继续未完成、active。

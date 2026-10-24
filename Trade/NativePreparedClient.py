@@ -63,7 +63,7 @@ def initialize_native_prepared_client(engine, record_id, *, instrument_max_age_m
                 document = Transition._read(chan, record)
                 b = document["payload"]["root"]["preparation"]
                 if (document["schema"] != Transition.PREPARED_DOCUMENT_SCHEMA or document["payload"]["stage"] != "intent"
-                        or b["schema"] != Prepared.BINDING_SCHEMA or b["implementation_sha256"] != implementation):
+                        or b["schema"] not in Prepared.CURRENT_BINDING_SCHEMAS or b["implementation_sha256"] != implementation):
                     Prepared._fail()
                 Transition._current(chan, document)
                 Prepared._windows(chan, b, document["payload"]["root"]["boundary"])

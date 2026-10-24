@@ -335,6 +335,16 @@ TDD：4缺API、36拓扑/coef、4无兼容L的0-cap、4序列化耗时、20核�
 
 book_bound_to_original_check仅是最终原owned视图的关联；source_collection_owned/book_origin_verified/economics_complete/native_admission_verified仍false，不保证视图释放后无新并发/服务器变更。下一步接实际Engine/受控prepare的自采所有权及完整金额，再原L0/L1/L2/全执行reader/HTTP/default逐单消费，保留P/N待选与所有原阻断。没有将此只读关联提升为完整S3e/C5/C6/C7或缩小/关闭Goal。
 
+### S3e原prepare自采raw capacity绑定：有限子项已验，完整资金仍待
+
+按[绑定规格](../specs/2026-10-24-native-capacity-prepare-binding.md)新增显式Binance诊断入口，与原入口共用一个实现体。原入口v2/no additional GET保持；新v3由同一实际SDK在instrument之后、原components之前自采feeBurn/逐symbol commission/config/brackets，再原L0/原intent CAS保存完整raw引用及显式policy。没有新表、资金公式/默认费率或可执行契约，claim/发送仍拒绝。新路径缺结果不得降回v2，采集回调后先核原DB/client owner再接组件，替换库SQL trace为零。
+
+历史仅按原intent_ms做as-of核验；公开source reader仍在末尾取当前钟，current/CAS不能借历史时点续期。原current重建体提为一个闭包供v3末尾复用，原weak context/整账本校验在末尾source回调后再核，typed monotonic上界覆盖新增解码/绑定及最终client复核。原v1/v2历史/旧reader保留，码/SDK时代不支持不重封旧证明。
+
+85新增及双解释器同15模块各2059 passed、0failure/error/skip、3既有小样本XGB AUC警告，集合差异0；compileall/diff通过，详细产物/源码身份见台账/审计§35。测试全serial、底层fake，正向live-mode仅隔离SDK/临时配置/fake environ，默认Futures testnet签名拒绝不变。原常量资金/claim/默认阻断及C7均不解除。
+
+用户已专门批准算术§2路线P，无须重问A或P/N。接续应将明确fresh Last、费用币/费率和V1成本/独立复算整合到原账户及原CAS消费，不再把单独raw诊断当完整金额替代。完整S3e/C5/C6/C7及原Goal仍未完成、active；不修改实际配置/权限/候选/旧证明或访问真实交易所。
+
 ## S4 默认 CLI 多市场合成 E2E 与发布
 
 沿真实 RunTradeCycle/RunTradeStage，fake 最底层原生运输，验证 Binance/OKX × one_way/hedged × 多市场的账户/准入/意图/恢复链。只有全部新风险入口不可绕过消费者后，才有条件替换原常量阻断。

@@ -32,7 +32,7 @@ HOUR = 3_600_000
 CODES = ["TEST/USDT:USDT", "ALT/USDT:USDT"]
 
 
-def native_order_case(db, db_conf, tmp_path, monkeypatch, venue, *, mode="one_way", side=True, at_ms=None):
+def native_order_case(db, db_conf, tmp_path, monkeypatch, venue, *, mode="one_way", side=True, at_ms=None, execution_mode="testnet"):
     at = NOW//(4*HOUR)*(4*HOUR) if at_ms is None else at_ms
     clock = {"now": at}
     for module in ("Trade.AccountSources", "Trade.AccountStore", "Trade.ExecutionFacts", "Trade.ExecutionStore", "Trade.OrderAudit", "Trade.db_util",
@@ -43,12 +43,14 @@ def native_order_case(db, db_conf, tmp_path, monkeypatch, venue, *, mode="one_wa
                    "Trade.NativeOrderTransition"):
         monkeypatch.setattr(module+".utc_now_ms", lambda: clock["now"])
     client, positions, account, settings, _, _ = snapshot_client(monkeypatch, venue)
+    if execution_mode == "live":
+        client.set_sandbox_mode(False)
     client.options["defaultType"] = "swap"
     raw = [raw_instrument(venue, base) for base in ("TEST", "ALT")]
     for row in raw:
         row["listTime" if venue == "okx" else "onboardDate"] = str(at-1000) if venue == "okx" else at-1000
     client.set_markets([client.parse_market(copy.deepcopy(row)) for row in raw])
-    trade = venue_engine(db, tmp_path, venue, mode)
+    trade = venue_engine(db, tmp_path, venue, mode, execution_mode=execution_mode)
     fake = trade.exchange
     if venue == "binance":
         fake.account_alias = "fake-Futures-A"
@@ -74,7 +76,7 @@ def native_order_case(db, db_conf, tmp_path, monkeypatch, venue, *, mode="one_wa
         assets[0].update(imr="0", mmr="0", availBal="1000", availEq="1000")
         account.update(uTime=str(at), totalEq="1000", imr="0", mmr="0", upl="0")
         monkeypatch.setattr(client, "privateGetAccountConfig", lambda p: {"code": "0", "data": [copy.deepcopy(config)]})
-    before = collect_account_snapshot(client, units, mode="testnet")
+    before = collect_account_snapshot(client, units, mode=execution_mode)
     before_id = db.store_account_evidence(before)
     history_keys, trades = [], []
     for index, (code, amount, done, price, status) in enumerate(((CODES[0], ".06", ".06", 100, "closed"),
@@ -201,7 +203,8 @@ def native_order_case(db, db_conf, tmp_path, monkeypatch, venue, *, mode="one_wa
             clock["now"] += 1
             return get(params)
         monkeypatch.setattr(client, name, observed)
-    monkeypatch.setattr(ccxt.Exchange, "fetch", lambda *a, **k: pytest.fail("actual HTTP forbidden"))
+    if execution_mode == "testnet":
+        monkeypatch.setattr(ccxt.Exchange, "fetch", lambda *a, **k: pytest.fail("actual HTTP forbidden"))
     monkeypatch.setattr(client, "create_order", lambda *a, **k: pytest.fail("preparation must never send"))
     trade.exchange = client
     market_path = tmp_path/"native-order-bars.db"

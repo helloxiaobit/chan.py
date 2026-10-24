@@ -148,6 +148,12 @@ def _shape(role, instrument, wire):
 
 def verify_binance_capacity_evidence(document, *, max_age_ms, max_observation_span_ms):
     """Recompute stored fields and explicit local age, never authenticate I/O."""
+    return _verify_binance_capacity_evidence_at(document, checked_ms=None, max_age_ms=max_age_ms,
+                                               max_observation_span_ms=max_observation_span_ms)
+
+
+def _verify_binance_capacity_evidence_at(document, *, checked_ms, max_age_ms, max_observation_span_ms):
+    """Internal journal as-of check; None retains the public terminal clock."""
     try:
         _budget(max_age_ms, max_observation_span_ms)
         import ccxt
@@ -195,7 +201,8 @@ def verify_binance_capacity_evidence(document, *, max_age_ms, max_observation_sp
             if row["response_shape"] != shape or canonical_bytes(raw) != canonical_bytes(row["raw"]):
                 _fail()
             previous = times[-1]
-        _window(p["started_ms"], p["finished_ms"], utc_now_ms(), max_age_ms, max_observation_span_ms)
+        _window(p["started_ms"], p["finished_ms"], utc_now_ms() if checked_ms is None else checked_ms,
+                max_age_ms, max_observation_span_ms)
         return document
     except Exception:
         _fail()
