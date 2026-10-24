@@ -1,6 +1,6 @@
 # 原prepare活上下文内的Last采集
 
-日期：2026-10-25，基线e623ea73225d52dfa1d57563cba9122eeaf4e239。继续原[完整金额接入计划](2026-10-24-binance-capacity-v1-integration.md)第4步必需的来源绑定。新[费用适用选择](../specs/2026-10-25-binance-standard-fee-applicability-choice.md)待批，只延后其依赖的费用/资金采用；本来源工作不增加任何费用假设。
+日期：2026-10-25，基线e623ea73225d52dfa1d57563cba9122eeaf4e239。继续原[完整金额接入计划](2026-10-24-binance-capacity-v1-integration.md)第4步必需的来源绑定。起草及本来源实施时[费用适用选择](../specs/2026-10-25-binance-standard-fee-applicability-choice.md)仍待批；本来源工作没有增加费用假设。用户随后已明确批准F，当前后续实施见[批准后的接入计划](2026-10-25-approved-standard-commission-integration.md)，不再将F视为待选。
 
 ## 范围与接口
 
@@ -20,4 +20,4 @@
 
 8项缺API RED、5项终末代码检查RED、7项cache/owner RED均真实观察；一次事务耗时测试误注入到内层退出，保留失败并改为只计最外层退出，未冒称生产漏洞。新增79项；CPython3.14.2/3.11.15同范围各522 passed、9 deselected、0failure/error/skip/warnings，唯一集合一致。范围为79新＋366原Last＋76原capacity prepare/CAS/current＋1无配置导入；9个冷启动专用用例不在本轮范围。源码/测试摘要跨双版不变，双版compileall及diff通过；详细JUnit与RED身份见[台账](../reports/2026-10-20-crypto-full-version-progress.md)。主线程review，无子代理/并发/真实I/O。
 
-后续完整资金acquire仍必须直接控制该helper的调用与返回来源，并在原L0/L1/L2及全部消费者复验。费用适用性F/G仍待明确选择，不能把A/P或本来源通过当成F获批；不修改实际配置/交易门禁，不重封旧源，C5–C7与整个Goal未完成。
+后续完整资金acquire仍必须直接控制该helper的调用与返回来源，并在原L0/L1/L2及全部消费者复验。费用适用性F现已单独获批，不是由A/P或本来源通过推定；后续已接原available到条件Cost的只读计算，尚未接完整金额CAS/全部消费者。原配置/交易门禁不改，旧源不重封，C5–C7与整个Goal未完成；本段522项属于原来源提交的验证范围，不改称本批金额路径的验收。

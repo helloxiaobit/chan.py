@@ -438,3 +438,17 @@ BNFCR官方资料的模式限制补充见桥接计划，是“single-asset可排
 新增79项，CPython3.14.2/3.11.15、CCXT4.5.89同四模块各522 passed、9 deselected、0failure/error/skip/warnings；522唯一集合一致，源码/测试SHA跨双版不变。组成79新＋366原Last＋76原capacity prepare/CAS/current＋1导入；9冷启动专用用例未重跑，不声称完整85/全仓/外部认证。双版compileall/diff通过，JUnit及失败原件身份见台账。未改实际配置、权限、规则、候选或研究/旧产物，没有真实端点或绩效读取。
 
 [费用适用性F/G](../specs/2026-10-25-binance-standard-fee-applicability-choice.md)是新边界，A/P批准不等于F批准；F未获批前暂停其依赖的费用采用，不阻断本来源开发。完整Cost/原available、同次金额CAS、L1/L2/所有执行消费者、OKX/C5–C7仍未完成。此子项可按授权提交；完整Goal保持active，原资金/claim/default拒绝不变。
+
+## 39. F批准后的闭合参数来源与原native cash条件成本（2026-10-25）
+
+本批从pushed/clean 4476e07952e6f6feea3ec964f783b56bae3e9146开始；用户明确批准F，上节待批仅为历史。已在[选择规格](../specs/2026-10-25-binance-standard-fee-applicability-choice.md)记录，按[先行实施计划](../plans/2026-10-25-approved-standard-commission-integration.md)完成第1–2步，不重问A/P/F，不缩小C0–C7。用户随后明确恢复原Goal自动串行执行，工具已实查active；没有创建替代Goal或扩大资金使用/交易权限。
+
+NativeCapacityEvidence复用原SDK/GET循环新增显式v2 collector/reader；actual feeBurn/commission/config/brackets及每tier进入隐私投影前检查全部字段，任何未知扩展（即使extraTax=0或声明USDT）均拒绝且不公开字段名/值。成功空marker只是实际形状检查，不证明全部费用不存在。v1来源/公开入口/隐私语义不升级。共同collector在末尾reader后检查整个文档不变，共同reader保留起始canonical字节、直接核原native对象exact types并在末尾业务钟后再核原文档；v2当前reader用typed monotonic尾段把最后钟/canonical成本计入年龄，历史as-of不续期。
+
+NativeAccountLimits新增显式原check条件Cost入口，NativeLeverageLimits仅私有共享体选择v2 reader，旧public API仍拒绝v2。原_sources_snapshot提供原native USDT availableBalance/marginBalance、全持仓/pending/mark/模式，当前费率/配置来自v2，原Last完整池/SDK及local/native窗口加入共同原政策。完整IM＋Loss＋Fee直接比较原available，不二扣旧book预占；全池cap不能被候选Cost通过掩盖。F外层具名client_assumption、currency=USDT、native_fee_currency_verified=false与native_extra_charges_complete_verified=false；纯V1公式/原schema/canonical结果不变。候选归属、来源拥有权和原金额CAS仍未证明，所有原权限flags保持false。
+
+新增166来源/38金额测试；缺API2/4、未知扩展40、collector尾端4、reader尾钟/成本12项先真实RED。金额首轮14fail中12缺F currency字段；另2为fixture错误（L实际3，不能截非终止成本造恰界），只改实际prepare数量为0.3保证边界可精确表示，保留独立Fraction参考与差1e-40测试。提交前发现JSON clone掩盖旧exact type拒绝，canonical相等的tuple/子类32项先真实RED；删除归一化、直接沿原验证体核类型，390项组合GREEN，不加新类型框架。四种mode/方向、LIMIT/GTX/真MARKET、多币非空/partial、非候选cap、未知费用/旧源、末尾真实CAS、替换库零SQL及整段耗时覆盖。失败和中间原件均保留，不把fixture失败算金融规则漏洞。
+
+最终CPython3.14.2/3.11.15、CCXT4.5.89，同16测试目标各1769 passed、0failure/error/skip/warnings、无deselection；1769唯一集合一致，五个改动源/测试摘要跨最终双版不变。包含完整85项原capacity prepare/CAS/current/cold，这次没有排除9项cold；未跑的全仓不冒称通过。双版compileall通过，活pytest74943/64492均exit0、进程0后才改文档。修复前双版1737属于中间代码身份，原件保留但不当最终证据。精确JUnit/源码/RED身份见[台账](2026-10-20-crypto-full-version-progress.md)。主线程按review模板复核，复用原采集/reader/金额/DB/L0主体并删除类型归一化，不增依赖、第二套金融或订单账本/状态机。
+
+结论：此必要金额输入子层可提交，完整资金/生产就绪仍否。下一原受控acquire必须自行采v2 capacity、原prepare Last/components，并核实际候选及Cost/Last新增依赖身份、原L0/L1/L2与全部claim/reader/恢复/HTTP/default；不能把校验和、marker或可重封JSON当I/O能力，也不能用原投影掩盖已观察的费用/模式反证。未通过全链前不启用新可执行schema，旧v2/v3仍诊断，资金/claim/default拒绝保留。实际配置/权限/规则/candidate/旧产物/研究未改，无真实行情/账户/订单、正式绩效读取或外部认证；OKX/S4/C5–C7/完整Goal均未完成。

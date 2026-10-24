@@ -21,6 +21,8 @@ from .NativeMarketEvidence import _markets, _sdk
 
 
 SCHEMA = "chan-binance-capacity-evidence-v1"
+STANDARD_SCHEMA = "chan-binance-capacity-evidence-v2"
+_FIELD_POLICY = "closed_native_capacity_fields_v1"
 _ROOT = Path(__file__).resolve().parents[1]
 _SOURCES = ("Trade/NativeCapacityEvidence.py", "Trade/AccountIdentity.py", "Trade/AccountSources.py",
             "Trade/ExecutionFacts.py", "Trade/NativeMarketEvidence.py", "CustomBuySellPoint/Decision.py", "Common/KLineTime.py")
@@ -146,22 +148,54 @@ def _shape(role, instrument, wire):
     return shape, _raw_values(role, instrument, wire)
 
 
+def _uninterpreted_paths(role, wire):
+    """Inspect actual native shapes before v1's privacy projection loses keys."""
+    if type(wire) is list:
+        if role not in {"configuration", "brackets"} or len(wire) != 1:
+            _fail()
+        wire = wire[0]
+    if type(wire) is not dict:
+        _fail()
+    allowed = set(_FIELDS[role]) | ({"brackets"} if role == "brackets" else set())
+    paths = [key for key in wire if key not in allowed]
+    if role == "brackets":
+        tiers = wire.get("brackets")
+        if type(tiers) is not list:
+            _fail()
+        for index, tier in enumerate(tiers):
+            if type(tier) is not dict:
+                _fail()
+            paths.extend(f"brackets[{index}].{key}" for key in tier if key not in _TIER_FIELDS)
+    return sorted(paths)
+
+
 def verify_binance_capacity_evidence(document, *, max_age_ms, max_observation_span_ms):
     """Recompute stored fields and explicit local age, never authenticate I/O."""
     return _verify_binance_capacity_evidence_at(document, checked_ms=None, max_age_ms=max_age_ms,
                                                max_observation_span_ms=max_observation_span_ms)
 
 
-def _verify_binance_capacity_evidence_at(document, *, checked_ms, max_age_ms, max_observation_span_ms):
+def verify_binance_standard_capacity_evidence(document, *, max_age_ms, max_observation_span_ms):
+    """Read explicit F-input shape, never fee currency or funding authority."""
+    return _verify_binance_capacity_evidence_at(document, checked_ms=None, max_age_ms=max_age_ms,
+        max_observation_span_ms=max_observation_span_ms, standard=True)
+
+
+def _verify_binance_capacity_evidence_at(document, *, checked_ms, max_age_ms, max_observation_span_ms, standard=False):
     """Internal journal as-of check; None retains the public terminal clock."""
     try:
         _budget(max_age_ms, max_observation_span_ms)
+        encoded = canonical_bytes(document)
         import ccxt
-        p = document["payload"]
+        p = document["payload"]  # Preserve exact native types; JSON cloning would normalize invalid tuples/subclasses.
         keys = {"exchange_id", "venue", "mode", "account_context", "sdk", "implementation_sha256", "markets", "observations",
                 "started_ms", "finished_ms", "requests", "source_requests", "identity_requests", "coverage", "clock_kind",
                 "source_ms", "economics_complete", "native_admission_verified", "fee_currency", "notional_coefficient_applied", "disclosures"}
-        if (set(document) != {"schema", "payload", "payload_sha256"} or document["schema"] != SCHEMA
+        if standard:
+            keys.add("field_policy")
+            if p.get("field_policy") != _FIELD_POLICY:
+                _fail()
+        if (set(document) != {"schema", "payload", "payload_sha256"} or document["schema"] != (STANDARD_SCHEMA if standard else SCHEMA)
                 or document["payload_sha256"] != _sha(p) or set(p) != keys
                 or p["exchange_id"] not in {"binance", "binanceusdm"} or p["venue"] != "binance"
                 or p["mode"] not in {"live", "testnet"} or p["coverage"] != "native_fee_configuration_and_raw_brackets"
@@ -189,20 +223,36 @@ def _verify_binance_capacity_evidence_at(document, *, checked_ms, max_age_ms, ma
         for row, (role, instrument) in zip(p["observations"], roles):
             endpoint, method = _REQUESTS[role]
             times = [row[key] for key in ("started_ms", "request_started_ms", "request_finished_ms", "finished_ms")]
-            if (set(row) != {"role", "instrument_id", "method", "endpoint", "params", "response_shape", "raw",
-                            "started_ms", "request_started_ms", "request_finished_ms", "finished_ms"}
+            row_keys = {"role", "instrument_id", "method", "endpoint", "params", "response_shape", "raw",
+                        "started_ms", "request_started_ms", "request_finished_ms", "finished_ms"}
+            if standard:
+                row_keys.add("uninterpreted_paths")
+                if type(row.get("uninterpreted_paths")) is not list or row["uninterpreted_paths"]:
+                    _fail()
+            if (set(row) != row_keys
                     or (row["role"], row["instrument_id"], row["endpoint"], row["method"]) != (role, instrument, endpoint, method)
                     or row["params"] != ({} if instrument is None else {"symbol": instrument})
                     or any(type(at) is not int or not 0 <= at < 2**63 for at in times)
                     or times != sorted(times) or not previous <= times[0] <= times[-1] <= p["finished_ms"]):
                 _fail()
             wire = [row["raw"]] if row["response_shape"] == "single_row_array" else row["raw"]
+            if standard and _uninterpreted_paths(role, wire) != row["uninterpreted_paths"]:
+                _fail()
             shape, raw = _shape(role, instrument, wire)
             if row["response_shape"] != shape or canonical_bytes(raw) != canonical_bytes(row["raw"]):
                 _fail()
             previous = times[-1]
-        _window(p["started_ms"], p["finished_ms"], utc_now_ms() if checked_ms is None else checked_ms,
-                max_age_ms, max_observation_span_ms)
+        tail_start = _monotonic_ns() if standard and checked_ms is None else None
+        checked = utc_now_ms() if checked_ms is None else checked_ms
+        _window(p["started_ms"], p["finished_ms"], checked, max_age_ms, max_observation_span_ms)
+        if canonical_bytes(document) != encoded:
+            _fail()
+        if standard and checked_ms is None:
+            tail_end = _monotonic_ns()
+            if type(tail_start) is not int or type(tail_end) is not int or not 0 <= tail_start <= tail_end:
+                _fail()
+            _window(p["started_ms"], p["finished_ms"], checked+(tail_end-tail_start+999_999)//1_000_000,
+                    max_age_ms, max_observation_span_ms)
         return document
     except Exception:
         _fail()
@@ -210,6 +260,17 @@ def _verify_binance_capacity_evidence_at(document, *, checked_ms, max_age_ms, ma
 
 def collect_binance_capacity_evidence(exchange, markets, *, mode, max_age_ms, max_observation_span_ms):
     """Own fixed GETs and original SDK decoding; never mutate options/cache."""
+    return _collect_capacity(exchange, markets, mode=mode, max_age_ms=max_age_ms,
+                             max_observation_span_ms=max_observation_span_ms, standard=False)
+
+
+def collect_binance_standard_capacity_evidence(exchange, markets, *, mode, max_age_ms, max_observation_span_ms):
+    """Own fresh F-input collection, not an upgrade of projected v1 JSON."""
+    return _collect_capacity(exchange, markets, mode=mode, max_age_ms=max_age_ms,
+                             max_observation_span_ms=max_observation_span_ms, standard=True)
+
+
+def _collect_capacity(exchange, markets, *, mode, max_age_ms, max_observation_span_ms, standard):
     try:
         _budget(max_age_ms, max_observation_span_ms)
         provided = {"markets": markets, "mode": mode, "max_age_ms": max_age_ms, "max_observation_span_ms": max_observation_span_ms}
@@ -264,7 +325,11 @@ def collect_binance_capacity_evidence(exchange, markets, *, mode, max_age_ms, ma
             request_start = utc_now_ms()
             wire = getattr(exchange, method)(dict(params))
             # Capture before identity GETs overwrite last_http_response.
-            shape, raw = _shape(role, instrument, _exact_response(exchange, wire))
+            exact = _exact_response(exchange, wire)
+            uninterpreted = _uninterpreted_paths(role, exact) if standard else None
+            if uninterpreted:
+                _fail()  # No names, unknown values or guessed fee facts escape.
+            shape, raw = _shape(role, instrument, exact)
             current()
             request_end = utc_now_ms()
             if canonical_bytes(observe_account_context(exchange, mode)) != canonical_bytes(context):
@@ -273,6 +338,8 @@ def collect_binance_capacity_evidence(exchange, markets, *, mode, max_age_ms, ma
             observations.append({"role": role, "instrument_id": instrument, "endpoint": endpoint, "method": method,
                 "params": params, "response_shape": shape, "raw": raw, "started_ms": begin, "request_started_ms": request_start,
                 "request_finished_ms": request_end, "finished_ms": utc_now_ms()})
+            if standard:
+                observations[-1]["uninterpreted_paths"] = uninterpreted
         current()
         payload = {"exchange_id": exchange_id, "venue": "binance", "mode": mode, "account_context": context, "sdk": sdk,
             "implementation_sha256": implementation, "markets": units, "observations": observations,
@@ -280,11 +347,18 @@ def collect_binance_capacity_evidence(exchange, markets, *, mode, max_age_ms, ma
             "identity_requests": 2*len(observations), "coverage": "native_fee_configuration_and_raw_brackets",
             "source_ms": None, "clock_kind": "local_request_window_only", "economics_complete": False,
             "native_admission_verified": False, "fee_currency": None, "notional_coefficient_applied": False, "disclosures": list(_DISCLOSURES)}
-        document = json.loads(canonical_bytes({"schema": SCHEMA, "payload": payload, "payload_sha256": _sha(payload)}))
-        verify_binance_capacity_evidence(document, max_age_ms=max_age_ms, max_observation_span_ms=max_observation_span_ms)
+        if standard:
+            payload["field_policy"] = _FIELD_POLICY
+        encoded = canonical_bytes({"schema": STANDARD_SCHEMA if standard else SCHEMA,
+            "payload": payload, "payload_sha256": _sha(payload)})
+        document = json.loads(encoded)
+        reader = verify_binance_standard_capacity_evidence if standard else verify_binance_capacity_evidence
+        reader(document, max_age_ms=max_age_ms, max_observation_span_ms=max_observation_span_ms)
         tail_start, checked = _monotonic_ns(), utc_now_ms()
         _window(started, payload["finished_ms"], checked, max_age_ms, max_observation_span_ms)
         current()
+        if canonical_bytes(document) != encoded:
+            _fail()
         tail_end = _monotonic_ns()
         if type(tail_start) is not int or type(tail_end) is not int or not 0 <= tail_start <= tail_end:
             _fail()

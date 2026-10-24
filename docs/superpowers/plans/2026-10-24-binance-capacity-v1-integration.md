@@ -37,3 +37,5 @@ alpha 固定 `3/2000`，不能调用者覆盖、搜索或当作原生成交上�
 2026-10-25更新：按[修改前清理/桥接计划](2026-10-25-binance-v1-price-book-bridge.md)，第3步的V1精确R→同一完整book→原生限额→原持久check/L0已实现，未扩大旧decimal公开输入。Last与原来源合并local/native窗口，原owner/L0前后复验；150新增、双版各1400＋76适用回归通过。费用适用性/原available到完整成本与第4步仍未完成，Last尚未由原prepare自采绑定，不能据本轮price/limit报告取得资金或发送权；旧源/代码时代不兼容继续拒绝，不续期或重封。
 
 2026-10-25后续：[原prepare活上下文Last来源子层](2026-10-25-prepared-last-source-binding.md)已通过fake/TDD与双版各522项适用验证。只从原未绑定活句柄/原Engine SDK采完整池Last，前后重核同一原上下文、owner/cache及显式年龄；不重做prepare、不写intent或扩展v2/v3 schema。它补齐第4步的一个来源前置条件，尚未把Last/完整Cost连入原金额CAS及全部执行消费者。另[标准佣金适用性F/G](../specs/2026-10-25-binance-standard-fee-applicability-choice.md)属于缺原生本单费用币/完整额外收费声明时是否接受客户端适用假设的新选择，仍待批准；A/P不重问，也不据此自动选F。原资金/claim/default门禁不变，完整C5–C7/Goal继续未完成。
+
+2026-10-25 F批准后更新：用户已明确选择F，上段待批仅是历史。按[已批准的接入计划](2026-10-25-approved-standard-commission-integration.md)完成新capacity v2原响应闭合检查及原check/native available→完整条件Cost/全池限额的只读计算；纯V1公式不变，旧v1投影/入口不升级，F假设及未原生证明范围显式记录。新增204项，最终双版同16个测试目标各1769 passed、无排除/跳过/警告，含完整85原capacity prepare/CAS/current/cold；台账及审计§39记录确切身份。用户也已明确恢复原Goal，工具实查active，F不再是业务阻点。第4步完整金额acquire/原L0/L1/L2与全执行消费者仍未完成，不能把只读模型结果或可重封JSON当作来源拥有权/资金许可；不改实际配置或交易门禁。

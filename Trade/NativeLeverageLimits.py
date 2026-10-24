@@ -57,7 +57,7 @@ def evaluate_binance_order_leverage_limits_v1(capacity_evidence, *, positions, p
 
 
 def _evaluate_limits(capacity_evidence, *, positions, pending_orders, mark_prices, position_mode, candidate,
-                     max_age_ms, max_observation_span_ms, price_inputs):
+                     max_age_ms, max_observation_span_ms, price_inputs, standard=False):
     try:
         tick_start, checked = _monotonic_ns(), Capacity.utc_now_ms()
         provided = {"capacity_evidence": capacity_evidence, "positions": positions, "pending_orders": pending_orders,
@@ -68,7 +68,10 @@ def _evaluate_limits(capacity_evidence, *, positions, pending_orders, mark_price
         original = canonical_bytes(provided)
         inputs = json.loads(original)
         source = inputs["capacity_evidence"]
-        verify_binance_capacity_evidence(source, max_age_ms=max_age_ms, max_observation_span_ms=max_observation_span_ms)
+        if standard and price_inputs is None:
+            _fail()
+        reader = Capacity.verify_binance_standard_capacity_evidence if standard else verify_binance_capacity_evidence
+        reader(source, max_age_ms=max_age_ms, max_observation_span_ms=max_observation_span_ms)
         p = source["payload"]
         Capacity._window(p["started_ms"], p["finished_ms"], checked, max_age_ms, max_observation_span_ms)
         configs = {row["instrument_id"]: row["raw"] for row in p["observations"] if row["role"] == "configuration"}
@@ -109,7 +112,7 @@ def _evaluate_limits(capacity_evidence, *, positions, pending_orders, mark_price
             payload.update(order_price_projection=projection, coverage="provided_book_with_client_v1_against_observed_limits_only")
         document = json.loads(canonical_bytes({"schema": "chan-binance-order-leverage-limits-client-v1" if price_inputs is not None else SCHEMA,
             "payload": payload, "payload_sha256": _sha(payload)}))
-        verify_binance_capacity_evidence(source, max_age_ms=max_age_ms, max_observation_span_ms=max_observation_span_ms)
+        reader(source, max_age_ms=max_age_ms, max_observation_span_ms=max_observation_span_ms)
         if canonical_bytes(provided) != original or canonical_bytes(inputs) != original:
             _fail()
         tick_end = _monotonic_ns()

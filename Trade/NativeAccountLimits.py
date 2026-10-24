@@ -11,6 +11,9 @@ from Common.ChanException import CChanException, ErrCode
 from Common.KLineTime import utc_now_ms
 from CustomBuySellPoint.Decision import canonical_bytes
 from . import NativeOrderBoundary as Boundary
+from . import NativeCapacityEvidence as Capacity
+from . import NativeLeverageLimits as Limits
+from .NativeOrderCost import calculate_binance_order_cost_v1
 from .AccountReconcile import _sha
 from .NativeAdmission import _assert_current_windows
 from .NativeCapacityEvidence import verify_binance_capacity_evidence
@@ -93,8 +96,53 @@ def observe_binance_account_order_limits_v1(chan, *, check_id, capacity_evidence
             "last_max_age_ms": last_max_age_ms, "last_max_observation_span_ms": last_max_observation_span_ms})
 
 
+def observe_binance_account_order_capacity_v1(chan, *, check_id, capacity_evidence, market_evidence, candidate, policy,
+        max_age_ms, max_observation_span_ms, last_price_evidence, last_max_age_ms, last_max_observation_span_ms):
+    """Recompute approved F/P cost from original native cash, not caller funds.
+
+    This report is not source-collection ownership or a trading permission.
+    Original monetary acquisition and every execution consumer must own it.
+    """
+    return _observe_account_limits(chan, check_id=check_id, capacity_evidence=capacity_evidence,
+        market_evidence=market_evidence, candidate=candidate, policy=policy, max_age_ms=max_age_ms,
+        max_observation_span_ms=max_observation_span_ms, price_inputs={"last_price_evidence": last_price_evidence,
+            "last_max_age_ms": last_max_age_ms, "last_max_observation_span_ms": last_max_observation_span_ms}, standard=True)
+
+
+def _standard_order_cost(values, snapshot, book, last_prices):
+    saved = snapshot["check"]["payload"]["inputs"]
+    balance = saved["balance"]["payload"]
+    configuration = balance["configuration"]
+    if (configuration.get("canTrade") is not True or configuration.get("multiAssetsMargin") is not False
+            or type(configuration.get("dualSidePosition")) is not bool
+            or saved["after"]["payload"]["raw"]["multi_assets_margin"] is not False
+            or balance["reported_totals"]["currency"] != "USDT"
+            or book["position_mode"] != ("hedged" if configuration["dualSidePosition"] else "one_way")):
+        _fail()
+    source, candidate = values["capacity_evidence"]["payload"], values["candidate"]
+    instrument = candidate["instrument_id"]
+    observations = {row["role"]: row["raw"] for row in source["observations"]
+                    if row["instrument_id"] in {None, instrument}}
+    if observations["fee_burn"]["feeBurn"] is not False:
+        _fail()
+    unit = next(row for row in source["markets"] if row["id"] == instrument)
+    prices = next(row for row in values["market_evidence"]["payload"]["observations"] if row["market"]["id"] == instrument)
+    native_cash = next(row["native_fields"] for row in balance["assets"] if row["currency"] == "USDT")
+    cost = calculate_binance_order_cost_v1(market=unit, position_mode=book["position_mode"], candidate=candidate,
+        mark_price=prices["mark"]["price"], last_price=last_prices[instrument], bid_price=prices["book"]["bid_price"],
+        ask_price=prices["book"]["ask_price"], leverage=observations["configuration"]["leverage"],
+        commission=observations["commission"], fee_burn=False, fee_currency="USDT",
+        available_balance=native_cash["availableBalance"], margin_balance=native_cash["marginBalance"])
+    assumption = {"model_id": "binance-standard-usdt-commission-client-v1", "approval_date": "2026-10-25",
+        "scope": "usdt_linear_cross_single_asset_regular_limit_market_gtx", "currency": "USDT", "fee_currency_basis": "client_assumption",
+        "native_fee_currency_verified": False, "native_extra_charges_complete_verified": False}
+    return {"order_cost": cost, "standard_commission_assumption": assumption,
+        "native_cash_basis": {"balance_source_id": snapshot["check"]["payload"]["source_ids"]["balance"],
+            "currency": "USDT", "available_field": "assets[USDT].availableBalance", "equity_field": "assets[USDT].marginBalance"}}
+
+
 def _observe_account_limits(chan, *, check_id, capacity_evidence, market_evidence, candidate, policy,
-                            max_age_ms, max_observation_span_ms, price_inputs):
+                            max_age_ms, max_observation_span_ms, price_inputs, standard=False):
     try:
         database = Boundary._database(chan)
         connection, table = database.conn, chan.table
@@ -108,7 +156,10 @@ def _observe_account_limits(chan, *, check_id, capacity_evidence, market_evidenc
         original = canonical_bytes(provided)
         values = json.loads(original)
         source = values["capacity_evidence"]
-        verify_binance_capacity_evidence(source, max_age_ms=max_age_ms, max_observation_span_ms=max_observation_span_ms)
+        if standard and price_inputs is None:
+            _fail()
+        reader = Capacity.verify_binance_standard_capacity_evidence if standard else verify_binance_capacity_evidence
+        reader(source, max_age_ms=max_age_ms, max_observation_span_ms=max_observation_span_ms)
         Boundary._same_database(chan, database, connection, table, owned=False)
         last_prices = _last_links(values, source["payload"]) if price_inputs is not None else None
         Boundary._same_database(chan, database, connection, table, owned=False)
@@ -127,7 +178,10 @@ def _observe_account_limits(chan, *, check_id, capacity_evidence, market_evidenc
             "mark_prices": {row["market"]["id"]: row["mark"]["price"] for row in values["market_evidence"]["payload"]["observations"]},
             "position_mode": check["payload"]["report"]["payload"]["components"]["payload"]["margin"]["position_mode"],
             "candidate": values["candidate"]}
-        if price_inputs is None:
+        if standard:
+            limits = Limits._evaluate_limits(source, **book, price_inputs={"last_prices": last_prices}, standard=True,
+                max_age_ms=max_age_ms, max_observation_span_ms=max_observation_span_ms)
+        elif price_inputs is None:
             limits = evaluate_binance_leverage_limits(source, **book, max_age_ms=max_age_ms,
                                                       max_observation_span_ms=max_observation_span_ms)
         else:
@@ -143,11 +197,17 @@ def _observe_account_limits(chan, *, check_id, capacity_evidence, market_evidenc
         if price_inputs is not None:
             payload.update(last_price_evidence_sha256=_sha(values["last_price_evidence"]),
                            coverage="original_check_bound_client_v1_price_limits_only")
-        document = json.loads(canonical_bytes({"schema": "chan-binance-account-order-limits-client-v1" if price_inputs is not None else SCHEMA,
+        if standard:
+            payload.update(_standard_order_cost(values, snapshot, book, last_prices),
+                           coverage="original_check_bound_standard_commission_client_v1_only")
+            payload["status"] = ("within_model_capacity" if payload["order_cost"]["payload"]["local_model_funds_sufficient"]
+                and limits["payload"]["status"] == "within_observed_limits" else "exceeds_model_capacity")
+        document = json.loads(canonical_bytes({"schema": "chan-binance-account-order-capacity-client-v1" if standard else
+            "chan-binance-account-order-limits-client-v1" if price_inputs is not None else SCHEMA,
             "payload": payload, "payload_sha256": _sha(payload)}))
         checked = utc_now_ms()
         Boundary._same_database(chan, database, connection, table, owned=False)
-        verify_binance_capacity_evidence(source, max_age_ms=max_age_ms, max_observation_span_ms=max_observation_span_ms)
+        reader(source, max_age_ms=max_age_ms, max_observation_span_ms=max_observation_span_ms)
         Boundary._same_database(chan, database, connection, table, owned=False)
         if price_inputs is not None:
             _last_links(values, source["payload"])

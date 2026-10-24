@@ -345,6 +345,12 @@ book_bound_to_original_check仅是最终原owned视图的关联；source_collect
 
 用户已专门批准算术§2路线P，无须重问A或P/N。接续应将明确fresh Last、费用币/费率和V1成本/独立复算整合到原账户及原CAS消费，不再把单独raw诊断当完整金额替代。完整S3e/C5/C6/C7及原Goal仍未完成、active；不修改实际配置/权限/候选/旧证明或访问真实交易所。
 
+### S3e费用适用F已批准后的原账户金额计算（2026-10-25）
+
+用户已另行批准[标准佣金适用假设F](../specs/2026-10-25-binance-standard-fee-applicability-choice.md)，不重问A/P/F。按[实施计划](2026-10-25-approved-standard-commission-integration.md)先完成capacity v2在实际SDK响应投影前拒绝未知扩展、原check/native USDT available/equity到完整条件Cost及全池限额计算；复用原GET/reader/金额/owned-L0主体，无新账本或依赖。新增204项，补齐原类型拒绝后最终双版各1769 passed、同唯一集合、无排除/跳过/警告，含完整85项原prepare/CAS/current/cold。详见审计§39与台账；此前各段测试与Goal状态是相应历史，不改称当前证据。
+
+当前输出source_collection_owned/book_origin_verified/economics_complete/native_admission_verified仍false，F的费用币与额外费用完整性未原生核实，within_model_capacity不是下单许可。下一步是原受控acquire的自采/实际候选/金额/实现闭包绑定及原L1/L2、claim/所有reader/恢复/HTTP/default联合验收，不用本子层替代完整资金链。用户已明确恢复原Goal自动串行执行，工具实查active；F不再待批，不创建新Goal或关闭C5–C7。实际配置、交易/研究门禁不变，无真实I/O或正式绩效读取。
+
 ## S4 默认 CLI 多市场合成 E2E 与发布
 
 沿真实 RunTradeCycle/RunTradeStage，fake 最底层原生运输，验证 Binance/OKX × one_way/hedged × 多市场的账户/准入/意图/恢复链。只有全部新风险入口不可绕过消费者后，才有条件替换原常量阻断。
