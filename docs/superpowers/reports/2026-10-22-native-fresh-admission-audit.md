@@ -360,3 +360,17 @@ TDD：双symbol缺API2 RED→56 GREEN；缺symbol暴露汇总2 RED→58 GREEN；
 最终双解释器相同六模块各721 passed、1既有skip、0failure/error/0warnings；722唯一用例集合一致（py314 93.08s/JUnit92.994s，py311 91.29s/JUnit91.203s）。组成79新＋186原capacity输入＋52原账户区间＋251原pending来源＋95原pending归属＋59原账户组件；其中skip为Binance income无isolated position现金通道，不是新用例或缺费用跳过。修复数字ID前719+1只作中间证据。双版compileall/diff通过，完整产物/源码身份见台账；未改其余代码证据按原范围复用，不冒称全仓/全金额验收。
 
 主线程按review模板检查数学/单位/符号、边界/去重、字段/兼容和门禁；此独立子层可提交，生产就绪仍否。候选价格没有被证明或批准，完整Loss/Fee/档位/余额、原受控自采及L0/L1/L2/全reader/HTTP/default、OKX与C7继续待；只依赖已提供数据的hash和包络，不能当作身份、freshness或新风险权。没有实际配置/权限/规则/候选/旧产物/研究数据变更、真实请求或正式绩效读取。Goal保持active，不因此关闭S3e/C5/C6/C7或完整Goal。
+
+## 33. 所提供book与观察到的原生杠杆/名义限额（2026-10-24）
+
+基线e189821266d8b77bf744e21bacb84a7089640241已推送且clean，原Goal实际active、完整C0–C7不变。P/N未获新的答复，未重复A/账户协议审批或实现估价依赖。先读原生账户check/current/准备与book代码及官方账户API，确认symbolConfig当前L/maxNotionalValue和bracket最大初始L/floor/cap的角色；notionalCoef是否已应用的语义仍未核，不能重复乘或忽略而放行。按[算术规格§4–5](../specs/2026-10-24-binance-capacity-arithmetic.md)实施一个必要限额子项，不把它改称完整金额或准入。
+
+新增Trade/NativeLeverageLimits.py及169测试。声明池/配置只取原capacity文档，原reader在计算前后验证完整shape/SDK/源码/账户context/时间；复用原book从raw positions/pending/mark重算，不接caller的预封book、配置或额外市场。按返回顺序核档位1..N、首floor0、完整相邻区间及最大L不增加，不排序填洞。精确比较before/after每symbol的全腿暴露与native配置cap、当前L兼容档位cap两条约束；无兼容L用None+leverage_unsupported，不伪造0或无限额。保留非候选币/关闭方向/partial与hedge双腿，不跨币净额。
+
+复用原Fraction/ratio/精确数字与_window，无新依赖/账户或订单状态机、DB/HTTP/配置写入。结果仅provided_book_against_observed_limits_only，book_origin_verified/economics_complete/native_admission_verified均false；源自身context/hash不证明caller提供的book真实属于它或当前全书。未计算费用/余额、维持保证金或coef，不赋权原intent/claim/default，不变更旧来源/订单/reader字节。该模块未被伪装纳入旧proof的新版授权闭包。
+
+RED/GREEN证据：缺API4失败；36个完整档位/coef变异DID NOT RAISE；4个无兼容L仍输出数值0-cap；4个末尾序列化耗时未计年龄；20个正1ns/非法或倒退核心钟未拒绝；均先观察后修复。修复完整生命周期耗时不增加政策：typed业务时刻＋monotonic差向上整毫秒为保守使用时刻，计算前后原reader仍保留。最后169新全GREEN；手算TEST post one_way325、hedge275+201.5=476.5，与顶点枚举一致，两条cap均检恰界和1e-30两侧；五个L边界、非候选币已有超限、重封源/末尾输入变异明确覆盖。
+
+最终CPython3.14.2/3.11.15同三模块各434 passed、0failure/error/skip/0warnings，434唯一classname/name集合差异0（57.14s/JUnit57.089s；56.91s/JUnit56.871s）。组成169新＋79原book＋186原capacity；原未变账户/归属/CAS等证据按原范围复用，不冒称本轮整组或全仓运行。双版compileall/diff通过；生产/测试SHA在双版间不变，34932/37384皆exit0后才改文档。完整JUnit/失败证据身份见开发台账，未清理或重标任何失败产物。
+
+主线程依review模板串行核架构/字段/精确比较/边界/拒绝/兼容/门禁：该有限检查无未解决提交阻断，可提交但生产就绪=否；没有子代理独立审计或真实服务认证。仍必须接实际原account check/来源与全book、受控prepare/原CAS，完成明确价格依据、费用币/余额、全部执行reader/HTTP/default、OKX/S4/C7。整个S3e/C5/C6/C7和完整Goal未完成、保持active；未读正式研究绩效或访问真实账户/市场/订单，实际配置/权限/规则/候选/旧产物均不改。

@@ -315,6 +315,16 @@ RED/GREEN：缺API双symbol2项，缺symbol总暴露2项，11/00011重复计量2
 
 后续仍须完整冻结/验证价格、费用币/费率、档位与余额算术，再接同次受控来源/原L0/L1/L2、全reader/HTTP/default和S4/C7。当前结果两个flags=false、input hash和zero margin delta不构成资金通过；原配置/门禁/订单/未知状态不改，不因book子层通过结束整个Goal。
 
+### S3e原生杠杆与名义限额：不依赖待选估价的必要子项
+
+从clean已推送e189821266d8b77bf744e21bacb84a7089640241继续，Goal仍active。P/N尚未答复，按executing-plans只暂停估价依赖；先在原算术规格§4冻结同一capacity source自己的markets/config与完整raw档位检查。新NativeLeverageLimits不收caller封好的book/markets/config，复用原margin envelope与原reader/精确数字/ratio；两条cap独立精确比较每symbol before/after暴露。要求连续完整档位/不增加的最大L；非中性coef语义未核则拒绝，不二次乘或忽略调整，也不假定维持公式已证。
+
+TDD：4缺API、36拓扑/coef、4无兼容L的0-cap、4序列化耗时、20核心钟/正1ns真实RED逐步GREEN。169新增含非空双币one_way/hedged、独立顶点与手算、原生L、恰界1e-30、非候选币已有超限、源重封/末尾输入变异；无兼容L给None+明确违规，输入不全不补0。沿原_window与核心monotonic保守上界覆盖全计算，不给年龄/跨度隐含裕量。
+
+双解释器同三模块各434 passed/0failure/error/skip/0warnings（169新＋79原book＋186原来源），唯一集合差异0、双版compileall/diff通过，主线程按review模板复核；其余未变原721/903等证据仅按原范围复用。所有活pytest34932/37384已exit0才更新文档，生产/测试SHA保持一致，详见台账。未修改旧代码/表/来源schema/执行状态机或实际配置。
+
+输出coverage仅provided_book_against_observed_limits_only，book_origin_verified及两个资金/admission flags=false；within_observed_limits不是实际全书、资金或原CAS许可。本子项尚未把原account check/pending/mark绑定到该数学输入，不能隐去该缺口。后续继续原受控prepare/同账户全书与来源skew、完整价格/费用/余额、L0/L1/L2及所有reader/HTTP/default、OKX/S4/C7；不另建缩小Goal或关闭C5–C7。
+
 ## S4 默认 CLI 多市场合成 E2E 与发布
 
 沿真实 RunTradeCycle/RunTradeStage，fake 最底层原生运输，验证 Binance/OKX × one_way/hedged × 多市场的账户/准入/意图/恢复链。只有全部新风险入口不可绕过消费者后，才有条件替换原常量阻断。

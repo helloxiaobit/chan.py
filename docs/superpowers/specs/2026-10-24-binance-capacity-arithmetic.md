@@ -60,3 +60,27 @@ GREEN后的局部清理计划：已有56项hand/vertex/拒绝回归保护原输�
 非空手算例：one_way前2102/21、后4939/42；hedged四腿前6467/42、后3601/21；同向候选的额外IM均35/2。另有相反候选使额外IM为0的例子，但flags仍false，不能因此免除开仓损失/费用/余额/原账本或声称零成本。标的暴露按腿汇总，未跨币净额；调用者价格仍标明provided_untrusted_reference，不因算术测试通过而升级为native价格上界/已批准价格政策。
 
 P/N问题已单独向用户提出；未回复时严格原价格依据边界不变，不将默认选择视为答复。本子层/输入hash/候选投影不可作资金许可，不接原intent/claim/default，不重封旧来源/订单，也未选择新的执行schema。完整金额模型、跨来源/L0/L1/L2/全reader/HTTP/default、OKX与C7仍待，完整Goal保持active而非完成。
+
+## 4. 原生杠杆/名义限额的必要检查（实施前冻结）
+
+这一子项不依赖P/N：只比较第1节的**已提供book投影**与同一原生capacity来源中的限额。不是完整资金能力，也不证明这些持仓/pending/mark属于该账户或当前真实全书；受控prepare/原check/L0/L1/L2绑定仍须随后完成。保留全部原阻断，不新增价格/费用估计。
+
+依据[官方账户API](https://developers.binance.com/en/docs/catalog/core-trading-derivatives-trading-usd-s-m-futures/api/rest-api/account)：symbolConfig给当前leverage/maxNotionalValue；每档initialLeverage为该档最大初始杠杆，notionalFloor/Cap为名义门槛/上限。coef仅描述为用户档位倍数，尚无已核证据说明返回区间是否已调整。因此非中性notionalCoef继续拒绝计算，不忽略或二次乘；缺coef只使用原样返回的区间，不写入猜测的1。显式精确等于1时无需变换。此处不使用maintMarginRatio/cum计算维持保证金或宣称维持公式已核。
+
+文件为Trade/NativeLeverageLimits.py及对应测试。API evaluate_binance_leverage_limits(capacity_evidence,*,positions,pending_orders,mark_prices,position_mode,candidate,max_age_ms,max_observation_span_ms)。预算必填；用原reader在计算前后核完整来源/SDK/源码/窗口，来源字节与全部输入须不变。声明池和当前配置**只从该来源取**，不另收caller的markets/configs或封好的book结果；直接复用原calculate_binance_margin_envelope从raw重算，不复制端点/单位/partial公式。
+
+完整raw档位按返回顺序核数值编号1..N、首floor=0、前cap=后floor、cap递增、initialLeverage不增加；不排序补洞或截断表。对该symbol实际L，取所有initialLeverage>=L档位的最大reported cap为compatible cap；没有这样的档位则记录leverage_unsupported。分别精确比较订单前/后symbol暴露<=symbolConfig.maxNotionalValue及compatible cap，两条独立约束都要满足，恰界允许、超过任意正分数拒绝。这里比较上限而不分配边界所属维持档位；不假设config cap必等于bracket cap。hedge暴露沿原包络先分腿再相加，不跨币净额。
+
+输出有限canonical文档，列来源完整SHA、原account_context、重算book、每标的原L/两个cap/前后暴露和确定性违规记录；status仅within_observed_limits/exceeds_observed_limits。coverage明确provided_book_against_observed_limits_only，book_origin_verified/economics_complete/native_admission_verified均false。有效输入上的超限返回可审查记录，结构/源/系数歧义拒绝，不通过默认0或无限额制造可过结果。零GET/零DB/零订单/零配置写入；来源hash不是自采、真实当前性或发送能力。
+
+验收先缺API行为RED；非空双symbol、one_way/hedged/不同native L、partial/关闭方向pending，独立顶点参考核暴露；当前cap和兼容cap分别恰界/极小超界、旧书已超限、无兼容L、非候选币超限、四腿不可净额。缺档/重排/断层/overlap/递增L/coef歧义、caller重封来源、过期/计算耗时/输入末尾变异均拒绝。复用原来源及book回归，双解释器验证、compileall/diff、主线程review与Lore后仅记录本子项完成。
+
+## 5. 第4节限额检查的离线结果
+
+已实现NativeLeverageLimits及169新增用例。双解释器同三模块各434 passed/0failure/error/skip/0warnings，434唯一用例集合一致；双版compileall/diff通过。组成169新＋79原book＋186原capacity输入；原未变账户/归属/CAS等证据按原范围复用，不冒称本轮全跑。所有pytest结束后才更新文档，未修改被测生产代码或测试身份；完整SHA/JUnit/RED产物见[台账](../reports/2026-10-20-crypto-full-version-progress.md)。
+
+TDD先4项缺API RED，36项完整档位/系数DID NOT RAISE RED，4项无兼容L却伪造数值0-cap的RED，4项序列化后age遗漏RED，20项业务时钟不前进时的正1ns/非法或倒退核心钟RED；逐项修复后GREEN，非用失败结果重标PASS。未增加新的时间容差：沿原_window，在typed业务时刻基础上以整个计算的核心monotonic差向上取整毫秒作保守使用时刻上界，同时保留计算前后原reader。恰界+零耗时可过，正1ns不能被截为0。
+
+非空手算TEST订单后暴露one_way=325、hedged=275+201.5=476.5；两个独立cap均验证恰界及1e-30两侧。五个原生L边界验证1000/5000/10000兼容cap，完全不兼容时cap=None并显式leverage_unsupported，不填0/无限额。ALT原book超限即使候选属于TEST也返回before/after违规；原输入/来源与限额记录均有限canonical，不写库/SDK或续期旧源。
+
+本层仍无真实全书来源/模式/原账户check绑定，book_origin_verified=false；source SHA/within_observed_limits不是自采能力、资金充分或服务端锁额。既有source reader核SDK/源码与时间只说明有限数据契约，非整个宿主/真实服务器认证。没有P批准、价格/费用估计、维持保证金/coef应用、原CAS接入或默认发送；旧schema/证明/订单不重封。下一步沿原依赖接实际账户/pending/mark及受控prepare，再完成明确价格依据、费用/余额、原L0/L1/L2与全部reader/default；C5–C7及原完整Goal继续active未完成。

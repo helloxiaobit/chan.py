@@ -87,6 +87,8 @@
 
 续行后Goal工具已恢复active；新增独立book包络核算，非空双币/hedge四腿/partial/关闭方向挂单逐项保留，hypothetical候选无native ID/ACK或资金许可。79新，双版各721 passed/1既有skip，未应用新的价格/费用/档位政策，原资金/claim/default阻断不变。完整算术中的价格P/N为另一项明示选择，不重问既有A/原CAS协议；未确认不编码FAQ估价或改变严格界限，详见[算术规格](2026-10-24-binance-capacity-arithmetic.md)与审计§32。
 
+随后新增provided-book对原生杠杆/名义cap的必要检查，169新、双版同三模块各434 passed/0failure/error/skip/0warnings；不是原协议的资金通过或账户来源绑定。其book_origin_verified/economics_complete/native_admission_verified均false，非中性coef/不完整档位继续拒绝；原L0/L1/L2、claim及HTTP/default阻断不变，P/N待答复只暂停估价依赖，不重复既有协议批准。完整受控prepare→资金→原CAS及下列整体验收仍未完成，见审计§33。
+
 1. 单独证明已加载 SDK cache 不构成新 instrument 读取；fake 最底层原生方法返回新 tick/contract/status/limits 时应拒绝旧 metadata。拒绝错路由、额外私有/跨产品请求、缺/重复市场、非有限/未来/倒退时钟；不为恢复旧单强制获取新模型。
 2. 用已有两币非空/partial/pending/fee/funding fixture 扩展完整 prepare→原 intent→claim→HTTP；用真实原 SQLite/CAS，而非 mock 一个 passed helper。
 3. 同账户不同记录/市场/表的双连接竞争，以及 acquire/claim/HTTP 前各边界的输入、冻结、来源、runtime/配置变化，均不得产生两个未观察新风险意图或额外 HTTP。

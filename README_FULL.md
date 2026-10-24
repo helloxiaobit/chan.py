@@ -491,6 +491,8 @@ exchangeInfo.serverTime、上架/到期/未来生效时间均不作新鲜时钟�
 
 `Trade.NativeMarginEnvelope` 现复用原数字/ratio/pending/settings解析，精确计算非空多symbol持仓、部分成交挂单及假设候选的before/after包络；hedge两腿独立后求和，不跨币净额、不释放关闭方向挂单。79项新测试含手算/独立顶点枚举，双版同六模块各721 passed、1个既有不适用skip、0failure/error/0warnings。它不处理可支付额/费用/原生档位或证明候选价格，两个flags=false，未接资金/claim/default。新的[价格提案](docs/superpowers/specs/2026-10-24-binance-capacity-arithmetic.md)仍待专门确认，未答复不把FAQ系数写成政策；完整C5–C7仍未完成，详见审计§32。
 
+`Trade.NativeLeverageLimits` 已从同一capacity来源取声明池/当前配置，复用原book重算，分别比较每symbol订单前后暴露与native配置cap及当前杠杆兼容的完整档位cap；不跨币或hedge腿净额，不忽略非候选币。档位断层/乱序/缺档及非中性coef歧义拒绝，不计算维持保证金或猜系数。169新增，双版同三模块各434 passed/0failure/error/skip/0warnings；精确边界/正1ns耗时和末尾输入变异均有回归。它只检查已提供book与观察限额，book_origin_verified/economics_complete/native_admission_verified均false；不证明全书来源、资金充分、价格或真实执行，完整C5–C7和原门禁保持，详见审计§33及[算术规格§4–5](docs/superpowers/specs/2026-10-24-binance-capacity-arithmetic.md)。
+
 非 dry-run 还必须同时满足以下门禁：
 
 - 策略收据是有效 JSON，`status` 必须为 `candidate`，并包含非空

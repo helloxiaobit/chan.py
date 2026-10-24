@@ -84,3 +84,5 @@ TDD先观察缺API失败，再实际原SDK＋底层fake的非空两symbol响应�
 ## 7. Goal续行后的book算术与新的价格选择
 
 用户续行后原工具已为active，原C0–C7目标与全部门禁保留。新的[算术规格](2026-10-24-binance-capacity-arithmetic.md)第1节已给出并实现全部已提供持仓/普通挂单的带符号腿包络及候选投影，79新、双版同六模块各721 passed/1既有skip/0failure/error/0warnings；只用精确Fraction及原解析体，不计算可支付额。第2节另明确P/N价格差别：P会接受具名FAQ估价而不是原生执行上界，必须专门确认；方向A不是这项放宽的批准。未回复不编码alpha/费用估价或放宽原边界。完整费用/档位/余额判断与受控CAS绑定仍未完成，不能把book增量为0当成资金免费或Goal完成。
+
+接续只实施不依赖价格放宽的[限额必要检查§4–5](2026-10-24-binance-capacity-arithmetic.md)：原capacity reader前后复核，源自己的markets/config→原book计算→native配置cap及当前L兼容cap两条约束，完整档位不排序补洞，非中性coef继续拒绝。169新，双版同三模块各434 passed/0failure/error/skip/0warnings；这是provided-book限额诊断，book_origin_verified及两个资金/admission flags均false，无新的费用、价格假设、维持保证金、原生额度锁定或账户/CAS绑定。完整价格/费用币/余额和原受控入口仍待，不从此子项结束完整A路线或Goal，详见审计§33。
