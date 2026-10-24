@@ -489,6 +489,8 @@ exchangeInfo.serverTime、上架/到期/未来生效时间均不作新鲜时钟�
 
 用户现已批准[明确本地金额模型＋适用原生额度方向](docs/superpowers/specs/2026-10-24-native-per-order-capacity-design.md)，尚未批准隐藏系数或真实运行。新增 `Trade.NativeCapacityEvidence` 只读Binance feeBurn/当前费率/symbol配置/完整原始档位，原账户身份逐项前后包围，两个显式age/span预算；同次原HTTP正文保留精确JSON小数token，不以float或旧bracket cache造金额。186新增回归，双版同六模块各903 passed/0failure/error/skip/0warnings。只给flags=false的独立输入，尚未接金额模型、原CAS或发送。实际SDK4.5.89默认testnet签名在fake运输前拒绝，另有专门测试保留此拒绝；正向live模式仍全部fake、非真实账户请求或C7认证，不切demo/改配置。完整金额算术与独立复算、全部消费者和C5–C7继续未完成，详见审计§31。
 
+`Trade.NativeMarginEnvelope` 现复用原数字/ratio/pending/settings解析，精确计算非空多symbol持仓、部分成交挂单及假设候选的before/after包络；hedge两腿独立后求和，不跨币净额、不释放关闭方向挂单。79项新测试含手算/独立顶点枚举，双版同六模块各721 passed、1个既有不适用skip、0failure/error/0warnings。它不处理可支付额/费用/原生档位或证明候选价格，两个flags=false，未接资金/claim/default。新的[价格提案](docs/superpowers/specs/2026-10-24-binance-capacity-arithmetic.md)仍待专门确认，未答复不把FAQ系数写成政策；完整C5–C7仍未完成，详见审计§32。
+
 非 dry-run 还必须同时满足以下门禁：
 
 - 策略收据是有效 JSON，`status` 必须为 `candidate`，并包含非空

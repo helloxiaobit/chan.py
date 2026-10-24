@@ -346,3 +346,17 @@ TDD缺API真实RED后实现；首轮92失败/162通过的重复失败均为testn
 双解释器同六模块各903 passed、0failure/error/skip/0warnings，唯一集合完全一致（py314 53.62s/JUnit53.551s；py311 53.51s/JUnit53.455s）。组合为186新＋41账户身份＋166独立mark/book＋422instrument＋66balance＋22原prepare/source；双版compileall/diff通过，产物身份见台账。修复末尾typed时钟前两版901 PASS只是中间证据，未替换为新代码证据。不复跑未改原订单/模型/冷启动全组，也不将可复用旧证据记为新跑；没有真实HTTP、研究/正式绩效读取或实际Config/config.yaml/CHANPY_CONFIG变化。
 
 主线程按review模板逐项审查范围/类型/失败/兼容与预算，未发现本输入子层未解决阻断；可提交此有限层，生产就绪=否。整个金额模型/独立非空持仓及partial/pending复算、跨来源时差、原受控prepare/CAS绑定、全加载闭包/执行reader/HTTP/default、OKX后续及C7仍未完成。新模块故意不纳入旧proof重封或赋权；原资金/claim/发送阻断全部保留，不能以903 PASS关闭S3e/C5/C6/C7或完整Goal。
+
+## 32. 已提供book的精确保证金包络（2026-10-24，非完整资金判断）
+
+从已推送clean的2d95f4665127a0115a2ba62b41f86153a06477ff继续，原Goal工具已active。上一轮为实际进展，不重做输入来源；本轮没有收缩C0–C7。检查官方保证金/成本/费用说明与原Engine、NativeAccountReconcile、pending/account解析后，新[算术规格](../specs/2026-10-24-binance-capacity-arithmetic.md)将可独立实施的book公式与需要明确选择的价格估计P/N分开。A方向已批准，不重问；P会放宽原生执行上界要求，单独请求确认，未回复不当作批准或编码FAQ系数。
+
+新增NativeMarginEnvelope及79测试。只在提供的数据上，按signed position q×mark、所有残余普通LIMIT买/卖值的两个端点取max；hedge分别LONG/SHORT再相加，不先净额；另保留按mark的币数端点、逐symbol双腿暴露汇总，候选只为无native ID/ACK的数学投影。已有filled不重计、关闭方向/RO不凭空移除，不能以pending为空释放本地unknown。缺市场/模式/mark/config、币数张数不等、foreign保证金币/非cross配置/算法/复杂/未决MARKET及非有限/float/bool金额拒绝。这里的空提供列表只是算术空集，不证实实际账户空仓/缺单或原生账户模式已核。
+
+复用ExecutionFacts数字、AccountReconcile._ratio、NativePendingOrders._order和原配置解释，没有第二个账本、订单状态机、DB/SDK写入或source/旧schema迁移。精确Fraction一直保留到统一序列化，不发明钱数舍入量子。GREEN56后按预写清理计划让同一个frame计算体产生每腿、每symbol和全书IM，删除第二份端点公式；新增字段有先RED保护。结果两个flags=false、provided_untrusted_reference、无可用额/费用/档位通过；不接原intent/claim或默认sender。
+
+TDD：双symbol缺API2 RED→56 GREEN；缺symbol暴露汇总2 RED→58 GREEN；手算/顶点枚举、符号越界、非终止分数、source输入变异等77 GREEN后，收尾确认11与00011会重复计量，2项DID NOT RAISE RED→最小按symbol＋int(native ID)比较后79 GREEN，不改原raw/ID。手算one_way前2102/21、后4939/42；hedged四腿前6467/42、后3601/21；还有额外IM=0但仍无资金许可的相反候选。独立测试枚举挂单所有none/full成交顶点，与生产端点公式分开；不是独立代理/外部认证。
+
+最终双解释器相同六模块各721 passed、1既有skip、0failure/error/0warnings；722唯一用例集合一致（py314 93.08s/JUnit92.994s，py311 91.29s/JUnit91.203s）。组成79新＋186原capacity输入＋52原账户区间＋251原pending来源＋95原pending归属＋59原账户组件；其中skip为Binance income无isolated position现金通道，不是新用例或缺费用跳过。修复数字ID前719+1只作中间证据。双版compileall/diff通过，完整产物/源码身份见台账；未改其余代码证据按原范围复用，不冒称全仓/全金额验收。
+
+主线程按review模板检查数学/单位/符号、边界/去重、字段/兼容和门禁；此独立子层可提交，生产就绪仍否。候选价格没有被证明或批准，完整Loss/Fee/档位/余额、原受控自采及L0/L1/L2/全reader/HTTP/default、OKX与C7继续待；只依赖已提供数据的hash和包络，不能当作身份、freshness或新风险权。没有实际配置/权限/规则/候选/旧产物/研究数据变更、真实请求或正式绩效读取。Goal保持active，不因此关闭S3e/C5/C6/C7或完整Goal。

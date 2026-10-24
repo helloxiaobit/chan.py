@@ -305,6 +305,16 @@ signal可为后续原受控prepare提供已初始化SDK，但成功只None、不
 
 另两项真实RED证实末尾typed clock必须在加单调差之前核验，防止bool被Python算术转为int绕过类型检查；复用原_window前置后GREEN。最终186新用例，双版同六模块各903 passed/0failure/error/skip/0warnings，唯一集合差异0；双版compileall/diff及主线程review通过，详细JUnit/身份见台账。两个flags=false、fee_currency=None、coef未应用，本层不核额度、持仓/pending的金额占用或全部档位覆盖。后续依然依次冻结完整算术→独立非空账户参考复算→原受控来源/prepare/L0/L1/L2绑定→全部reader/发送/default/S4/C7；旧intent/claim资金拒绝保持，整个Goal未完成。
 
+### S3e必要book算术与尚未选择的价格政策（2026-10-24）
+
+Goal续行已active，完整C0–C7不变。[算术规格](../specs/2026-10-24-binance-capacity-arithmetic.md)分开第1节可直接计算的持仓/挂单/候选包络，以及第2节需单独确认的FAQ价格假设P。只实施第1节，不借已批准A方向静默加入0.15%/费用估价，也不将文档当作服务端执行上界。P/N问题已提出，未答复时保持原严格边界；继续所有不依赖该选择的授权工作。
+
+NativeMarginEnvelope只读已提供数据；复用原精确数字、AccountReconcile._ratio、NativePendingOrders._order及NativeCapacityEvidence配置解释。signed q×mark与全部residual LIMIT值分别形成每symbol/leg的max端点，hedge先分腿后求和；不跨symbol净额或移除RO/关闭方向挂单。候选仅显式双单位/valuation的数学投影，不造future native orderId/ACK。Fraction保留1/3、1/7、1/21，统一末端ratio序列化；GREEN56项后先写局部清理计划，再删除重复端点公式。逐symbol暴露显式汇总；数字ID仅按symbol比较语义别名，不改变原raw/历史。
+
+RED/GREEN：缺API双symbol2项，缺symbol总暴露2项，11/00011重复计量2项DID NOT RAISE；最小修复后79新全GREEN。双版同六模块各721 passed/1既有skip/0failure/error/0warnings，722唯一用例集合一致，compileall/diff通过。已有skip为Binance income无isolated position现金通道，新79项全执行；中间719+1只是修复数字ID前证据，不标为最终代码。详细身份见台账。
+
+后续仍须完整冻结/验证价格、费用币/费率、档位与余额算术，再接同次受控来源/原L0/L1/L2、全reader/HTTP/default和S4/C7。当前结果两个flags=false、input hash和zero margin delta不构成资金通过；原配置/门禁/订单/未知状态不改，不因book子层通过结束整个Goal。
+
 ## S4 默认 CLI 多市场合成 E2E 与发布
 
 沿真实 RunTradeCycle/RunTradeStage，fake 最底层原生运输，验证 Binance/OKX × one_way/hedged × 多市场的账户/准入/意图/恢复链。只有全部新风险入口不可绕过消费者后，才有条件替换原常量阻断。

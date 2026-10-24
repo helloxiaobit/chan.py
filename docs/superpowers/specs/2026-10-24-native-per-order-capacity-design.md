@@ -60,7 +60,7 @@
 
 ## 6. 批准后首个独立输入子层：Binance原始资金参数（实施前冻结）
 
-从clean的4d31915a39944df956665c3303ee8ed04d778fec继续。先补金额模型必需而现有来源缺少的输入，不提前定义或计算资金充分、assumed-price/缓冲、返佣收益、费用币转换、档位系数应用或本单占额。完整金额算术仍须先冻结再实现；本输入子层不替代它。原Goal工具当前仍为blocked，不能代用户改为active或另建缩小Goal；本轮直接批准的范围内工作继续。
+从clean的4d31915a39944df956665c3303ee8ed04d778fec继续。先补金额模型必需而现有来源缺少的输入，不提前定义或计算资金充分、assumed-price/缓冲、返佣收益、费用币转换、档位系数应用或本单占额。完整金额算术仍须先冻结再实现；本输入子层不替代它。该输入层交付时原Goal工具仍为blocked，未代用户改为active或另建缩小Goal；当轮直接批准的范围内工作继续。
 
 最小文件范围为Trade/NativeCapacityEvidence.py与对应测试，不修改原来源/订单schema、原状态机或默认入口。复用AccountIdentity原私有环境/账户身份、ExecutionFacts精确数字边界及NativeMarketEvidence的声明池/SDK身份。没有适合复用的原始JSON数字token读取体时，仅在新来源内处理该传输差异，不从训练流水线引入金融依赖。
 
@@ -79,4 +79,8 @@ TDD先观察缺API失败，再实际原SDK＋底层fake的非空两symbol响应�
 
 真实原SDK签名/HTTP解析路径＋fake session运输发现：本机CCXT4.5.89默认Binance Futures testnet/sandbox签名在运输前NotSupported；正向只覆盖live模式的离线fake，没有真实live请求。另两项测试保留默认testnet拒绝，不写disableFuturesSandboxWarning、不切demo、不改现有工厂或配置。该SDK限制不等于交易所所有测试环境不存在，也不把旧fake-native-method PASS改称签名/真实服务认证。
 
-完整金额算术/独立非空持仓及partial/pending复算、受控prepare→原CAS自采绑定、L2/发送/所有reader/default、OKX与C7仍未完成。本文件方向批准已记录，不再标为待批；完整Goal没有因此完成或被替换，当前工具blocked状态没有被本轮代为恢复。
+完整金额算术/独立非空持仓及partial/pending复算、受控prepare→原CAS自采绑定、L2/发送/所有reader/default、OKX与C7仍未完成。本文件方向批准已记录，不再标为待批；完整Goal没有因此完成或被替换，该输入层交付时未代为恢复blocked状态。
+
+## 7. Goal续行后的book算术与新的价格选择
+
+用户续行后原工具已为active，原C0–C7目标与全部门禁保留。新的[算术规格](2026-10-24-binance-capacity-arithmetic.md)第1节已给出并实现全部已提供持仓/普通挂单的带符号腿包络及候选投影，79新、双版同六模块各721 passed/1既有skip/0failure/error/0warnings；只用精确Fraction及原解析体，不计算可支付额。第2节另明确P/N价格差别：P会接受具名FAQ估价而不是原生执行上界，必须专门确认；方向A不是这项放宽的批准。未回复不编码alpha/费用估价或放宽原边界。完整费用/档位/余额判断与受控CAS绑定仍未完成，不能把book增量为0当成资金免费或Goal完成。
