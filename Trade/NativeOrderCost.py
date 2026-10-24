@@ -27,6 +27,33 @@ def _fail():
                          ErrCode.TRADE_UNLOCK_FAIL) from None
 
 
+def _priced_candidate(unit, position_mode, request, mark_price, last_price):
+    """Shared exact candidate/R rules; not a fee, provenance or cash check."""
+    if unit["exchange"] not in {"binance", "binanceusdm"} or position_mode not in {"one_way", "hedged"}:
+        _fail()
+    _markets([unit], unit["exchange"])
+    if (type(request) is not dict or set(request) != _CANDIDATE or request["instrument_id"] != unit["id"]
+            or request["side"] not in {"BUY", "SELL"} or request["order_type"] not in {"LIMIT", "MARKET"}
+            or type(request["post_only"]) is not bool or request["reduce_only"] is not False
+            or (position_mode == "one_way" and request["position_side"] != "BOTH")
+            or (position_mode == "hedged" and (request["position_side"], request["side"]) not in
+                {("LONG", "BUY"), ("SHORT", "SELL")})):
+        _fail()
+    quantity, contracts, size = (Fraction(_number(value, positive=True)) for value in
+        (request["base_quantity"], request["contracts"], unit["contractSize"]))
+    if quantity != contracts*size:
+        _fail()
+    mark, last = (Fraction(_number(value, positive=True)) for value in (mark_price, last_price))
+    if request["order_type"] == "LIMIT":
+        basis = Fraction(_number(request["limit_price"], positive=True))
+        assumed = basis if request["side"] == "BUY" else max(last*(1+_ALPHA), mark, basis)
+    else:
+        if request["limit_price"] is not None or request["post_only"] is not False:
+            _fail()
+        assumed = basis = last*(1+_ALPHA)
+    return quantity, mark, assumed, basis
+
+
 def calculate_binance_order_cost_v1(*, market, position_mode, candidate, mark_price, last_price, bid_price, ask_price,
                                     leverage, commission, fee_burn, fee_currency, available_balance, margin_balance):
     """IM + opening loss + estimated fee, without old-book reservation debits.
@@ -43,23 +70,9 @@ def calculate_binance_order_cost_v1(*, market, position_mode, candidate, mark_pr
         original = canonical_bytes(provided)
         values = json.loads(original)
         unit = values["market"]
-        if unit["exchange"] not in {"binance", "binanceusdm"} or position_mode not in {"one_way", "hedged"}:
-            _fail()
-        _markets([unit], unit["exchange"])
         request = values["candidate"]
-        if (type(request) is not dict or set(request) != _CANDIDATE or request["instrument_id"] != unit["id"]
-                or request["side"] not in {"BUY", "SELL"} or request["order_type"] not in {"LIMIT", "MARKET"}
-                or type(request["post_only"]) is not bool or request["reduce_only"] is not False
-                or (position_mode == "one_way" and request["position_side"] != "BOTH")
-                or (position_mode == "hedged" and (request["position_side"], request["side"]) not in
-                    {("LONG", "BUY"), ("SHORT", "SELL")})):
-            _fail()
-        quantity, contracts, size = (Fraction(_number(value, positive=True)) for value in
-            (request["base_quantity"], request["contracts"], unit["contractSize"]))
-        if quantity != contracts*size:
-            _fail()
-        mark, last, bid, ask = (Fraction(_number(values[key], positive=True)) for key in
-                               ("mark_price", "last_price", "bid_price", "ask_price"))
+        quantity, mark, assumed, loss_price = _priced_candidate(unit, position_mode, request, values["mark_price"], values["last_price"])
+        bid, ask = (Fraction(_number(values[key], positive=True)) for key in ("bid_price", "ask_price"))
         native_leverage = int(_id(values["leverage"]))
         available, equity = (Fraction(_number(values[key])) for key in ("available_balance", "margin_balance"))
         if native_leverage <= 0 or not bid < ask or not 0 <= available <= equity:
@@ -72,15 +85,9 @@ def calculate_binance_order_cost_v1(*, market, position_mode, candidate, mark_pr
         rates = _raw_values("commission", unit["id"], raw)
         maker, taker = (Fraction(_number(rates[key])) for key in ("makerCommissionRate", "takerCommissionRate"))
         if request["order_type"] == "LIMIT":
-            limit = Fraction(_number(request["limit_price"], positive=True))
-            assumed = limit if request["side"] == "BUY" else max(last*(1+_ALPHA), mark, limit)
-            loss_price = limit
-            fee_price = limit if request["post_only"] else max(assumed, mark, bid, ask, limit)
+            fee_price = loss_price if request["post_only"] else max(assumed, mark, bid, ask, loss_price)
             fee_rate = max(Fraction(0), maker) if request["post_only"] else max(Fraction(0), maker, taker)
         else:
-            if request["limit_price"] is not None or request["post_only"] is not False:
-                _fail()
-            assumed = loss_price = last*(1+_ALPHA)
             fee_price, fee_rate = max(assumed, mark, bid, ask), max(Fraction(0), taker)
         side = 1 if request["side"] == "BUY" else -1
         initial = quantity*assumed/native_leverage

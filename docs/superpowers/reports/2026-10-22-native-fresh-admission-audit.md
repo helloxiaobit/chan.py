@@ -418,3 +418,13 @@ TDD证据包括8缺API、4历史过期、1current decoder耗时、2owner/替换�
 新增NativeLastPrice：原SDK单symbol `/fapi/v2/ticker/price`，同时核fapiPublic及fapiPublicV2路由；保留同次正文的精确数字token和交易time，不使用fetch_ticker/fees/市场cache。复用原SDK/环境/数字/精确正文/窗口工具；零有效retry、TLS及原方法/配置/credential身份前后不变，显式local age/span同时约束native transaction age。末尾source/SDK/文档完整性与monotonic向上毫秒界覆盖收尾；坏时钟/旧交易时刻在下一次GET前即拒绝，不靠最后异常容许多读。公开reader不收caller as-of。所有正向live/testnet SDK对象都由底层fake运输；公共Last的testnet fake通过不覆盖原私有SDK testnet签名拒绝，更不是外部验收。
 
 主线程按review模板复核：原金额/ratio与SDK/精确正文工具复用，无第二套book/ledger/状态机、依赖或公开预算默认值；无旧schema/原门禁变化。缺函数/假设说明、28项过晚时钟检查、8项终末改写、12项业务clock后的SDK/路由/方法覆盖均先RED再修复。替换方法测试由只数HTTP改为同时观察被覆盖方法是否执行，避免4项伪GREEN；初次8fail/4pass和精化后12fail均保留。最终双版1141 passed（527新＋614原适用回归）、0warning，唯一集合一致、4源码/测试摘要不变，双版compileall/diff通过；完整JUnit/RED身份见台账。没有实际配置/环境/权限/规则/候选/旧产物/研究数据变化，没有真实行情/账户/订单或正式绩效读取。结论：本地算术与Last子项可提交，完整S3e/C5–C7/生产就绪仍否，Goal保持active。
+
+## 37. 精确V1价格/完整book与原check绑定（2026-10-25，非完整资金准入）
+
+从pushed/clean cb0808b8b55074b115050773c8a789194b59aec1继续，[修改前清理计划](../plans/2026-10-25-binance-v1-price-book-bridge.md)先于生产修改。原NativeOrderCost候选/R规则提一份私有体，原NativeMarginEnvelope、NativeLeverageLimits、NativeAccountLimits各自保留一份旧/新共享体，不复制端点或原SQLite/L0/账本逻辑。旧公开签名/decimal/schema不变；内部rational schema仅接原V1计算出的精确R，不通过截短价格扩大支持。旧cost六路径与两种旧book完整canonical文档由cb0808b源码fresh执行提取8个固定golden，双版逐字节SHA相等。
+
+显式新入口observe_binance_account_order_limits_v1读取原check的signed持仓/完整regular pending/mark与当前模式，用Last原reader核显式local/native年龄，并严格比同一SDK/完整市场池。新的订单候选不得带caller valuation/Cost/alpha；缺Last不得降级旧路径。Last全窗、finish与每个native transaction时刻加入原政策局部副本，共同核total/skew；不改原policy。每个reader后先复核原DB/连接/table，再碰SQL，最后复验同一原L0和完整输入；替换库零查询、末尾真实新intent保留且观察拒绝，不谎称冻结未知库。输出仍source_collection_owned/book_origin_verified/economics_complete/native_admission_verified=false，不是金额通过、同次prepare自采或发送权。
+
+TDD：bridge缺API14fail/2pass、native limits缺API8fail、原check缺API4fail，再8项旧/新limits内部clone终末变异DID NOT RAISE后补双向canonical检查。新增150（66/16/68），非空多币、hedge四腿、partial/closing、非候选币限额、超过50位的R、错池/单位/源/窗口、原owner/实际CAS及独立顶点参考覆盖。双版11模块各1400 passed，另原prepare/CAS/current适用组各76 passed/9 deselected，全部0failure/error/skip/warning，1400与76唯一用例集合各一致，7源码/测试摘要不变，双版compileall通过；完整产物身份见台账。9个冷启动专用用例本轮未重跑，只在未改实现/SDK原范围保留已有证据，不称本轮完整85或全仓通过。
+
+BNFCR官方资料的模式限制补充见桥接计划，是“single-asset可排除credits”的推论，不是完整费用/税费或USDT扣费已核。费用路径、原available/equity到完整Cost、实际prepare采Last/金额绑定及L1/L2/全部执行消费者仍待。旧来源和代码时代不兼容照旧拒绝，不重封/续期；实际配置/权限/规则/candidate/研究/旧产物无变，无真实账户/行情/订单或正式绩效读取。原资金/claim/default、OKX/S4/C5–C7边界保留，完整Goal active，不用只读price/limit子项替代完整资金验收。

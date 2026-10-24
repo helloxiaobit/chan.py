@@ -33,3 +33,5 @@ alpha 固定 `3/2000`，不能调用者覆盖、搜索或当作原生成交上�
 - [官方费用币说明](https://www.binance.com/en/academy/articles/how-to-calculate-transaction-fees-on-binance)与[BNFCR 模式](https://www.binance.com/en/support/faq/detail/0e857c392a2d47cebde0af762d9255ae)：一般 margin-asset 规则不能覆盖 credit-mode/所有费用或司法辖区。第 1 步的显式币种只是数学输入；第 3–4 步未核适用事实前不开放新风险。
 
 实施状态：第1步条件算术与第2步独立来源已完成本地 fake/TDD 验证，527新增；双解释器同七模块各1141 passed、0failure/error/skip/0warnings。第3–4步尚未完成，Last 尚未绑定原 prepare，显式费用币仍只是数学输入，不是原生费用适用性证明。原包络如何接收内部精确 Fraction 仍须按第3步先保护回归，不能通过截短 R 接上。具体失败/产物/代码身份见[台账](../reports/2026-10-20-crypto-full-version-progress.md)及[审计§36](../reports/2026-10-22-native-fresh-admission-audit.md)。完整 Goal active，C5–C7 未完成。
+
+2026-10-25更新：按[修改前清理/桥接计划](2026-10-25-binance-v1-price-book-bridge.md)，第3步的V1精确R→同一完整book→原生限额→原持久check/L0已实现，未扩大旧decimal公开输入。Last与原来源合并local/native窗口，原owner/L0前后复验；150新增、双版各1400＋76适用回归通过。费用适用性/原available到完整成本与第4步仍未完成，Last尚未由原prepare自采绑定，不能据本轮price/limit报告取得资金或发送权；旧源/代码时代不兼容继续拒绝，不续期或重封。

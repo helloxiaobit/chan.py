@@ -13,7 +13,7 @@ from CustomBuySellPoint.Decision import canonical_bytes
 from . import NativeCapacityEvidence as Capacity
 from .AccountReconcile import _ratio, _sha
 from .NativeCapacityEvidence import verify_binance_capacity_evidence
-from .NativeMarginEnvelope import _n, calculate_binance_margin_envelope
+from .NativeMarginEnvelope import _n, calculate_binance_margin_envelope, calculate_binance_order_margin_envelope_v1
 
 
 SCHEMA = "chan-binance-leverage-limits-v1"
@@ -43,11 +43,28 @@ def _compatible_cap(raw, leverage):
 def evaluate_binance_leverage_limits(capacity_evidence, *, positions, pending_orders, mark_prices,
                                      position_mode, candidate, max_age_ms, max_observation_span_ms):
     """Recompute, never consume a caller's pre-approved or resealed book result."""
+    return _evaluate_limits(capacity_evidence, positions=positions, pending_orders=pending_orders, mark_prices=mark_prices,
+        position_mode=position_mode, candidate=candidate, max_age_ms=max_age_ms,
+        max_observation_span_ms=max_observation_span_ms, price_inputs=None)
+
+
+def evaluate_binance_order_leverage_limits_v1(capacity_evidence, *, positions, pending_orders, mark_prices,
+        position_mode, candidate, last_prices, max_age_ms, max_observation_span_ms):
+    """Reprice the raw order under V1 before applying all original native limits."""
+    return _evaluate_limits(capacity_evidence, positions=positions, pending_orders=pending_orders, mark_prices=mark_prices,
+        position_mode=position_mode, candidate=candidate, max_age_ms=max_age_ms,
+        max_observation_span_ms=max_observation_span_ms, price_inputs={"last_prices": last_prices})
+
+
+def _evaluate_limits(capacity_evidence, *, positions, pending_orders, mark_prices, position_mode, candidate,
+                     max_age_ms, max_observation_span_ms, price_inputs):
     try:
         tick_start, checked = _monotonic_ns(), Capacity.utc_now_ms()
         provided = {"capacity_evidence": capacity_evidence, "positions": positions, "pending_orders": pending_orders,
             "mark_prices": mark_prices, "position_mode": position_mode, "candidate": candidate,
             "max_age_ms": max_age_ms, "max_observation_span_ms": max_observation_span_ms}
+        if price_inputs is not None:
+            provided.update(price_inputs)
         original = canonical_bytes(provided)
         inputs = json.loads(original)
         source = inputs["capacity_evidence"]
@@ -56,9 +73,15 @@ def evaluate_binance_leverage_limits(capacity_evidence, *, positions, pending_or
         Capacity._window(p["started_ms"], p["finished_ms"], checked, max_age_ms, max_observation_span_ms)
         configs = {row["instrument_id"]: row["raw"] for row in p["observations"] if row["role"] == "configuration"}
         brackets = {row["instrument_id"]: row["raw"] for row in p["observations"] if row["role"] == "brackets"}
-        book = calculate_binance_margin_envelope(markets=p["markets"], positions=inputs["positions"],
+        book_args = dict(markets=p["markets"], positions=inputs["positions"],
             pending_orders=inputs["pending_orders"], mark_prices=inputs["mark_prices"], symbol_configs=list(configs.values()),
             position_mode=inputs["position_mode"], candidate=inputs["candidate"])
+        projection = None
+        if price_inputs is None:
+            book = calculate_binance_margin_envelope(**book_args)
+        else:
+            projection = calculate_binance_order_margin_envelope_v1(**book_args, last_prices=inputs["last_prices"])
+            book = projection["payload"]["margin_envelope"]
         limits, issues = [], []
         for row in book["payload"]["books"]:
             instrument = row["instrument_id"]
@@ -82,9 +105,12 @@ def evaluate_binance_leverage_limits(capacity_evidence, *, positions, pending_or
             "status": "exceeds_observed_limits" if issues else "within_observed_limits",
             "coverage": "provided_book_against_observed_limits_only", "book_origin_verified": False,
             "economics_complete": False, "native_admission_verified": False}
-        document = json.loads(canonical_bytes({"schema": SCHEMA, "payload": payload, "payload_sha256": _sha(payload)}))
+        if price_inputs is not None:
+            payload.update(order_price_projection=projection, coverage="provided_book_with_client_v1_against_observed_limits_only")
+        document = json.loads(canonical_bytes({"schema": "chan-binance-order-leverage-limits-client-v1" if price_inputs is not None else SCHEMA,
+            "payload": payload, "payload_sha256": _sha(payload)}))
         verify_binance_capacity_evidence(source, max_age_ms=max_age_ms, max_observation_span_ms=max_observation_span_ms)
-        if canonical_bytes(provided) != original:
+        if canonical_bytes(provided) != original or canonical_bytes(inputs) != original:
             _fail()
         tick_end = _monotonic_ns()
         if type(tick_start) is not int or type(tick_end) is not int or not 0 <= tick_start <= tick_end:

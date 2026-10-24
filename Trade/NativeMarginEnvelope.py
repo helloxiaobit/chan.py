@@ -16,6 +16,7 @@ from .ExecutionFacts import MAX_REQUESTS, _MONEY, _number
 from .NativeCapacityEvidence import _raw_values
 from .NativeMarketEvidence import _markets
 from .NativePendingOrders import _order
+from .NativeOrderCost import MODEL_ID, _priced_candidate
 
 
 SCHEMA = "chan-binance-margin-envelope-v1"
@@ -52,6 +53,12 @@ def calculate_binance_margin_envelope(*, markets, positions, pending_orders, mar
     orders are retained without assuming cancellations or released funds. All
     divisions remain reduced Fractions, using the original ratio wire shape.
     """
+    return _calculate_binance_margin_envelope(markets=markets, positions=positions, pending_orders=pending_orders,
+        mark_prices=mark_prices, symbol_configs=symbol_configs, position_mode=position_mode, candidate=candidate, rational=False)
+
+
+def _calculate_binance_margin_envelope(*, markets, positions, pending_orders, mark_prices, symbol_configs,
+                                      position_mode, candidate, rational):
     try:
         provided = {"markets": markets, "positions": positions, "pending_orders": pending_orders,
                     "mark_prices": mark_prices, "symbol_configs": symbol_configs,
@@ -116,7 +123,16 @@ def calculate_binance_margin_envelope(*, markets, positions, pending_orders, mar
             if (key not in legs or request["side"] not in {"BUY", "SELL"}
                     or (position_mode == "hedged" and request["side"] != ("BUY" if key[1] == "LONG" else "SELL"))):
                 _fail()
-            quantity, contracts, price = (_n(request[field], positive=True) for field in ("base_quantity", "contracts", "valuation_price"))
+            quantity, contracts = (_n(request[field], positive=True) for field in ("base_quantity", "contracts"))
+            if rational is True:
+                raw_price = request["valuation_price"]
+                price = Fraction(int(raw_price["numerator"]), int(raw_price["denominator"]))
+                if raw_price != _ratio(price) or price <= 0:
+                    _fail()
+            elif rational is False:
+                price = _n(request["valuation_price"], positive=True)
+            else:
+                _fail()
             if quantity != contracts*_n(by_id[key[0]]["contractSize"], positive=True):
                 _fail()
             after = {identity: dict(leg) for identity, leg in legs.items()}
@@ -147,11 +163,53 @@ def calculate_binance_margin_envelope(*, markets, positions, pending_orders, mar
         if canonical_bytes(provided) != frozen or after_total < before_total:
             _fail()
         payload = {"provided_inputs_sha256": _sha(inputs), "position_mode": position_mode, "currency": "USDT",
-            "candidate": request, "candidate_valuation_basis": "provided_untrusted_reference", "books": books,
+            "candidate": request, "candidate_valuation_basis": "provided_untrusted_rational_reference" if rational else "provided_untrusted_reference", "books": books,
             "native_pending_count": len(inputs["pending_orders"]), "native_position_count": len(inputs["positions"]),
             "before_initial_margin": _ratio(before_total), "after_initial_margin": _ratio(after_total),
             "incremental_initial_margin": _ratio(after_total-before_total), "coverage": "provided_book_margin_envelopes_only",
             "economics_complete": False, "native_admission_verified": False}
-        return {"schema": SCHEMA, "payload": payload, "payload_sha256": _sha(payload)}
+        return {"schema": "chan-binance-margin-envelope-rational-v1" if rational else SCHEMA, "payload": payload, "payload_sha256": _sha(payload)}
+    except Exception:
+        _fail()
+
+
+def calculate_binance_order_margin_envelope_v1(*, markets, positions, pending_orders, mark_prices, symbol_configs,
+                                             position_mode, candidate, last_prices):
+    """Reprice the actual raw order under V1, then reuse the same full book.
+
+    Last/Mark and the full provided book are still unverified inputs. This
+    neither selects a fee currency nor computes cash capacity/admission.
+    """
+    try:
+        provided = {"markets": markets, "positions": positions, "pending_orders": pending_orders,
+            "mark_prices": mark_prices, "symbol_configs": symbol_configs, "position_mode": position_mode,
+            "candidate": candidate, "last_prices": last_prices}
+        original = canonical_bytes(provided)
+        values = json.loads(original)
+        units = _markets(values["markets"], values["markets"][0]["exchange"])
+        by_id = {unit["id"]: unit for unit in units}
+        if (type(values["last_prices"]) is not dict or set(values["last_prices"]) != set(by_id)
+                or type(values["mark_prices"]) is not dict or set(values["mark_prices"]) != set(by_id)):
+            _fail()
+        for price in values["last_prices"].values():
+            _n(price, positive=True)
+        request = values["candidate"]
+        instrument = request["instrument_id"]
+        _, _, price, _ = _priced_candidate(by_id[instrument], position_mode, request,
+                                           values["mark_prices"][instrument], values["last_prices"][instrument])
+        projection = {key: request[key] for key in _CANDIDATE-{"valuation_price"}}
+        projection["valuation_price"] = _ratio(price)
+        envelope = _calculate_binance_margin_envelope(**{key: values[key] for key in
+            ("markets", "positions", "pending_orders", "mark_prices", "symbol_configs", "position_mode")},
+            candidate=projection, rational=True)
+        payload = {"model_id": MODEL_ID, "provided_inputs_sha256": _sha(values), "candidate": request,
+            "assumed_price": _ratio(price), "margin_envelope": envelope,
+            "coverage": "provided_book_with_approved_client_v1_price_only",
+            "economics_complete": False, "native_admission_verified": False}
+        document = json.loads(canonical_bytes({"schema": "chan-binance-order-margin-envelope-client-v1",
+            "payload": payload, "payload_sha256": _sha(payload)}))
+        if canonical_bytes(provided) != original or canonical_bytes(values) != original:
+            _fail()
+        return document
     except Exception:
         _fail()

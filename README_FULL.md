@@ -499,6 +499,8 @@ exchangeInfo.serverTime、上架/到期/未来生效时间均不作新鲜时钟�
 
 `Trade.NativeOrderCost` 已实现路线P条件下的精确单笔 IM＋Loss＋Fee 与 available 比较；负费率不抵扣、不二扣旧预占，post-only 无 Loss=0 豁免，固定模型/假设日期随输出保存。`Trade.NativeLastPrice` 使用原 SDK 单标的 V2 GET、精确正文及独立交易时刻，核 V2 原路由、显式 age/span 与终末耗时，不复用 ticker cache。两模块新增527项，双版同七模块各1141 passed/0failure/error/skip/0warnings。数学输入/来源文档不具资金权限；费用币路径、原check/完整book到成本及prepare/L1/L2/全部消费者接入仍待，原资金/claim/default保持拒绝。见[接入计划](docs/superpowers/plans/2026-10-24-binance-capacity-v1-integration.md)及审计§36；没有真实行情/账户/订单请求或C7认证。
 
+V1精确R现可通过同一包络/限额计算体接原持久check/L0：`NativeAccountLimits.observe_binance_account_order_limits_v1` 合并Last本地窗/交易时刻与原total/skew政策，原owner/账本复验不变，不收caller已算书本或Cost。旧decimal API/schema保留，8个冻结旧文档golden核字节；150新增，双版11模块各1400 passed，另原prepare/CAS/current各76 passed（9冷启动专用用例本轮未重跑）。这仍是price/limit只读关联，不证明来源自采所有权或完整费用/资金能力；原prepare采Last、金额消费及全部发送消费者仍待。见[桥接计划](docs/superpowers/plans/2026-10-25-binance-v1-price-book-bridge.md)与审计§37；交易门禁不变。
+
 非 dry-run 还必须同时满足以下门禁：
 
 - 策略收据是有效 JSON，`status` 必须为 `candidate`，并包含非空
