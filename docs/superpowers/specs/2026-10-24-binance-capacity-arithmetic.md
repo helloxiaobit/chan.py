@@ -84,3 +84,31 @@ TDD先4项缺API RED，36项完整档位/系数DID NOT RAISE RED，4项无兼容
 非空手算TEST订单后暴露one_way=325、hedged=275+201.5=476.5；两个独立cap均验证恰界及1e-30两侧。五个原生L边界验证1000/5000/10000兼容cap，完全不兼容时cap=None并显式leverage_unsupported，不填0/无限额。ALT原book超限即使候选属于TEST也返回before/after违规；原输入/来源与限额记录均有限canonical，不写库/SDK或续期旧源。
 
 本层仍无真实全书来源/模式/原账户check绑定，book_origin_verified=false；source SHA/within_observed_limits不是自采能力、资金充分或服务端锁额。既有source reader核SDK/源码与时间只说明有限数据契约，非整个宿主/真实服务器认证。没有P批准、价格/费用估计、维持保证金/coef应用、原CAS接入或默认发送；旧schema/证明/订单不重封。下一步沿原依赖接实际账户/pending/mark及受控prepare，再完成明确价格依据、费用/余额、原L0/L1/L2与全部reader/default；C5–C7及原完整Goal继续active未完成。
+
+## 6. 原持久检查到book的只读适配（实施前冻结）
+
+文件Trade/NativeAccountLimits.py及tests/test_native_account_limits.py。API observe_binance_account_limits(chan,*,check_id,capacity_evidence,market_evidence,candidate,policy,max_age_ms,max_observation_span_ms)。只接原CChanDB与source文档/本单假设/显式预算，不接caller的positions/pending/marks/position_mode/config或已计算book；本步不做GET、原intent/claim/HTTP及资金充分判断，原L0/L1/L2/default保持阻断。
+
+先以原capacity/market reader核严格来源，capacity context与原check相同、完整市场/SDK身份相等。用原capture_native_order_boundary捕获原持久L0，再在同一原owned SQLite视图读取原check并assert该L0；计算后再次在原owned视图assert同一L0。复用原数据库/连接/table所有权守卫，不查询替换库，不以新采基线覆盖旧L0或排除第三方账本。原最新来源/冻结/全ledger/journal完整性检查保持原义；不增表或变更旧schema/证明。
+
+book仅由所读check.inputs.after.raw.positions的signed positionRisk行、check.inputs.pending.payload.orders的全部regular raw行、独立market observations的mark.price及check.report.components.margin.position_mode重建。每个声明symbol的旧account symbolConfig与本次capacity config须核原字段（symbol/marginType/isAutoAddMargin、精确native leverage）；额外未使用的account配置不当作新市场权限。声明池严格相等、仅cross USDT；条件/算法/未知/未决非LIMIT仍拒绝，不用norm quantity替换signed raw、不移除关闭方向或用余额/pending为空释放unknown。候选价格仍provided_untrusted_reference，只进入原共享限额计算。
+
+总时间政策沿原component policy：仅为委托原_assert_current_windows构建局部副本，将两个必填capacity age/span预算加入capacity角色，不改原policy字节或旧reader契约。把capacity整窗及其finish端点加入additional，复用同一total span和max_source_skew_ms，使较晚的资金参数不能与旧book各自过关却逃过联合时差。仍用本地request窗口，不伪称native生成时刻；最终覆盖本次全部读取/核算/序列化与owned退出耗时，typed业务钟及核心monotonic向上界无新容差。
+
+输出chan-binance-account-limits-v1，只引用实际check/source/L0身份、派生book输入SHA及原共享限额结果。book_bound_to_original_check=true仅表示从原持久数据派生且两次原L0一致；source_collection_owned/book_origin_verified/economics_complete/native_admission_verified均false。文档来源在本入口前已取得，本步没有原prepare的collector所有权，所以一致JSON/哈希/本报告不能获得新风险权限，失败也不凭未知DB宣称已冻结。后续受控prepare必须自己取得/绑定来源，再按原CAS逐单复验；此只读适配不是该整链已完成。
+
+先用真实原SQLite/CAS/费用/资金费/partial非空两币check做缺API RED，再核从原source逐项派生、重启可复算、零GET/零写入与四种one_way/hedged/多空；复用原book四腿和限额独立参考回归。绑定reader测试用全新合成历史capacity文档，不冒充当前SDK testnet采集成功，不改disableFuturesSandboxWarning/路由或既有收据。原capacity collector的真实SDK＋fake底层/签名拒绝证据单独保留，不以结构reader测试替代。
+
+反向须先保护：错账户/环境/SDK/池/配置/mark，过期/联合skew或total span，missing/dirty/frozen/较新未整合来源、全账本/前缀变更、外层事务/替换DB、最终输入/来源/连接变异均拒绝且不写订单/冻结/许可。合成counterexample必须让每个source单独fresh却联合过界，不能只测reader本来会拒绝的坏SHA。适用双解释器组合、compileall/diff/主线程review/Lore后才记录本适配完成，完整价格/费用/余额、受控prepare/L0/L1/L2/全reader/default及C7仍待。
+
+局部读取调整计划：已有4个原库/重启GREEN及28个联合身份/时间真实RED。仅把新模块里的直接read_check替换为原NativeCurrentComponents._sources_snapshot，在同一owned视图复用原check和真实execution observation窗口，不复制时间选择或执行读者。旧生产函数/表/schema不改；后续联合时间核验直接委托原_assert_current_windows，保留相同ledger与原L0前后复验。
+
+## 7. 第6节原持久check适配的离线结果
+
+新增NativeAccountLimits与109测试；双解释器同五模块各696 passed/0failure/error/skip/0warnings，696唯一用例集合差异0，双版compileall/diff通过。组成109新＋169限额＋79book＋186capacity＋153原L0，完整SHA/JUnit/失败证据见[台账](../reports/2026-10-20-crypto-full-version-progress.md)。新生产代码/测试在两版间摘要不变，17430/74660均exit0后才更新文档。原组件/状态机/schema/默认入口代码未改，未跑的其他旧验收不记为新结果。
+
+原生模式/当前L、signed positionRisk和全部regular raw pending从实际原check读取，mark从独立market；原snapshot校验及L0断言始终使用原DB/连接/table。两组各自fresh但联合total/skew过界的8项反例曾真实返回，连同杠杆/auto-add/metadata/SDK不一致20项，均先28 RED后修复。重启复算相同字节；非空两币、partial/费用/资金费的真实原SQLite夹具，独立顶点参考沿原book实现分离；四腿同账的金额参考由本次重跑的原79/169组覆盖，不把新适配四种模式/方向误称为其本身的四腿执行E2E。
+
+收尾16项RED证实时钟读后输入、DB或真实原CAS可变化；将最后业务时刻移到最终原L0复验前，并用核心monotonic整段向上毫秒界覆盖退出/核算成本。4项正1ns RED先明确零成本baseline通过再注入成本，避免被另一个skew规则提前拒绝而伪GREEN。8项计算后source实现/内部clone漂移RED补末尾原reader与双向字节核验；再8项证明reader回调可触碰替换库，入口先固定原owner、每个reader后复用原守卫，替换库含BEGIN/PRAGMA的SQL trace变为零。无新预算/容差/状态机，不通过重采或忽略本单释放unknown。
+
+book_bound_to_original_check=true仅说明最终原owned视图中的数据关联，不承诺释放读视图后服务器/其他连接不会变化，更不提供可转让CAS能力。source_collection_owned/book_origin_verified和资金/admission flags仍false；source文档是本入口前的数据，未变成受控prepare所有权。后续必须以实际Engine自采/准备身份绑定该适配与明确完整金额模型，再在原L0/L1/L2及HTTP/default每单重验。P未批准、无价格/费用放宽，无真实请求/配置/规则/候选或旧产物变更；C5–C7和完整Goal仍未完成。

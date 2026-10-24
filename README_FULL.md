@@ -493,6 +493,8 @@ exchangeInfo.serverTime、上架/到期/未来生效时间均不作新鲜时钟�
 
 `Trade.NativeLeverageLimits` 已从同一capacity来源取声明池/当前配置，复用原book重算，分别比较每symbol订单前后暴露与native配置cap及当前杠杆兼容的完整档位cap；不跨币或hedge腿净额，不忽略非候选币。档位断层/乱序/缺档及非中性coef歧义拒绝，不计算维持保证金或猜系数。169新增，双版同三模块各434 passed/0failure/error/skip/0warnings；精确边界/正1ns耗时和末尾输入变异均有回归。它只检查已提供book与观察限额，book_origin_verified/economics_complete/native_admission_verified均false；不证明全书来源、资金充分、价格或真实执行，完整C5–C7和原门禁保持，详见审计§33及[算术规格§4–5](docs/superpowers/specs/2026-10-24-binance-capacity-arithmetic.md)。
 
+`Trade.NativeAccountLimits` 现可只读原SQLite native check，直接从其signed持仓/完整regular pending、独立mark和原生模式派生book，前后复用同一原L0并合并capacity时间政策。109新增，双版同五模块各696 passed/0failure/error/skip/0warnings；含重启、真实原CAS晚变更、冻结/较新来源及替换库零查询。book_bound_to_original_check只说明原持久数据关联；source_collection_owned/book_origin_verified/economics_complete/native_admission_verified仍false。它未取得原prepare自采所有权，不写订单/资金或接默认发送；合成历史reader输入不冒称SDK testnet采集成功，原签名拒绝和C5–C7门禁不变。见审计§34及[算术规格§6–7](docs/superpowers/specs/2026-10-24-binance-capacity-arithmetic.md)。
+
 非 dry-run 还必须同时满足以下门禁：
 
 - 策略收据是有效 JSON，`status` 必须为 `candidate`，并包含非空

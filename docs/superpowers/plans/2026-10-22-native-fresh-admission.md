@@ -325,6 +325,16 @@ TDD：4缺API、36拓扑/coef、4无兼容L的0-cap、4序列化耗时、20核�
 
 输出coverage仅provided_book_against_observed_limits_only，book_origin_verified及两个资金/admission flags=false；within_observed_limits不是实际全书、资金或原CAS许可。本子项尚未把原account check/pending/mark绑定到该数学输入，不能隐去该缺口。后续继续原受控prepare/同账户全书与来源skew、完整价格/费用/余额、L0/L1/L2及所有reader/HTTP/default、OKX/S4/C7；不另建缩小Goal或关闭C5–C7。
 
+### S3e原持久check到book适配：必要关联，不是自采/资金许可
+
+从已推送clean的47d9f0c87c7b28336ff3bac94556e08a69280cf9继续。按原算术规格§6先冻结输入/只读/时间/owner边界，新增NativeAccountLimits；复用原_sources_snapshot/capture+assert L0、完整ledger/journal/冻结/最新来源、原限额计算和窗口核验，不改旧函数/表/schema或默认入口，不另建状态机。调用者只给source/check标识、假设候选和显式政策；book的signed持仓/regular pending来自原check、mark来自独立market、模式来自原组件结果，所有配置/市场/SDK须相符。
+
+先4行为缺API RED→4 GREEN；28独立合法但跨来源不一致/联合过界RED→32 GREEN；末尾clock/input/owner/真实CAS 16 RED与校正后正1ns 4 RED→52 GREEN；追加回归93 GREEN；source实现/内部clone漂移8 RED→8 GREEN；reader回调触碰替换库8 RED→16专项GREEN。最初fixture setup4 error与漏接原L0合成时钟4 fail只作夹具/诊断记录，未改预算/产品reader；不是产品缺陷RED。最终109新＋原169限额/79book/186capacity/153 L0同五模块，双版各696 passed/0failure/error/skip/0warnings，唯一集合相等、compileall/diff通过，主线程review，无代理。
+
+所有测试串行，17430/74660均exit0后才写文档；源码/测试SHA跨双版不变，详细JUnit/失败证据见台账。简化为新模块直接委托原_sources_snapshot而非复制execution观察选择；原生费用/档位/钱包/准入状态机未复制。合成历史capacity reader数据不声称当前SDK testnet签名通过，原collector的底层fake SDK覆盖/真实签名拒绝单独保留；没有实际账户/行情/订单请求、研究绩效或真实配置/权限/规则变更。
+
+book_bound_to_original_check仅是最终原owned视图的关联；source_collection_owned/book_origin_verified/economics_complete/native_admission_verified仍false，不保证视图释放后无新并发/服务器变更。下一步接实际Engine/受控prepare的自采所有权及完整金额，再原L0/L1/L2/全执行reader/HTTP/default逐单消费，保留P/N待选与所有原阻断。没有将此只读关联提升为完整S3e/C5/C6/C7或缩小/关闭Goal。
+
 ## S4 默认 CLI 多市场合成 E2E 与发布
 
 沿真实 RunTradeCycle/RunTradeStage，fake 最底层原生运输，验证 Binance/OKX × one_way/hedged × 多市场的账户/准入/意图/恢复链。只有全部新风险入口不可绕过消费者后，才有条件替换原常量阻断。

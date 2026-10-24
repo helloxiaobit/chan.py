@@ -374,3 +374,19 @@ RED/GREEN证据：缺API4失败；36个完整档位/coef变异DID NOT RAISE；4�
 最终CPython3.14.2/3.11.15同三模块各434 passed、0failure/error/skip/0warnings，434唯一classname/name集合差异0（57.14s/JUnit57.089s；56.91s/JUnit56.871s）。组成169新＋79原book＋186原capacity；原未变账户/归属/CAS等证据按原范围复用，不冒称本轮整组或全仓运行。双版compileall/diff通过；生产/测试SHA在双版间不变，34932/37384皆exit0后才改文档。完整JUnit/失败证据身份见开发台账，未清理或重标任何失败产物。
 
 主线程依review模板串行核架构/字段/精确比较/边界/拒绝/兼容/门禁：该有限检查无未解决提交阻断，可提交但生产就绪=否；没有子代理独立审计或真实服务认证。仍必须接实际原account check/来源与全book、受控prepare/原CAS，完成明确价格依据、费用币/余额、全部执行reader/HTTP/default、OKX/S4/C7。整个S3e/C5/C6/C7和完整Goal未完成、保持active；未读正式研究绩效或访问真实账户/市场/订单，实际配置/权限/规则/候选/旧产物均不改。
+
+## 34. 原持久check到限额book的只读适配（2026-10-24）
+
+上一轮47d9f0c87c7b28336ff3bac94556e08a69280cf9已推送且HEAD/origin/远端一致、clean，属于实际进展，原Goal仍active。继续原完整C0–C7，不重问A/原CAS或未回复的P/N；本轮不引入新的价格/费用假设。先冻结[算术规格§6](../specs/2026-10-24-binance-capacity-arithmetic.md)并新增Trade/NativeAccountLimits.py与109测试，解决caller任意提供book的关联缺口，不将其替代原prepare自采/完整资金闭环。
+
+原capacity reader校验后，由原CChanDB/连接/table捕获L0，原owned视图内用_sources_snapshot读取真实持久check并assert，计算后再assert同一L0。signed positionRisk/regular raw pending来自原check，mark来自独立market，模式来自原margin组件；声明池/SDK/当前L及配置精确匹配，不跨币/腿净额、不遗漏非候选币/关闭方向、不复制旧金融/时间公式。capacity整窗及finish端点加入原窗口函数的局部政策副本，使用同一total span/skew，不改旧policy/schema字节或补默认值；无GET/逻辑DB写入/新表/状态机/依赖。
+
+TDD：缺API最初位于fixture setup产生4 error，移到行为入口后才记录4 fail/0error RED；首次组装4 fail源于漏接原NativeOrderBoundary合成钟，按systematic-debugging仅输出嵌套异常帧，定位原age核验后只修fixture时钟，未扩大预算/改产品reader。28个各自合法但配置/SDK/metadata/联合total或skew冲突反例真实DID NOT RAISE，补共享绑定/窗口后GREEN。收尾16个clock后input/owner/真实CAS变更RED；正1ns测试先曾被其他skew拒绝，明确隔离该规则、证明零成本baseline通过后重跑4个真实RED，不能将原4个伪GREEN冒充成本覆盖。
+
+另8项source实现/内部clone漂移RED补末尾原reader和原/clone双向字节核验；再8项reader回调RED证明替换库已被BEGIN/PRAGMA触碰，入口先固定原owner，每次reader后先复用原_same_database才进入SQL视图，替换库完整trace为零。最后业务钟在最终L0复验前取得，核心monotonic向上整毫秒上界覆盖核算、核验与owned退出，非法/倒退/bool钟拒绝，不加epsilon/budget。真实新CAS意图使旧book拒绝，created/unknown状态不重置或释放；这只是反向并发证明，不是观察器执行下单或金额占用。
+
+最终CPython3.14.2/3.11.15相同五模块各696 passed/0failure/error/skip/0warnings（240.63s/JUnit240.546；238.79s/JUnit238.709），696唯一classname/name集合差异0；组成109新＋169限额＋79book＋186capacity＋153原L0，非全仓/全部CAS或外部认证。双版compileall/diff通过，生产/测试SHA跨两版相同，活pytest17430/74660确认exit0后才更新文档；完整身份/所有RED产物见台账，未删除/重标失败证据。其他未变模块只复用其适用旧证据，不记为本轮重跑。
+
+主线程依review模板审查原库/窗口/字节/单位/错误/兼容/门禁，无该有限适配的未解决提交阻断，生产就绪仍否。新capacity文档在reader测试中是新合成历史输入，不伪造SDK testnet采集成功、不改警告/路由；collector原SDK＋fake运输及testnet拒绝另有本次重跑的186组。book_bound_to_original_check=true仅指最终owned视图的原数据关联；source_collection_owned/book_origin_verified/economics_complete/native_admission_verified仍false，不承诺读视图释放后无新并发/服务器变化，也不是调用者可传递的准入权。
+
+实际Engine自采/prepare身份、完整价格/费用币/余额、原L0/L1/L2金额消费、全reader/HTTP/default、OKX/S4/C7仍未完成；原常量资金/claim/发送阻断保持。无真实交易所/账户请求、实际配置/权限/规则/候选/旧证明/研究数据改动或绩效读取；完整Goal保持active，不以本关联通过关闭C5–C7。

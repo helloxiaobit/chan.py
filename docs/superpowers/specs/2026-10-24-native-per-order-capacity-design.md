@@ -86,3 +86,7 @@ TDD先观察缺API失败，再实际原SDK＋底层fake的非空两symbol响应�
 用户续行后原工具已为active，原C0–C7目标与全部门禁保留。新的[算术规格](2026-10-24-binance-capacity-arithmetic.md)第1节已给出并实现全部已提供持仓/普通挂单的带符号腿包络及候选投影，79新、双版同六模块各721 passed/1既有skip/0failure/error/0warnings；只用精确Fraction及原解析体，不计算可支付额。第2节另明确P/N价格差别：P会接受具名FAQ估价而不是原生执行上界，必须专门确认；方向A不是这项放宽的批准。未回复不编码alpha/费用估价或放宽原边界。完整费用/档位/余额判断与受控CAS绑定仍未完成，不能把book增量为0当成资金免费或Goal完成。
 
 接续只实施不依赖价格放宽的[限额必要检查§4–5](2026-10-24-binance-capacity-arithmetic.md)：原capacity reader前后复核，源自己的markets/config→原book计算→native配置cap及当前L兼容cap两条约束，完整档位不排序补洞，非中性coef继续拒绝。169新，双版同三模块各434 passed/0failure/error/skip/0warnings；这是provided-book限额诊断，book_origin_verified及两个资金/admission flags均false，无新的费用、价格假设、维持保证金、原生额度锁定或账户/CAS绑定。完整价格/费用币/余额和原受控入口仍待，不从此子项结束完整A路线或Goal，详见审计§33。
+
+## 8. 原持久check到计算输入的只读关联
+
+已按[算术规格§6–7](2026-10-24-binance-capacity-arithmetic.md)新增NativeAccountLimits，调用者不再提供positions/pending/mark/mode/config，改从被原L0前后复验的原SQLite check及独立market派生，并用同一total/skew政策校验capacity整窗。109新增、双版同五模块各696 passed/0failure/error/skip/0warnings，见审计§34。这是必要的数据适配，不是资金闭环：source_collection_owned/book_origin_verified/economics_complete/native_admission_verified均false，未接原prepare自采/真实本单、完整费用/余额/价格或原CAS金额消费。合成历史reader输入不认证真实SDK采集/服务，P/N未答复不写估价；原默认资金/claim/HTTP与C7门禁保留，完整Goal继续active。
