@@ -428,3 +428,13 @@ TDD证据包括8缺API、4历史过期、1current decoder耗时、2owner/替换�
 TDD：bridge缺API14fail/2pass、native limits缺API8fail、原check缺API4fail，再8项旧/新limits内部clone终末变异DID NOT RAISE后补双向canonical检查。新增150（66/16/68），非空多币、hedge四腿、partial/closing、非候选币限额、超过50位的R、错池/单位/源/窗口、原owner/实际CAS及独立顶点参考覆盖。双版11模块各1400 passed，另原prepare/CAS/current适用组各76 passed/9 deselected，全部0failure/error/skip/warning，1400与76唯一用例集合各一致，7源码/测试摘要不变，双版compileall通过；完整产物身份见台账。9个冷启动专用用例本轮未重跑，只在未改实现/SDK原范围保留已有证据，不称本轮完整85或全仓通过。
 
 BNFCR官方资料的模式限制补充见桥接计划，是“single-asset可排除credits”的推论，不是完整费用/税费或USDT扣费已核。费用路径、原available/equity到完整Cost、实际prepare采Last/金额绑定及L1/L2/全部执行消费者仍待。旧来源和代码时代不兼容照旧拒绝，不重封/续期；实际配置/权限/规则/candidate/研究/旧产物无变，无真实账户/行情/订单或正式绩效读取。原资金/claim/default、OKX/S4/C5–C7边界保留，完整Goal active，不用只读price/limit子项替代完整资金验收。
+
+## 38. 原prepare活上下文Last来源子层（2026-10-25，非金额/CAS许可）
+
+基线pushed/clean e623ea73225d52dfa1d57563cba9122eeaf4e239，Goal实查active。[本轮计划](../plans/2026-10-25-prepared-last-source-binding.md)在修改前记录。新增collect_prepared_binance_last_prices，沿原WeakKeyDictionary未绑定3项entry、原Engine/SDK、原完整scope及已初始化cache采Last；复用现有规范化/reader/窗口，不增状态机、表或schema。caller不能提供markets、source、clock或PASS。GET全部在原事务外，局部视图在原owned事务内，复制/构造/其他Engine/已绑定/失效句柄拒绝，返回文档仍为Last原false flags，不是可转让的采集或资金能力。
+
+主线程review检查owner、旧路径兼容、弱引用、末尾时钟/代码/cache/事务退出与未授权门禁。真实RED：缺API8项；代码检查发生在局部视图后导致5项漏检；cache投影发生在局部视图后及guard/policy/clock owner遗漏导致7项漏检。最小修正为代码/cache先于原上下文、原guard/policy/clock固定并在事务退出后复核，复用完整SDK摘要；完整源窗口/native时间加最后monotonic向上毫秒成本，无epsilon或续期。一次耗时fixture误计内层事务退出，保留1fail/71pass产物并纠正测试目标，没有为测试错误修改生产逻辑。
+
+新增79项，CPython3.14.2/3.11.15、CCXT4.5.89同四模块各522 passed、9 deselected、0failure/error/skip/warnings；522唯一集合一致，源码/测试SHA跨双版不变。组成79新＋366原Last＋76原capacity prepare/CAS/current＋1导入；9冷启动专用用例未重跑，不声称完整85/全仓/外部认证。双版compileall/diff通过，JUnit及失败原件身份见台账。未改实际配置、权限、规则、候选或研究/旧产物，没有真实端点或绩效读取。
+
+[费用适用性F/G](../specs/2026-10-25-binance-standard-fee-applicability-choice.md)是新边界，A/P批准不等于F批准；F未获批前暂停其依赖的费用采用，不阻断本来源开发。完整Cost/原available、同次金额CAS、L1/L2/所有执行消费者、OKX/C5–C7仍未完成。此子项可按授权提交；完整Goal保持active，原资金/claim/default拒绝不变。

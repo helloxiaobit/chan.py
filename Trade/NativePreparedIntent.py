@@ -17,6 +17,7 @@ from . import NativePreparation as Prepare
 from . import NativeOrderBoundary as Boundary
 from . import NativeAccountLimits as AccountLimits
 from . import NativeCapacityEvidence as Capacity
+from . import NativeLastPrice as Last
 from .AccountRiskStore import _sha, read_check, risk_state
 from .AccountStore import read_evidence
 from .AccountSources import SNAPSHOT_SCHEMA
@@ -54,6 +55,88 @@ def _budget(value):
     if type(value) is not int or not 0 <= value < 2**63:
         _fail()
     return value
+
+
+def collect_prepared_binance_last_prices(engine, context, *, max_age_ms, max_observation_span_ms):
+    """Read Last inside the original, still-unconsumed prepare invocation.
+
+    No new context, binding, prepare, intent or permission is produced. The
+    returned Last document keeps its original false flags; later acquisition
+    must itself own and consume this source in the original monetary CAS.
+    """
+    try:
+        from . import NativeInstrumentCurrent as Instrument
+        from .CCXTTradeEngine import CCCXTTradeEngine
+        _budget(max_age_ms)
+        _budget(max_observation_span_ms)
+        if (type(engine) is not CCCXTTradeEngine or type(context) is not Prepare._NativePrepareContext
+                or context not in Prepare._PREPARED):
+            _fail()
+        entry = Prepare._PREPARED[context]
+        if len(entry) != 3 or entry[0] is not engine:
+            _fail()
+        chan, client, guard, policy = engine.chan_db, engine.exchange, engine.opening_inputs, engine.safety_policy
+        original_clock = guard.now_ms
+        database = Boundary._database(chan)
+        connection, table = database.conn, chan.table
+        Boundary._same_database(chan, database, connection, table, owned=False)
+        identity = json.loads(entry[1])["payload"]
+        codes, mode = identity["scope"]["code_list"], identity["order_contract"]["account_context"]["mode"]
+        if client.id not in {"binance", "binanceusdm"} or mode != engine.mode:
+            _fail()
+        reference, ccxt = Instrument.source._reference(client.id, mode)
+        implementation = {**_implementation(), **Last._implementation()}
+        client_binding = Prepare._client_binding(client)
+
+        def owners(*, owned=False):
+            Boundary._same_database(chan, database, connection, table, owned=owned)
+            if (engine.chan_db is not chan or engine.exchange is not client
+                    or engine.opening_inputs is not guard or engine.safety_policy is not policy or guard.now_ms is not original_clock
+                    or Prepare._PREPARED.get(context) is not entry or engine.mode != mode
+                    or engine.dry_run is not False or engine.market_type != "swap"):
+                _fail()
+
+        def view():
+            owners()
+            if {**_implementation(), **Last._implementation()} != implementation:
+                _fail()
+            owners()
+            cache, observed = Instrument._cache_view(engine, codes, reference, ccxt, "binance", mode)
+            markets = Last._markets([row["market"] for row in observed], client.id)
+            owners()
+            with database.transaction():
+                owners(owned=True)
+                Prepare.assert_native_prepare_context_current(engine, context)
+                owners(owned=True)
+            owners()
+            if Prepare._client_binding(client) != client_binding:
+                _fail()
+            owners()
+            return cache, markets
+
+        before, markets = view()
+        document = Last.collect_binance_last_prices(client, markets, mode=mode, max_age_ms=max_age_ms,
+                                                     max_observation_span_ms=max_observation_span_ms)
+        owners()
+        Last.verify_binance_last_prices(document, max_age_ms=max_age_ms, max_observation_span_ms=max_observation_span_ms)
+        owners()
+        encoded = canonical_bytes(document)
+        p = document["payload"]
+        if (p["mode"] != mode or p["exchange_id"] != client.id
+                or canonical_bytes(p["markets"]) != canonical_bytes(markets)):
+            _fail()
+        tail_start, checked = _monotonic_ns(), utc_now_ms()
+        Last._windows(p, checked, max_age_ms, max_observation_span_ms)
+        after, _ = view()
+        if before != after or canonical_bytes(document) != encoded:
+            _fail()
+        tail_end = _monotonic_ns()
+        if type(tail_start) is not int or type(tail_end) is not int or not 0 <= tail_start <= tail_end:
+            _fail()
+        Last._windows(p, checked+(tail_end-tail_start+999_999)//1_000_000, max_age_ms, max_observation_span_ms)
+        return document
+    except Exception:
+        _fail()
 
 
 def _snapshot(binding):
