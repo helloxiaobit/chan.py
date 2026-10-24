@@ -408,3 +408,13 @@ TDD证据包括8缺API、4历史过期、1current decoder耗时、2owner/替换�
 主线程依review模板核职责/旧兼容/源码与SDK闭包、原owner/nonce/行/完整账本、最终时间、错误脱敏与权限：raw有限子项可提交，生产就绪仍否。实际HTTP全部在底层fake session，live-mode仅隔离对象/临时配置/fake environ；默认SDK Futures testnet签名拒绝、candidate/testnet/live门禁不变。SDK调用路径及本地hash不是服务器签名认证、原子快照、锁额或必接单。没有真实账户/行情/订单、实际配置/规则/权限/candidate/旧产物或研究数据变更及正式绩效读取。
 
 原参数自采现在已与实际prepare/原诊断CAS关联，但完整V1成本、fresh Last/费用币依据、余额与独立金额复算、原L1/L2金额消费、全执行reader/HTTP/default、OKX/S4/C7仍待；经济/admission flags仍false。本次P批准解除的是具名估价选择，不是上述验收或真实运行门禁。下一步整合完整资金路径，不以更多独立diagnostic替代它；完整S3e/C5/C6/C7与原Goal继续未完成、active。
+
+## 36. 路线P单笔条件成本与fresh Last V2（2026-10-24，未开放资金准入）
+
+从已推送clean的11867fcbf3deb897352aa902bcbaf44d96f3990b继续，Goal实际active。执行[完整金额接入计划](../plans/2026-10-24-binance-capacity-v1-integration.md)的前两步，不重问已批准A/P；没有将计划拆分视为额外审批。后两步原check/完整book/费用适用性与prepare/L0/L1/L2/全reader/HTTP/default仍待，不缩小原完整C0–C7目标。
+
+新增NativeOrderCost：固定客户端V1/alpha=3/2000，实际币数×张数单位约束，六种方向/订单路径精确算IM、Loss、Fee与Cost；native available不再扣旧持仓/挂单预占，相反持仓/关闭方向不给释放信用。负费率不给返佣；所有LIMIT包括post-only沿通用limit损失公式，无隐含0豁免。post-only仅maker估费，其他LIMIT取非负maker/taker较大值，MARKET取非负taker；费用价仍为已批准客户端估计。输入必须显式feeBurn=false和USDT，未知/外币/BNFCR或额外tax字段拒绝，但USDT在本函数仍只是调用者数学条件。input_provenance/economics/admission/execution_bound/server_reservation均false，不能由local_model_funds_sufficient取得资金或发送权。
+
+新增NativeLastPrice：原SDK单symbol `/fapi/v2/ticker/price`，同时核fapiPublic及fapiPublicV2路由；保留同次正文的精确数字token和交易time，不使用fetch_ticker/fees/市场cache。复用原SDK/环境/数字/精确正文/窗口工具；零有效retry、TLS及原方法/配置/credential身份前后不变，显式local age/span同时约束native transaction age。末尾source/SDK/文档完整性与monotonic向上毫秒界覆盖收尾；坏时钟/旧交易时刻在下一次GET前即拒绝，不靠最后异常容许多读。公开reader不收caller as-of。所有正向live/testnet SDK对象都由底层fake运输；公共Last的testnet fake通过不覆盖原私有SDK testnet签名拒绝，更不是外部验收。
+
+主线程按review模板复核：原金额/ratio与SDK/精确正文工具复用，无第二套book/ledger/状态机、依赖或公开预算默认值；无旧schema/原门禁变化。缺函数/假设说明、28项过晚时钟检查、8项终末改写、12项业务clock后的SDK/路由/方法覆盖均先RED再修复。替换方法测试由只数HTTP改为同时观察被覆盖方法是否执行，避免4项伪GREEN；初次8fail/4pass和精化后12fail均保留。最终双版1141 passed（527新＋614原适用回归）、0warning，唯一集合一致、4源码/测试摘要不变，双版compileall/diff通过；完整JUnit/RED身份见台账。没有实际配置/环境/权限/规则/候选/旧产物/研究数据变化，没有真实行情/账户/订单或正式绩效读取。结论：本地算术与Last子项可提交，完整S3e/C5–C7/生产就绪仍否，Goal保持active。

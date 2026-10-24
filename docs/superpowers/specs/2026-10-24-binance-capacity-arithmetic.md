@@ -39,7 +39,7 @@ GREEN后的局部清理计划：已有56项hand/vertex/拒绝回归保护原输�
 
 建议完整价格/新单成本如下，均为**条件于该估计**的本地规则：
 
-- 限价BUY：R=实际limit；限价SELL：R=max(Last×(1+alpha),Mark,limit)。MARKET双向R=Last×(1+alpha)。非post-only限价的开仓损失以limit计算；MARKET以R计算：Loss=q×max(0,side×(X-Mark))，side为BUY=+1/SELL=-1。
+- 限价BUY：R=实际limit；限价SELL：R=max(Last×(1+alpha),Mark,limit)。MARKET双向R=Last×(1+alpha)。所有LIMIT（含post-only）的开仓损失沿通用限价公式以limit计算，不额外豁免为0；MARKET以R计算：Loss=q×max(0,side×(X-Mark))，side为BUY=+1/SELL=-1。post-only只改变下述费用角色，未改变价格上界或资金门禁；实施衔接见[完整接入计划](../plans/2026-10-24-binance-capacity-v1-integration.md)。
 - 新单initial=q×R/L；**不因为相反持仓/关闭挂单而提前拿释放额抵扣**。现有native available中的旧挂单/持仓预占不再扣一次；第1节包络仍逐symbol/腿校验并记录，不可因此跳过账户、完整pending归属或订单后杠杆/档位上限。
 - 新单费用估计：post-only按limit且rate=max(0,maker)；MARKET按max(R,Mark,Bid,Ask)且rate=max(0,taker)；其他LIMIT按max(R,Mark,Bid,Ask,limit)且rate=max(0,maker,taker)。Fee=q×费用估计价×rate。不给负费率返佣信用。此费用价格同样不是实际成交上界，须连同R一起获批，不能隐藏在实现中。
 - Cost=initial+Loss+Fee，以精确Fraction比较已核USDT native available>=Cost，恰界允许，无epsilon/钱数舍入；不是单独用notional/leverage充当完整能力。不能猜费用币；初始V1仅在feeBurn=false、USDT原生费用路径已核时产生该币种成本。BNB开启、外币/借贷/isolated/未知税费或费率适用性缺失均继续拒绝，不能改用户开关来制造可过输入。[官方费用说明](https://www.binance.com/en/support/faq/detail/98488a516eb84e3eb34605683dffd554)描述BNB支付及不足时回落USDT，但不据此猜转换价或折扣后本单原币额度。
