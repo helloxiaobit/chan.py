@@ -1,6 +1,6 @@
-"""Own one prepare/source call and bind an original, non-executable intent.
+"""Own one prepare/source call and bind its original conditional-money intent.
 
-No funding formula, HTTP send, new order table or claim permission. Persisted
+No new funding formula, HTTP send, order table or claim permission. Persisted
 bindings describe historical facts, not server signatures or capabilities.
 """
 import hashlib
@@ -30,7 +30,8 @@ from .NativeInstrumentEvidence import verify_native_instrument_evidence
 LEGACY_BINDING_SCHEMA = "chan-native-prepared-intent-binding-v1"
 BINDING_SCHEMA = "chan-native-prepared-intent-binding-v2"
 CAPACITY_BINDING_SCHEMA = "chan-native-prepared-intent-binding-v3"
-CURRENT_BINDING_SCHEMAS = {BINDING_SCHEMA, CAPACITY_BINDING_SCHEMA}
+MONETARY_BINDING_SCHEMA = "chan-native-prepared-intent-binding-v4"
+CURRENT_BINDING_SCHEMAS = {BINDING_SCHEMA, CAPACITY_BINDING_SCHEMA, MONETARY_BINDING_SCHEMA}
 _IDENTITY_FIELDS = {"record_sha256", "config_sha256", "engine_config_sha256", "engine_execution_sha256", "environment_sha256",
     "database_location_sha256", "trade_table", "candidate", "opening_inputs", "scope", "runtime", "request", "quantity", "price",
     "order_contract", "entry_assessment_sha256", "implementation_sha256", "started_ms", "finished_ms", "coverage", "economics_complete", "native_admission_verified"}
@@ -49,6 +50,13 @@ def _fail():
 def _implementation():
     return {**Prepare._implementation(), **Boundary._component_implementation(),
             **{name: hashlib.sha256((_ROOT/name).read_bytes()).hexdigest() for name in _FILES}}
+
+
+def _binding_implementation(binding):
+    if binding["schema"] != MONETARY_BINDING_SCHEMA:
+        return _implementation()
+    return {**_implementation(), **Last._implementation(),
+            "Trade/NativeOrderCost.py": hashlib.sha256((_ROOT/"Trade/NativeOrderCost.py").read_bytes()).hexdigest()}
 
 
 def _budget(value):
@@ -145,8 +153,11 @@ def _snapshot(binding):
 
 
 def _contract(binding):
-    from .NativeOrderTransition import CONTRACT_SCHEMA
-    contract = {**binding["identity"]["payload"]["order_contract"], "schema": CONTRACT_SCHEMA}
+    from .NativeOrderTransition import CONTRACT_SCHEMA, CLIENT_CONTRACT_SCHEMA
+    monetary = binding["schema"] == MONETARY_BINDING_SCHEMA
+    contract = {**binding["identity"]["payload"]["order_contract"], "schema": CLIENT_CONTRACT_SCHEMA if monetary else CONTRACT_SCHEMA}
+    if monetary:
+        contract["monetary_basis_sha256"] = binding["monetary"]["payload_sha256"]
     contract["contract_id"] = _sha({k: v for k, v in contract.items() if k != "contract_id"})
     return contract
 
@@ -163,14 +174,46 @@ def _live(chan, context):
     return entry[0], binding, entry[2]
 
 
-def _capacity_links(chan, binding, boundary, checked, snapshot=None):
+def _candidate(binding, is_buy):
+    if type(is_buy) not in (bool, int) or is_buy not in (True, False):
+        _fail()
+    contract = binding["identity"]["payload"]["order_contract"]
+    return {"instrument_id": contract["market"]["id"], "position_side": contract["execution"]["position_side"],
+        "side": "BUY" if is_buy else "SELL", "base_quantity": contract["quantity"], "contracts": contract["exchange_amount"],
+        "order_type": "MARKET" if contract["price"] is None else "LIMIT", "limit_price": contract["price"],
+        "post_only": contract["post_only"], "reduce_only": False}
+
+
+def _monetary_result(binding, values, snapshot, *, checked_ms=None):
+    book = AccountLimits._book(snapshot, values["market_evidence"], values["candidate"])
+    prices = AccountLimits._last_links(values, values["capacity_evidence"]["payload"], checked_ms=checked_ms)
+    result = AccountLimits._standard_capacity(values, snapshot, book, prices, checked_ms=checked_ms)
+    payload = {"candidate": values["candidate"], "check_id": binding["components"]["payload"]["check_id"],
+        "capacity_evidence_sha256": _sha(values["capacity_evidence"]), "last_price_evidence_sha256": _sha(values["last_price_evidence"]),
+        "market_evidence_sha256": _sha(values["market_evidence"]), "derived_book_inputs_sha256": _sha(book),
+        **result, "coverage": "original_prepared_conditional_monetary_model_only", "economics_complete": False,
+        "native_admission_verified": False}
+    return {"schema": "chan-native-client-monetary-v1", "payload": payload, "payload_sha256": _sha(payload)}
+
+
+def _assert_monetary(binding, values, snapshot, *, checked_ms=None):
+    expected = _monetary_result(binding, values, snapshot, checked_ms=checked_ms)
+    if (expected["payload"]["status"] != "within_model_capacity"
+            or canonical_bytes(expected) != canonical_bytes(binding["monetary"])):
+        _fail()
+
+
+def _capacity_links(chan, binding, boundary, checked, snapshot=None, *, is_buy=None):
     source, policy = binding["capacity_evidence"], binding["capacity_policy"]
+    historical, monetary = snapshot is None, binding["schema"] == MONETARY_BINDING_SCHEMA
     if type(policy) is not dict or set(policy) != {"max_age_ms", "max_observation_span_ms"}:
         _fail()
     for value in policy.values():
         _budget(value)
-    if snapshot is None:
-        Capacity._verify_binance_capacity_evidence_at(source, checked_ms=checked, **policy)
+    if historical:
+        Capacity._verify_binance_capacity_evidence_at(source, checked_ms=checked, standard=monetary, **policy)
+    elif monetary:
+        Capacity.verify_binance_standard_capacity_evidence(source, **policy)
     else:
         Capacity.verify_binance_capacity_evidence(source, **policy)
     c = binding["components"]["payload"]
@@ -184,17 +227,31 @@ def _capacity_links(chan, binding, boundary, checked, snapshot=None):
     saved = snapshot["check"]["payload"]["inputs"]
     AccountLimits._bindings(source["payload"], c["market_evidence"]["payload"], saved)
     values = {"capacity_evidence": source, "market_evidence": c["market_evidence"], "policy": c["policy"], **policy}
+    if monetary:
+        last_policy = binding["last_price_policy"]
+        if type(last_policy) is not dict or set(last_policy) != {"max_age_ms", "max_observation_span_ms"}:
+            _fail()
+        for value in last_policy.values():
+            _budget(value)
+        if is_buy is None:
+            side = binding["monetary"]["payload"]["candidate"]["side"]
+            if side not in {"BUY", "SELL"}:
+                _fail()
+            is_buy = side == "BUY"
+        values.update(candidate=_candidate(binding, is_buy), last_price_evidence=binding["last_price_evidence"],
+            last_max_age_ms=last_policy["max_age_ms"], last_max_observation_span_ms=last_policy["max_observation_span_ms"])
+        AccountLimits._last_links(values, source["payload"], checked_ms=checked if historical else None)
     AccountLimits._windows(values, snapshot, binding["started_ms"], checked)
     return values
 
 
 def _windows(chan, binding, boundary, *, final_check=None):
-    if binding["implementation_sha256"] != _implementation():
+    with_capacity = binding["schema"] in {CAPACITY_BINDING_SCHEMA, MONETARY_BINDING_SCHEMA}
+    tick_start = _monotonic_ns() if with_capacity else None
+    if binding["implementation_sha256"] != _binding_implementation(binding):
         _fail()
     inputs = Boundary._inputs({key: boundary["payload"][key] for key in Boundary._INPUTS})
     sources = _sources_snapshot(chan, inputs["account_context"], inputs["check_id"], inputs["market_evidence"])
-    with_capacity = binding["schema"] == CAPACITY_BINDING_SCHEMA
-    tick_start = _monotonic_ns() if with_capacity else None
     now, instrument = utc_now_ms(), binding["instruments"]["payload"]
     if (type(now) is not int or not binding["finished_ms"] <= now < 2**63
             or now-instrument["started_ms"] > binding["instrument_policy"]["max_age_ms"]
@@ -203,12 +260,18 @@ def _windows(chan, binding, boundary, *, final_check=None):
     Boundary._windows(inputs, sources, binding["started_ms"], now)
     if with_capacity:
         values = _capacity_links(chan, binding, boundary, now, sources)
+        if binding["schema"] == MONETARY_BINDING_SCHEMA:
+            _assert_monetary(binding, values, sources)
+            if binding["implementation_sha256"] != _binding_implementation(binding):
+                _fail()
         if final_check is not None:
             final_check()
         tick_end = _monotonic_ns()
         if type(tick_start) is not int or type(tick_end) is not int or not 0 <= tick_start <= tick_end:
             _fail()
-        AccountLimits._windows(values, sources, binding["started_ms"], now+(tick_end-tick_start+999_999)//1_000_000)
+        finished = now+(tick_end-tick_start+999_999)//1_000_000
+        Capacity._window(instrument["started_ms"], instrument["finished_ms"], finished, **binding["instrument_policy"])
+        AccountLimits._windows(values, sources, binding["started_ms"], finished)
 
 
 def validate_stored_preparation(chan, root, attempt):
@@ -219,7 +282,8 @@ def validate_stored_preparation(chan, root, attempt):
                 or set(b) != {"schema", "identity", "instruments", "components", "instrument_policy", "boundary_sha256",
                     "baseline_records_sha256", "baseline_prefix", "entry_assessment", "started_ms", "finished_ms", "implementation_sha256"}
                     | ({"client_binding_sha256"} if b["schema"] in CURRENT_BINDING_SCHEMAS else set())
-                    | ({"capacity_evidence", "capacity_policy"} if b["schema"] == CAPACITY_BINDING_SCHEMA else set())
+                    | ({"capacity_evidence", "capacity_policy"} if b["schema"] in {CAPACITY_BINDING_SCHEMA, MONETARY_BINDING_SCHEMA} else set())
+                    | ({"last_price_evidence", "last_price_policy", "monetary"} if b["schema"] == MONETARY_BINDING_SCHEMA else set())
                 or b["boundary_sha256"] != _sha(root["boundary"])):
             _fail()
         if b["schema"] in CURRENT_BINDING_SCHEMAS and (type(b["client_binding_sha256"]) is not str
@@ -279,11 +343,16 @@ def validate_stored_preparation(chan, root, attempt):
         if check["payload"]["source_ids"] != c["source_ids"] or check["payload"]["inputs"] is None:
             _fail()
         cap_clocks = []
-        if b["schema"] == CAPACITY_BINDING_SCHEMA:
-            _capacity_links(chan, b, root["boundary"], a["intent_ms"])
+        snapshot = {"check": check, "execution_observations": []}
+        if b["schema"] in {CAPACITY_BINDING_SCHEMA, MONETARY_BINDING_SCHEMA}:
+            values = _capacity_links(chan, b, root["boundary"], a["intent_ms"], is_buy=a["is_buy"])
+            if b["schema"] == MONETARY_BINDING_SCHEMA:
+                _assert_monetary(b, values, snapshot, checked_ms=a["intent_ms"])
             cap_clocks = [b["capacity_evidence"]["payload"][key] for key in ("started_ms", "finished_ms")]
+        last_clocks = ([b["last_price_evidence"]["payload"][key] for key in ("started_ms", "finished_ms")]
+                       if b["schema"] == MONETARY_BINDING_SCHEMA else [])
         clocks = [b["started_ms"], p["started_ms"], p["finished_ms"], instrument["started_ms"], instrument["finished_ms"], *cap_clocks,
-                  c["started_ms"], c["finished_ms"], boundary["captured_ms"], b["finished_ms"], a["intent_ms"]]
+                  c["started_ms"], c["finished_ms"], *last_clocks, boundary["captured_ms"], b["finished_ms"], a["intent_ms"]]
         if any(type(t) is not int or not 0 <= t < 2**63 for t in clocks) or clocks != sorted(clocks):
             _fail()
     except Exception:
@@ -296,6 +365,9 @@ def consume_prepared_context(chan, before, updates, boundary, context):
     engine, binding, _ = _live(chan, context)
     Prepare.assert_native_prepare_context_current(engine, context)
     p = binding["identity"]["payload"]
+    if (binding["schema"] == MONETARY_BINDING_SCHEMA
+            and canonical_bytes(binding["monetary"]["payload"]["candidate"]) != canonical_bytes(_candidate(binding, before["is_buy"]))):
+        _fail()
     if (binding["boundary_sha256"] != _sha(boundary) or p["record_sha256"] != _sha(before)
             or binding["baseline_records_sha256"] != _sha(_records(chan)) or binding["baseline_prefix"] != _prefix(chan.db)
             or updates["open_requested_qty"] != p["quantity"]
@@ -360,7 +432,7 @@ def assert_native_prepared_intent_current(engine, record_id):
         root, after_sha = document["payload"]["root"], document["payload"]["after_record_sha256"]
         binding = root["preparation"]
         p, instrument = binding["identity"]["payload"], binding["instruments"]["payload"]
-        if (binding["schema"] not in CURRENT_BINDING_SCHEMAS or binding["implementation_sha256"] != _implementation() or p["implementation_sha256"] != Prepare._implementation()
+        if (binding["schema"] not in CURRENT_BINDING_SCHEMAS or binding["implementation_sha256"] != _binding_implementation(binding) or p["implementation_sha256"] != Prepare._implementation()
                 or exchange.id != instrument["exchange_id"]):
             _fail()
         owners()
@@ -442,8 +514,24 @@ def acquire_binance_capacity_prepared_diagnostic_intent(engine, record_id, amoun
         capacity_policy={"max_age_ms": capacity_max_age_ms, "max_observation_span_ms": capacity_max_observation_span_ms})
 
 
+def acquire_binance_standard_prepared_intent(engine, record_id, amount, price, *, before_id, account_scope, policy,
+        instrument_max_age_ms, instrument_max_observation_span_ms, capacity_max_age_ms, capacity_max_observation_span_ms,
+        last_max_age_ms, last_max_observation_span_ms, client_order_id, post_only=False, entry_assessment=None):
+    """Own F/P sources and monetary model in the original intent CAS.
+
+    The full claim/send consumer gate remains separate; this does not send.
+    """
+    return _acquire_prepared_diagnostic_intent(engine, record_id, amount, price, before_id=before_id,
+        account_scope=account_scope, policy=policy, instrument_max_age_ms=instrument_max_age_ms,
+        instrument_max_observation_span_ms=instrument_max_observation_span_ms, client_order_id=client_order_id,
+        post_only=post_only, entry_assessment=entry_assessment,
+        capacity_policy={"max_age_ms": capacity_max_age_ms, "max_observation_span_ms": capacity_max_observation_span_ms},
+        monetary_policy={"max_age_ms": last_max_age_ms, "max_observation_span_ms": last_max_observation_span_ms})
+
+
 def _acquire_prepared_diagnostic_intent(engine, record_id, amount, price, *, before_id, account_scope, policy,
-        instrument_max_age_ms, instrument_max_observation_span_ms, client_order_id, post_only, entry_assessment, capacity_policy):
+        instrument_max_age_ms, instrument_max_observation_span_ms, client_order_id, post_only, entry_assessment, capacity_policy,
+        monetary_policy=None):
     chan, database, connection, table, account, components = None, None, None, None, None, None
     source_started = False
     try:
@@ -455,6 +543,11 @@ def _acquire_prepared_diagnostic_intent(engine, record_id, amount, price, *, bef
                 _budget(value)
             if engine.ccxt_conf.get("exchange") not in {"binance", "binanceusdm"}:
                 _fail()
+        if monetary_policy is not None:
+            if capacity_policy is None:
+                _fail()
+            for value in monetary_policy.values():
+                _budget(value)
         policy_value = read_native_component_policy(policy)
         venue_pattern = r"[.A-Za-z0-9_:/-]{1,36}" if engine.ccxt_conf.get("exchange") in {"binance", "binanceusdm"} else r"[A-Za-z0-9]{1,32}"
         if (type(client_order_id) is not str or re.fullmatch(venue_pattern, client_order_id) is None
@@ -462,12 +555,13 @@ def _acquire_prepared_diagnostic_intent(engine, record_id, amount, price, *, bef
             _fail()
         original = canonical_bytes({"before_id": before_id, "account_scope": account_scope, "policy": policy,
             "instrument_age": instrument_max_age_ms, "instrument_span": instrument_max_observation_span_ms, "client_order_id": client_order_id,
-            "capacity_policy": capacity_policy})
+            "capacity_policy": capacity_policy, "monetary_policy": monetary_policy})
         chan, client = engine.chan_db, engine.exchange
         database = Boundary._database(chan)
         connection, table = database.conn, chan.table
         Boundary._same_database(chan, database, connection, table, owned=False)
-        implementation, started = _implementation(), utc_now_ms()
+        schema = MONETARY_BINDING_SCHEMA if monetary_policy is not None else BINDING_SCHEMA if capacity_policy is None else CAPACITY_BINDING_SCHEMA
+        implementation, started = _binding_implementation({"schema": schema}), utc_now_ms()
         if type(started) is not int or not 0 <= started < 2**63:
             _fail()
         with database.transaction():
@@ -476,6 +570,7 @@ def _acquire_prepared_diagnostic_intent(engine, record_id, amount, price, *, bef
                     or risk_state(database, before["payload"]["account_context"])["frozen"]):
                 _fail()
             records, prefix = _sha(_records(chan)), _prefix(database)
+            signal = chan.get_record(record_id)
         context = Prepare._capture_native_prepare_context(engine, record_id, amount, price, post_only=post_only, entry_assessment=entry_assessment)
         identity = json.loads(Prepare._PREPARED[context][1])
         client_binding = Prepare._client_binding(client)
@@ -487,18 +582,21 @@ def _acquire_prepared_diagnostic_intent(engine, record_id, amount, price, *, bef
         instruments = collect_native_instruments_for_engine(engine, codes, max_age_ms=instrument_max_age_ms,
                                                           max_observation_span_ms=instrument_max_observation_span_ms)
         units = [row["market"] for row in instruments["payload"]["observations"]]
-        capacity = (None if capacity_policy is None else Capacity.collect_binance_capacity_evidence(client, units,
-                                                                                                  mode=engine.mode, **capacity_policy))
+        capacity_reader = Capacity.collect_binance_standard_capacity_evidence if monetary_policy is not None else Capacity.collect_binance_capacity_evidence
+        capacity = None if capacity_policy is None else capacity_reader(client, units, mode=engine.mode, **capacity_policy)
         if capacity_policy is not None:
             Boundary._same_database(chan, database, connection, table, owned=False)
             if engine.chan_db is not chan or engine.exchange is not client or type(capacity) is not dict:
                 _fail()
         components = collect_and_check_native_components(chan, client, mode=engine.mode, markets=units,
                             before_id=before_id, account_scope=account_scope, policy=policy_value)
+        Boundary._same_database(chan, database, connection, table, owned=False)
+        last = (None if monetary_policy is None else collect_prepared_binance_last_prices(engine, context, **monetary_policy))
+        Boundary._same_database(chan, database, connection, table, owned=False)
         c = components["payload"]
         boundary = Boundary.capture_native_order_boundary(chan, account_context=account, check_id=c["check_id"],
                                               market_evidence=c["market_evidence"], policy=policy_value)
-        binding = {"schema": BINDING_SCHEMA if capacity_policy is None else CAPACITY_BINDING_SCHEMA,
+        binding = {"schema": schema,
             "identity": identity, "instruments": instruments, "components": components,
             "client_binding_sha256": client_binding,
             "instrument_policy": {"max_age_ms": instrument_max_age_ms, "max_observation_span_ms": instrument_max_observation_span_ms},
@@ -506,10 +604,29 @@ def _acquire_prepared_diagnostic_intent(engine, record_id, amount, price, *, bef
             "entry_assessment": entry_assessment, "started_ms": started, "finished_ms": utc_now_ms(), "implementation_sha256": implementation}
         if capacity_policy is not None:
             binding.update(capacity_evidence=capacity, capacity_policy=capacity_policy)
+        if monetary_policy is not None:
+            binding.update(last_price_evidence=last, last_price_policy=monetary_policy)
+            tick_start, checked = _monotonic_ns(), utc_now_ms()
+            with database.transaction():
+                snapshot = _sources_snapshot(chan, account, c["check_id"], c["market_evidence"])
+                Boundary._same_database(chan, database, connection, table, owned=True)
+            Boundary._same_database(chan, database, connection, table, owned=False)
+            values = _capacity_links(chan, binding, boundary, checked, snapshot, is_buy=signal["is_buy"])
+            binding["monetary"] = _monetary_result(binding, values, snapshot)
+            Boundary._same_database(chan, database, connection, table, owned=False)
+            tick_end = _monotonic_ns()
+            if type(tick_start) is not int or type(tick_end) is not int or not 0 <= tick_start <= tick_end:
+                _fail()
+            finished = checked+(tick_end-tick_start+999_999)//1_000_000
+            Capacity._window(instruments["payload"]["started_ms"], instruments["payload"]["finished_ms"], finished,
+                             **binding["instrument_policy"])
+            AccountLimits._windows(values, snapshot, binding["started_ms"], finished)
+            if binding["monetary"]["payload"]["status"] != "within_model_capacity":
+                _fail()
         if (engine.chan_db is not chan or engine.exchange is not client or original != canonical_bytes({"before_id": before_id,
                 "account_scope": account_scope, "policy": policy, "instrument_age": instrument_max_age_ms,
                 "instrument_span": instrument_max_observation_span_ms, "client_order_id": client_order_id,
-                "capacity_policy": capacity_policy})):
+                "capacity_policy": capacity_policy, "monetary_policy": monetary_policy})):
             _fail()
         Boundary._same_database(chan, database, connection, table, owned=False)
         Prepare._PREPARED[context] = (*Prepare._PREPARED[context], canonical_bytes(binding))

@@ -452,3 +452,15 @@ NativeAccountLimits新增显式原check条件Cost入口，NativeLeverageLimits�
 最终CPython3.14.2/3.11.15、CCXT4.5.89，同16测试目标各1769 passed、0failure/error/skip/warnings、无deselection；1769唯一集合一致，五个改动源/测试摘要跨最终双版不变。包含完整85项原capacity prepare/CAS/current/cold，这次没有排除9项cold；未跑的全仓不冒称通过。双版compileall通过，活pytest74943/64492均exit0、进程0后才改文档。修复前双版1737属于中间代码身份，原件保留但不当最终证据。精确JUnit/源码/RED身份见[台账](2026-10-20-crypto-full-version-progress.md)。主线程按review模板复核，复用原采集/reader/金额/DB/L0主体并删除类型归一化，不增依赖、第二套金融或订单账本/状态机。
 
 结论：此必要金额输入子层可提交，完整资金/生产就绪仍否。下一原受控acquire必须自行采v2 capacity、原prepare Last/components，并核实际候选及Cost/Last新增依赖身份、原L0/L1/L2与全部claim/reader/恢复/HTTP/default；不能把校验和、marker或可重封JSON当I/O能力，也不能用原投影掩盖已观察的费用/模式反证。未通过全链前不启用新可执行schema，旧v2/v3仍诊断，资金/claim/default拒绝保留。实际配置/权限/规则/candidate/旧产物/研究未改，无真实行情/账户/订单、正式绩效读取或外部认证；OKX/S4/C5–C7/完整Goal均未完成。
+
+## 40. 原同次金额 intent CAS与完整body重算；不是全执行链验收（2026-10-25）
+
+从pushed/clean 612e0a062e83c6f52ce0fce95d003a010a597114，按[先行金额CAS计划](../plans/2026-10-25-owned-monetary-cas.md)继续F接入第3步。A/P/F及账户协议已批准，原Goal active。acquire_binance_standard_prepared_intent由原共享acquire主体自行执行实际prepare、instrument、同SDK closed-field capacity v2、原components/check、未消费prepare的Last，再直接用原native cash/完整book计算原V1 Cost及全池限额，在原L0/intent/journal中绑定完整monetary。候选来自实际prepare/原信号；不接caller Source/Cost/现金/币种/时钟/PASS。失败仍沿原sticky unavailable及回滚，晚真实竞争CAS不当作自身增量忽略。
+
+同一最终binding-v4固定源、SDK、政策/模型、原check/cash basis、完整Cost/限额/F与源码闭包。chan-native-client-order-v1仅增加monetary_basis_sha256并重算contract_id；原intent CAS核唯一L1增量。NativeLastPrice/NativeLeverageLimits复用私有as-of主体，公共API不收旧时钟；历史按原immutable intent_ms重算整个body，current不能借该时点续期。NativeAccountLimits抽取原book/standard共享体，不另写金额公式、账本或依赖。current/原CAS金额末尾和cold owner核完整Last/Cost实现闭包，而非只核generic清单。
+
+TDD真实RED：缺入口8、初次Cost计时1、末尾闭包2、cold闭包1、current snapshot成本与instrument末尾年龄2。修复使用原窗口和typed monotonic保守上界，包含读取/计算/末尾成本，正纳秒向上取整，无预算/epsilon/源时间放宽。另一次75pass/1fail为测试在故意实现变异未复原时要求历史可读；校验拒绝正确，只调整测试先核拒绝/复原后再核历史未改，原件不改标签。
+
+新增78项覆盖四种mode/方向×LIMIT/GTX/真实MARKET、余额恰界/差1e-40、非候选cap、费用/缺源不降级、原SQL/reference回滚、真实竞争CAS、替换库零SQL、重封完整body拒绝、过龄历史/current和真实原SDK冷重建。CPython3.14.2=同冻结身份78专项＋36模块3808回归，3.11.15=37模块3886完整运行，各3886唯一用例、0failure/error/skip、无deselection、集合差异0；包括原全部85 capacity prepare/CAS/current/cold和79 prepare Last，不排除cold。各3条既有小样本AUC警告，未称零警告。CCXT4.5.89/pytest9.1.1一致，其余原环境版本分别记录在台账，不冒称依赖全相同；无安装/升级。双版compileall/diff通过，最终源码/测试摘要跨三份JUnit一致，相关pytest进程0后才改文档。精确范围、GUID、SHA、失败证据见[台账](2026-10-20-crypto-full-version-progress.md)。
+
+主线程按review模板复核此有限第3步，通过提交条件；完整生产就绪仍否。没有把金额报告当可转移能力，也没有在未接全消费者时启用新schema：原claim、Engine/HTTP、pending/execution/account/恢复/default继续拒绝。下一步必须让同一v4完整金额/原L1/L2被各原消费者验证，不能仅扩白名单；历史管理和新风险鲜活性分开，created/submitting/unknown不自动释放，旧证明不补签/重封。所有native/economics未证明范围保持false，F/P不代表服务器锁额、原生费用完整或价格上界。实际配置/权限/规则/候选/旧产物/研究未改，无真实端点或正式绩效读取；OKX金额、S4/C5–C7和完整Goal继续未完成，原Goal active。

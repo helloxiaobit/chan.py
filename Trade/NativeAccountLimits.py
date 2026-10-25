@@ -13,6 +13,7 @@ from CustomBuySellPoint.Decision import canonical_bytes
 from . import NativeOrderBoundary as Boundary
 from . import NativeCapacityEvidence as Capacity
 from . import NativeLeverageLimits as Limits
+from . import NativeLastPrice as Last
 from .NativeOrderCost import calculate_binance_order_cost_v1
 from .AccountReconcile import _sha
 from .NativeAdmission import _assert_current_windows
@@ -68,10 +69,13 @@ def _windows(values, snapshot, started, checked):
         executions=snapshot["execution_observations"], additional=additional)
 
 
-def _last_links(values, capacity):
+def _last_links(values, capacity, *, checked_ms=None):
     last = values["last_price_evidence"]
-    verify_binance_last_prices(last, max_age_ms=values["last_max_age_ms"],
-                              max_observation_span_ms=values["last_max_observation_span_ms"])
+    budgets = {"max_age_ms": values["last_max_age_ms"], "max_observation_span_ms": values["last_max_observation_span_ms"]}
+    if checked_ms is None:
+        verify_binance_last_prices(last, **budgets)
+    else:
+        Last._verify_binance_last_prices_at(last, checked_ms=checked_ms, **budgets)
     p = last["payload"]
     if (any(p[key] != capacity[key] for key in ("exchange_id", "mode", "sdk"))
             or canonical_bytes(p["markets"]) != canonical_bytes(capacity["markets"])):
@@ -141,6 +145,25 @@ def _standard_order_cost(values, snapshot, book, last_prices):
             "currency": "USDT", "available_field": "assets[USDT].availableBalance", "equity_field": "assets[USDT].marginBalance"}}
 
 
+def _book(snapshot, market, candidate):
+    check = snapshot["check"]
+    saved = check["payload"]["inputs"]
+    return {"positions": saved["after"]["payload"]["raw"]["positions"],
+        "pending_orders": [row["raw"] for row in saved["pending"]["payload"]["orders"]],
+        "mark_prices": {row["market"]["id"]: row["mark"]["price"] for row in market["payload"]["observations"]},
+        "position_mode": check["payload"]["report"]["payload"]["components"]["payload"]["margin"]["position_mode"],
+        "candidate": candidate}
+
+
+def _standard_capacity(values, snapshot, book, last_prices, *, checked_ms=None):
+    limits = Limits._evaluate_limits(values["capacity_evidence"], **book, price_inputs={"last_prices": last_prices},
+        standard=True, max_age_ms=values["max_age_ms"], max_observation_span_ms=values["max_observation_span_ms"], checked_ms=checked_ms)
+    result = {**_standard_order_cost(values, snapshot, book, last_prices), "limits": limits}
+    result["status"] = ("within_model_capacity" if result["order_cost"]["payload"]["local_model_funds_sufficient"]
+        and limits["payload"]["status"] == "within_observed_limits" else "exceeds_model_capacity")
+    return result
+
+
 def _observe_account_limits(chan, *, check_id, capacity_evidence, market_evidence, candidate, policy,
                             max_age_ms, max_observation_span_ms, price_inputs, standard=False):
     try:
@@ -173,14 +196,10 @@ def _observe_account_limits(chan, *, check_id, capacity_evidence, market_evidenc
         check = snapshot["check"]
         saved = check["payload"]["inputs"]
         _bindings(source["payload"], values["market_evidence"]["payload"], saved)
-        book = {"positions": saved["after"]["payload"]["raw"]["positions"],
-            "pending_orders": [row["raw"] for row in saved["pending"]["payload"]["orders"]],
-            "mark_prices": {row["market"]["id"]: row["mark"]["price"] for row in values["market_evidence"]["payload"]["observations"]},
-            "position_mode": check["payload"]["report"]["payload"]["components"]["payload"]["margin"]["position_mode"],
-            "candidate": values["candidate"]}
+        book = _book(snapshot, values["market_evidence"], values["candidate"])
         if standard:
-            limits = Limits._evaluate_limits(source, **book, price_inputs={"last_prices": last_prices}, standard=True,
-                max_age_ms=max_age_ms, max_observation_span_ms=max_observation_span_ms)
+            money = _standard_capacity(values, snapshot, book, last_prices)
+            limits = money["limits"]
         elif price_inputs is None:
             limits = evaluate_binance_leverage_limits(source, **book, max_age_ms=max_age_ms,
                                                       max_observation_span_ms=max_observation_span_ms)
@@ -198,10 +217,8 @@ def _observe_account_limits(chan, *, check_id, capacity_evidence, market_evidenc
             payload.update(last_price_evidence_sha256=_sha(values["last_price_evidence"]),
                            coverage="original_check_bound_client_v1_price_limits_only")
         if standard:
-            payload.update(_standard_order_cost(values, snapshot, book, last_prices),
+            payload.update(money,
                            coverage="original_check_bound_standard_commission_client_v1_only")
-            payload["status"] = ("within_model_capacity" if payload["order_cost"]["payload"]["local_model_funds_sufficient"]
-                and limits["payload"]["status"] == "within_observed_limits" else "exceeds_model_capacity")
         document = json.loads(canonical_bytes({"schema": "chan-binance-account-order-capacity-client-v1" if standard else
             "chan-binance-account-order-limits-client-v1" if price_inputs is not None else SCHEMA,
             "payload": payload, "payload_sha256": _sha(payload)}))

@@ -104,3 +104,7 @@
 ## 6. 明确不做
 
 不修改实际配置/权限/规则/依赖；不创建真实会话或实际请求；不重封旧候选、模型、部署、证明或订单；不引入隐含年龄、epsilon、手续费/档位/汇率、名义额÷杠杆或全额抵押替代规则；不自动解冻；不把股票/Spot/Portfolio/借贷/未知账户模式并入初始支持范围。
+
+## 7. 同次原金额intent子层续行记录（2026-10-25）
+
+后续A/P/F均已获批准，原Goal恢复active，详见[费用选择](2026-10-25-binance-standard-fee-applicability-choice.md)与[同次金额CAS计划](../plans/2026-10-25-owned-monetary-cas.md)。实际prepare/同SDK capacity v2/原components/活句柄Last、原native cash/完整book/原V1 Cost已接原intent CAS，完整monetary绑定同一最终v4/client-order-v1金额摘要；历史/current/cold重算原完整金额/实现身份，旧v2/v3不补签或升级。新增78项与受影响回归双版各3886唯一用例通过，0failure/error/skip、各3条既有AUC警告；精确范围和证据见[审计§40](../reports/2026-10-22-native-fresh-admission-audit.md)。第4.3完整claim/L2/HTTP及全部pending/execution/account/恢复/default仍未完成并拒绝，不因本子层通过放行新schema、自动释放created/submitting/unknown或宣称C5–C7/整体完成；本协议批准与实际配置/交易/研究门禁不变。

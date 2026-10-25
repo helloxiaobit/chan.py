@@ -73,7 +73,8 @@ def initialize_schema(conn):
 _SCALAR = None
 _BOUNDS = {"min": _SCALAR, "max": _SCALAR}
 _CONTRACT = {key: _SCALAR for key in ("schema", "quantity_unit", "exchange_amount_unit", "quantity",
-    "exchange_amount", "price", "reference_price", "notional", "reduce_only", "contract_id", "post_only", "software_quote_max_age_ms")}
+    "exchange_amount", "price", "reference_price", "notional", "reduce_only", "contract_id", "post_only", "software_quote_max_age_ms",
+    "monetary_basis_sha256")}
 _CONTRACT.update({
     "paper_account": {"schema": _SCALAR, "account_id": _SCALAR},
     "paper_store": {"schema": _SCALAR, "store_id": _SCALAR},

@@ -71,8 +71,14 @@ def _elapsed(started):
 
 def verify_binance_last_prices(document, *, max_age_ms, max_observation_span_ms):
     """Recompute source/route/clocks at use; matching JSON is not owned I/O."""
+    return _verify_binance_last_prices_at(document, checked_ms=None, max_age_ms=max_age_ms,
+                                          max_observation_span_ms=max_observation_span_ms)
+
+
+def _verify_binance_last_prices_at(document, *, checked_ms, max_age_ms, max_observation_span_ms):
+    """Private immutable-intent as-of read; never renew a current source."""
     try:
-        tick_start = _monotonic_ns()
+        tick_start = _monotonic_ns() if checked_ms is None else None
         _budget(max_age_ms, max_observation_span_ms)
         original = canonical_bytes(document)
         values = json.loads(original)
@@ -109,11 +115,12 @@ def verify_binance_last_prices(document, *, max_age_ms, max_observation_span_ms)
                        canonical_bytes(_values(unit["id"], row["raw"]))):
                 _fail()
             previous = row["finished_ms"]
-        checked = utc_now_ms()
+        checked = utc_now_ms() if checked_ms is None else checked_ms
         _windows(p, checked, max_age_ms, max_observation_span_ms)
         if implementation != _implementation() or canonical_bytes(document) != original:
             _fail()
-        _windows(p, checked+_elapsed(tick_start), max_age_ms, max_observation_span_ms)
+        if checked_ms is None:
+            _windows(p, checked+_elapsed(tick_start), max_age_ms, max_observation_span_ms)
         return document
     except Exception:
         _fail()

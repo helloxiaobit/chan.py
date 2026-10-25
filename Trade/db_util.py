@@ -402,8 +402,11 @@ class CChanDB:
             raise CChanException("风险乘数必须大于 0", ErrCode.PARA_ERROR)
         if order_contract is not None and self.db_type != "sqlite":
             raise CChanException("MySQL 订单单位契约迁移尚未验收", ErrCode.TRADE_UNLOCK_FAIL)
-        from .NativeOrderTransition import CONTRACT_SCHEMA
-        diagnostic = isinstance(order_contract, dict) and order_contract.get("schema") == CONTRACT_SCHEMA
+        from .NativeOrderTransition import CONTRACT_SCHEMA, CLIENT_CONTRACT_SCHEMA
+        monetary = isinstance(order_contract, dict) and order_contract.get("schema") == CLIENT_CONTRACT_SCHEMA
+        diagnostic = isinstance(order_contract, dict) and order_contract.get("schema") in {CONTRACT_SCHEMA, CLIENT_CONTRACT_SCHEMA}
+        if monetary and native_preparation is None:
+            raise CChanException("条件金额契约必须由同次原prepare与原CAS创建", ErrCode.TRADE_UNLOCK_FAIL)
         if diagnostic != (native_boundary is not None):
             raise CChanException("原生 CAS 诊断契约必须绑定本次 L0，不能替代普通 v3 或资金许可", ErrCode.TRADE_UNLOCK_FAIL)
         if native_preparation is not None and native_boundary is None:

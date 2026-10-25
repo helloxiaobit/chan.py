@@ -1049,3 +1049,33 @@ C1 收尾清理计划：迁移校验由两份全表内存列表改为有序逐�
 - 主线程按review模板复核此有限子层：原owner/时窗/源SDK/输入不可变、旧兼容、独立金额参考及权限边界通过；未用代理/OMX/工作树。共同collector在public reader之后、共同reader在终末业务钟之后检查完整原文档不可变，直接核原native对象而不以JSON克隆消除类型差异；v2 reader新增typed单调核心尾段成本，v1历史as-of不续期/不扩caller clock。simplification是同一采集/计算体和原DB/L0工具复用及删除归一化，不另造状态机。实际Config/config.yaml与CHANPY_CONFIG仍不存在（仅查存在性），实际配置/规则/权限/candidate/旧产物/研究不改，无真实行情/账户/订单或正式绩效读取。
 - 完整第3–4步仍待：原受控acquire自己采v2 capacity/prepare Last/components，绑定真实候选、F/P、Cost/Last及实现闭包与原金额L0/L1/L2，再由claim/全部reader/恢复/HTTP/default逐单重验。checksum/marker不认证完全自造JSON实际发生I/O，原投影也不能掩盖已观察费用/模式反证。只读报告不替代这些要求；旧v2/v3继续不可执行，OKX/S4/C5–C7与完整Goal未完成，不因204/1769通过关闭或缩小目标。原Goal保持active，继续原完整目标。
 - 提交前结构验收：本批7份文档62个本地链接均存在，5个源码/测试摘要与最终双版结果一致，原Cost/Envelope身份不变；双版compileall、正常Git diff检查通过，pytest进程0。沿仓库既有core.autocrlf保留LF/CRLF转换提示，不改Git配置或批量行尾，不将这些提示计为pytest警告。
+
+### 2026-10-25 / 原同次金额 intent CAS与历史/current/cold子层；第4步仍未完成
+
+- 从pushed/clean 612e0a062e83c6f52ce0fce95d003a010a597114续行；A/P/F和账户级串行协议均已批准，用户再次明确恢复原Goal，工具实查active。先写[同次金额原CAS计划](../plans/2026-10-25-owned-monetary-cas.md)及清理/复用边界，主线程串行，无代理/OMX/工作树/新依赖。未修改实际配置、权限/规则、交易与研究门禁，未另建Goal。
+- 新acquire_binance_standard_prepared_intent复用一个原acquire主体，自行执行实际prepare→instrument→同SDK closed-field capacity v2→原components/check→活prepare Last→原native cash/完整book/V1 Cost/限额→原L0/intent CAS。显式instrument/capacity/Last age/span必填，不接caller Source/check/余额/币种/Cost/PASS/checked_ms；候选九字段来自实际prepared contract及原信号方向。缺任一来源、原现金不足、全池超限或未知费用不降级，不产生意图，沿原sticky unavailable。
+- 同一最终binding-v4保存完整原identity/SDK/源/政策/基线/monetary，后者含完整Cost/原限额、F假设、原cash basis和实际来源摘要。chan-native-client-order-v1只在原执行字段增加monetary_basis_sha256，再计算contract_id，由原journal/原CAS核完整L1增量。并非又做一个可丢弃只读报告；claim/Engine/全reader/default在第4步前仍拒绝，旧v2/v3不重封/升级或新增GET。
+- NativeLastPrice/NativeLeverageLimits复用私有as-of体，公共签名/当前时钟保持；历史只用原immutable intent_ms重算完整原金额，不能借旧时点续期current。NativeAccountLimits抽取原book与standard计算体，原Cost/Envelope公式、状态表与依赖不新增。v4闭包加入Last/Cost实际依赖，原CAS/current金额重算后和cold owner均复验完整闭包。
+- 真正RED：缺入口8fail；初次Cost耗时1fail/1pass；末尾完整实现闭包2fail/12pass；cold闭包1fail/4pass；current source snapshot耗时及末尾instrument年龄2fail。修复把原读取/计算/末尾工作纳入typed monotonic保守上界、重用原窗口；正纳秒向上取整，未扩大预算或设置epsilon。76项中75pass/1fail是测试在故意代码变异未复原时要求历史可读；产品正确拒绝该实现时代，只修正测试先核拒绝/复原模拟后再核旧历史未改，不作为金融漏洞RED或放宽规则。
+- 最终新增78项与原受影响回归，CPython3.14.2=78专项＋36模块3808回归，CPython3.11.15=37模块3886完整运行，各3886唯一用例、0failure/error/skip、无deselection，集合差异0。包括完整85项原capacity prepare/CAS/current/cold及原79 prepare Last，并扩原prepare/context/current/cold、原L0/transition、account冻结、SQLite事务、journal、订单恢复/契约/状态机。不是全仓重跑或C5全链验收。各3条既有小样本XGBoost AUC警告，未隐藏、不称零警告。
+- 环境实查：两版pytest9.1.1、CCXT4.5.89、pandas3.0.6；3.14原环境XGBoost3.4.1/NumPy2.5.4，3.11原环境XGBoost3.2.0/NumPy2.4.6。不安装/升级依赖，不把两版所有依赖冒称相同。源码/测试SHA跨最终三份JUnit不变；相关pytest进程0后才改文档，双版compileall Trade及新测试、diff检查通过。
+- 最终JUnit（Temp=C:\Users\yangj\AppData\Local\Temp）：chanpy-owned-money-focused-final-31baff1d98a74adbafce2dc0742ebab7.xml（78，终端212.39s/JUnit212.320s）SHA256 a9fa559b11337524a1d05598d04adfe7bb273b1b3561bcd16d791cda0b752f9b；chanpy-owned-money-regression-py314-8ed19b17d85045f1ab2b1a75b87287f0.xml（3808，2104.17s/2103.728s）9d25766ec9e884da3885891639aaa2c9c9efb3166c75b6604d2049a788eee1b3；chanpy-owned-money-final-py311-c53573b20dfc4fd1a0cf522a18c9649c.xml（3886，2423.18s/2422.620s）a67905067ca77e61a1e555de426cfc86b50955867ab31d9c6d76d696faecc050。原handle17903/32941/29809均exit0，没有按截断或等待超时重启测试。
+- 失败原件同Temp保留（均errors0，不改标签）：api-red-522609da7cd3436d8fb900e3ebe37d47（8fail）SHA91392f3f022b913e000c744799ff5f51766d68f265f21cc32c57d621c983ccb1；tail-red-765f1303e7794cacb06bceb09a442d84（1fail/1pass）ec7f9246cded540146cedb08623bedc6d2f20dae68528a2453f628e1c8e26b72；tail-source-red-e7e34b0144cb4bc093a3cd24030e2013（2fail/12pass）32aac77a15af8a103f0ef0a7af59606693db5e8736bd4134bf3a60cb7a3cff65；code-cold-red-b312710d901c4adea7c676fa76726a98（1fail/4pass）1c68956b52c2cf8fc206c4ec23a4f1918bd743ae75a00de5f0d3d6f83a8a33f8；source-instrument-red-f75030be727343b184da4278282f615c（2fail）a1bd9cdc63eabfe1cac89fefd40691f5b36b0c812840d6b2dbc161f066448eff。以上完整名加chanpy-owned-money-前缀和.xml后缀。full-focus-green-68b3bdb2e64149ff8d7f6fdfc8aa2e56虽名带green但实际75pass/1fail，为上述测试尾部设置问题；SHA33e460c5fbb2c4b27f2de333fc6fd9b1b562dcb22da899c0463903d2d7663397，不冒称已通过。
+- 主线程按review模板复核此第3步子层：原源码/owner/Source/时钟/原行、实际候选、完整body而非hash/PASS、L1唯一增量、晚真实竞争CAS和回滚均具验证；正确保持未知意图和旧实现时代的拒绝。simplification是原reader/book/Cost和原事务复用，不建立新的计算/资金分配/订单引擎。所有校验和与body一致性仍不是原生服务器签名、资金锁或价格/费用上界；F/P未原生核验范围保持false。
+- 下一步是第4步全消费者：继续同一v4/monetary，把原claim/L2、HTTP前、NativePendingOwnership/ExecutionReconcile/AccountReconcile、恢复与默认入口逐项TDD接全，不仅扩schema白名单。现存created/submitting/unknown不自动释放，不重做或补签原证明；历史管理已有风险与新风险fresh-admission分开。完整金额链、OKX金额、S4/C5–C7和原Goal未完成；Goal active，不关闭、不缩小。未读取正式绩效或调用真实行情/账户/订单；Config/config.yaml、根config.yaml与CHANPY_CONFIG仅查存在性均不存在。
+
+本批最终被测SHA256（跨双版不变；表中Cost/Envelope为未改基线）：
+
+| 文件 | SHA256 |
+| --- | --- |
+| Trade/NativeAccountLimits.py | 50ed05b626c655d213505027c02e47b2b32f87a6c67850e91352a1f414d949f6 |
+| Trade/NativeLastPrice.py | 97de568feca3e824beddb79dfbf029a1fada3dfc9c211b7b6915f42405b36ced |
+| Trade/NativeLeverageLimits.py | cf8fca21b19e636dceeba55067c30c265c4e5f975cd09b4ebd1bbec3b2c84fdb |
+| Trade/NativeOrderTransition.py | 3d12ea9842a469e600f275783bb7e041a84a4b98cb0121071ea825128201b9db |
+| Trade/NativePreparedClient.py | 21e5ef61d01b13c839d7ddf1c18e48046bc6ef43346cd6fadb520d10aba856a2 |
+| Trade/NativePreparedIntent.py | c6234338fc0291848ca6dc22d4c010b4b9c473ce1616e49b2fcd47fbf5c1dcbc |
+| Trade/OrderAudit.py | 8d60d98327175c8d3dbd809cbe60a933af5a454d5433d4a0182777b765f78d06 |
+| Trade/db_util.py | fe199e6837b02b7921753d3241cff5f07eab922df038a49415a3594e28f01c8b |
+| tests/test_native_monetary_prepared_intent.py | 21ebacb424f96edbc6df8fa9e71f1dd621b1be669dcdd8ae8aea6f76299a1927 |
+| Trade/NativeOrderCost.py | 8b90e703c3d25a9c3f6e31f8c444c2ee13afff4349079a579d2cd2d508c059b1 |
+| Trade/NativeMarginEnvelope.py | 1f16b40bc2cc612a3216f38dc42b84fa15251e90316d169ac8c719f4fcbdf06e |

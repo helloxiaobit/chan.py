@@ -27,3 +27,5 @@ BNB开启、外币/credits/借贷/isolated、未支持订单/费率、缺输入�
 F已经由用户明确批准，不再把此选择作为当前阻点，也不重问A/P/F。实施前冻结完整source/模型/条件wire，严格TDD验证：所有事实来自受控原源，不能接caller PASS；未知扩展、非标准模式、旧源/重封、时窗/owner/CAS晚变异拒绝；原available不二扣旧预占；独立复算与双版适用回归。未通过完整金额/所有消费者前，不启用新可执行schema或默认发送。原Goal的自动续行状态由产品单独管理，不能用一个新Goal替换原完整目标。
 
 当前实施见[接入计划及第1–2步结果](../plans/2026-10-25-approved-standard-commission-integration.md)：closed-field v2来源和原check条件金额已做fake验收，补齐原类型拒绝回归后双版各1769项通过。原Goal已由用户明确恢复，工具实查active。实际来源拥有权、同次原金额CAS与所有执行消费者仍待，不把本报告标为原生费用完整或真实资金许可。
+
+同日后续：按[原同次金额CAS计划](../plans/2026-10-25-owned-monetary-cas.md)已把实际prepare/同SDK v2/components/Last、原cash/完整book与V1 Cost直接接入原intent/L1；同一最终v4保存完整monetary，历史/current/cold重算完整body和实现闭包。新增78项及适用扩展回归双版各3886唯一用例通过，各3条既有AUC警告，完整范围/身份见[审计§40](../reports/2026-10-22-native-fresh-admission-audit.md)。这是第3步子层，不是全部资金链或交易许可；第4步claim/L2/全reader/HTTP/default继续拒绝。F的client_assumption及未原生证明范围不变，旧证明不升级/重封，原Goal active，C5–C7/完整Goal未完成。

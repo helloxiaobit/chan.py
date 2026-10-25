@@ -36,3 +36,11 @@
 F不再是待批业务阻点。用户已明确答复恢复原Goal自动串行执行，工具已实查active；没有创建替代Goal或缩小目标，不因本批通过宣称整体已完成。实际配置、资金使用和交易门禁不变。
 
 提交前复核补项：JSON round-trip会把tuple/list子类和int/str子类归一化，掩盖原reader的exact type拒绝。原SDK/fake合法来源仅改Python类型且canonical字节相等，v1/v2原观察列表、档位、request/clock/raw标量及v2 marker共32项观察DID NOT RAISE。最小修复删除类型归一化：原验证主体直接检查传入对象，保留起始canonical字节及终末不变检查，不引入deepcopy的caller hook、递归类型框架或第二份领域验证体。32 RED后同三模块390 GREEN，再冻结源码做双版1769最终回归。修复前双版1737只是中间身份，不能作为提交代码的最终证据；全部JUnit保留、不改标签。
+
+## 后续第3步结果；第4步继续未完成
+
+按[同次金额原CAS计划](2026-10-25-owned-monetary-cas.md)，原受控入口已自行拥有prepare/同SDK capacity v2/components/Last，从原cash/完整book计算原Cost/限额，直接进入原intent CAS，绑定同一最终v4/完整monetary与client-order-v1金额摘要。原intent/历史/current/cold子层已验证，不是另建可丢弃诊断；原claim/全reader/HTTP/default仍拒绝。旧源/旧v2/v3不升级，不重封旧证明；源/额度/算法未原生证明范围保持false。
+
+原reader/book/Cost主体复用，无新公式/账本/依赖；RED修正初次Cost计时、current snapshot/instrument末尾预算、完整实现闭包及cold owner遗漏，未扩大预算。新增78项与扩展原状态机回归，双版各3886唯一用例、0failure/error/skip，集合差异0，各3条既有小样本AUC警告；CCXT4.5.89，源码/测试跨最终运行一致，双版compileall/diff通过。完整范围、环境差异与原件见[台账](../reports/2026-10-20-crypto-full-version-progress.md)及[审计§40](../reports/2026-10-22-native-fresh-admission-audit.md)。
+
+第4步必须继续同一binding，把完整金额及原L1/L2接所有claim/HTTP前/pending/execution/account/恢复/default消费者后再评估软件阻断，不能只扩schema；created/submitting/unknown不自动释放，历史管理不借旧点作fresh admission。C5–C7、OKX金额及完整Goal未完成，原Goal active；不因此再问A/P/F或缩小目标，不改实际配置/交易/研究门禁。

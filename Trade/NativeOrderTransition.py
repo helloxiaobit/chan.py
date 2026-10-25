@@ -25,6 +25,7 @@ DOCUMENT_SCHEMA = "chan-native-order-transition-v1"
 PREPARED_DOCUMENT_SCHEMA = "chan-native-order-transition-v2"
 # Deliberately not an executable CCXT schema. Old strict readers reject it too.
 CONTRACT_SCHEMA = "chan-native-cas-order-v1"
+CLIENT_CONTRACT_SCHEMA = "chan-native-client-order-v1"
 _LOCAL_SOURCES = ("Trade/NativeOrderTransition.py", "Trade/CCXTTradeEngine.py")
 _INTENT_UPDATES = {"status", "open_client_order_id", "open_requested_qty", "open_filled_qty", "current_qty",
                    "open_order_status", "order_last_update", "position_side", "strategy_version", "risk_multiplier",
@@ -206,7 +207,7 @@ def prepare_transition(chan, before, kind, updates, boundary, *, history, prepar
             return None
         reference = _reference(history, before["open_attempt"])
         if kind == "claim" and (reference is None or before["open_order_status"] != "created"):
-            if reference is None and before.get("open_order_contract") is not None and json.loads(before["open_order_contract"]).get("schema") == CONTRACT_SCHEMA:
+            if reference is None and before.get("open_order_contract") is not None and json.loads(before["open_order_contract"]).get("schema") in {CONTRACT_SCHEMA, CLIENT_CONTRACT_SCHEMA}:
                 _fail()  # Missing metadata cannot downgrade this new schema.
             return None  # The original CAS still decides duplicates/recovery.
         database = _owned(chan)
@@ -227,7 +228,8 @@ def prepare_transition(chan, before, kind, updates, boundary, *, history, prepar
             identity = _identity(chan.table, expected, "open")
             declared = [row["market"] for row in boundary["payload"]["market_evidence"]["payload"]["observations"]
                         if row["market"]["symbol"] == before["stock_code"]]
-            if (identity["contract_complete"] is not True or contract.get("schema") != CONTRACT_SCHEMA
+            if (identity["contract_complete"] is not True or contract.get("schema") not in {CONTRACT_SCHEMA, CLIENT_CONTRACT_SCHEMA}
+                    or (contract.get("schema") == CLIENT_CONTRACT_SCHEMA and prepared_context is None)
                     or len(declared) != 1 or canonical_bytes(contract["market"]) != canonical_bytes(declared[0])
                     or contract["account_context"] != boundary["payload"]["account_context"]
                     or contract["contract_id"] != _sha({k: v for k, v in contract.items() if k != "contract_id"})

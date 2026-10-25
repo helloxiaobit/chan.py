@@ -39,6 +39,7 @@ def initialize_native_prepared_client(engine, record_id, *, instrument_max_age_m
         connection, table, clock = database.conn, chan.table, guard.now_ms
         Boundary._same_database(chan, database, connection, table, owned=False)
         implementation, started = Prepared._implementation(), utc_now_ms()
+        monetary_binding = None
         configuration = canonical_bytes(engine.ccxt_conf)
         if type(started) is not int or not 0 <= started < 2**63:
             Prepared._fail()
@@ -47,7 +48,8 @@ def initialize_native_prepared_client(engine, record_id, *, instrument_max_age_m
             Boundary._same_database(chan, database, connection, table, owned=owned)
             if (engine.chan_db is not chan or engine.exchange is not client or engine.opening_inputs is not guard
                     or engine.safety_policy is not policy or guard.now_ms is not clock
-                    or canonical_bytes(engine.ccxt_conf) != configuration or Prepared._implementation() != implementation):
+                    or canonical_bytes(engine.ccxt_conf) != configuration
+                    or (Prepared._implementation() if monetary_binding is None else Prepared._binding_implementation(monetary_binding)) != implementation):
                 Prepared._fail()
             if client is not None and any(getattr(client, target, None) != (engine.ccxt_conf.get(key) or None)
                                           for target, key in (("apiKey", "api_key"), ("secret", "secret"), ("password", "password"))):
@@ -63,8 +65,10 @@ def initialize_native_prepared_client(engine, record_id, *, instrument_max_age_m
                 document = Transition._read(chan, record)
                 b = document["payload"]["root"]["preparation"]
                 if (document["schema"] != Transition.PREPARED_DOCUMENT_SCHEMA or document["payload"]["stage"] != "intent"
-                        or b["schema"] not in Prepared.CURRENT_BINDING_SCHEMAS or b["implementation_sha256"] != implementation):
+                        or b["schema"] not in Prepared.CURRENT_BINDING_SCHEMAS or b["implementation_sha256"] != Prepared._binding_implementation(b)):
                     Prepared._fail()
+                if b["schema"] == Prepared.MONETARY_BINDING_SCHEMA:
+                    monetary_binding, implementation = b, b["implementation_sha256"]
                 Transition._current(chan, document)
                 Prepared._windows(chan, b, document["payload"]["root"]["boundary"])
                 account = b["identity"]["payload"]["order_contract"]["account_context"]

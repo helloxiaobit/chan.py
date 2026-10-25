@@ -57,9 +57,10 @@ def evaluate_binance_order_leverage_limits_v1(capacity_evidence, *, positions, p
 
 
 def _evaluate_limits(capacity_evidence, *, positions, pending_orders, mark_prices, position_mode, candidate,
-                     max_age_ms, max_observation_span_ms, price_inputs, standard=False):
+                     max_age_ms, max_observation_span_ms, price_inputs, standard=False, checked_ms=None):
     try:
-        tick_start, checked = _monotonic_ns(), Capacity.utc_now_ms()
+        tick_start = _monotonic_ns() if checked_ms is None else None
+        checked = Capacity.utc_now_ms() if checked_ms is None else checked_ms
         provided = {"capacity_evidence": capacity_evidence, "positions": positions, "pending_orders": pending_orders,
             "mark_prices": mark_prices, "position_mode": position_mode, "candidate": candidate,
             "max_age_ms": max_age_ms, "max_observation_span_ms": max_observation_span_ms}
@@ -71,6 +72,10 @@ def _evaluate_limits(capacity_evidence, *, positions, pending_orders, mark_price
         if standard and price_inputs is None:
             _fail()
         reader = Capacity.verify_binance_standard_capacity_evidence if standard else verify_binance_capacity_evidence
+        if checked_ms is not None:
+            def reader(document, **budgets):
+                return Capacity._verify_binance_capacity_evidence_at(document, checked_ms=checked_ms,
+                                                                     standard=standard, **budgets)
         reader(source, max_age_ms=max_age_ms, max_observation_span_ms=max_observation_span_ms)
         p = source["payload"]
         Capacity._window(p["started_ms"], p["finished_ms"], checked, max_age_ms, max_observation_span_ms)
@@ -115,12 +120,13 @@ def _evaluate_limits(capacity_evidence, *, positions, pending_orders, mark_price
         reader(source, max_age_ms=max_age_ms, max_observation_span_ms=max_observation_span_ms)
         if canonical_bytes(provided) != original or canonical_bytes(inputs) != original:
             _fail()
-        tick_end = _monotonic_ns()
-        if type(tick_start) is not int or type(tick_end) is not int or not 0 <= tick_start <= tick_end:
-            _fail()
-        # Conservative whole-evaluation bound, not another source timestamp.
-        Capacity._window(p["started_ms"], p["finished_ms"], checked+(tick_end-tick_start+999_999)//1_000_000,
-                         max_age_ms, max_observation_span_ms)
+        if checked_ms is None:
+            tick_end = _monotonic_ns()
+            if type(tick_start) is not int or type(tick_end) is not int or not 0 <= tick_start <= tick_end:
+                _fail()
+            # Conservative whole-evaluation bound, not another source timestamp.
+            Capacity._window(p["started_ms"], p["finished_ms"], checked+(tick_end-tick_start+999_999)//1_000_000,
+                             max_age_ms, max_observation_span_ms)
         return document
     except Exception:
         _fail()
