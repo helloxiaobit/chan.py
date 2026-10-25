@@ -17,7 +17,7 @@ from . import NativeOrderBoundary as Boundary
 from .AccountRiskStore import _ledger, _sha, _trade_tables, read_check, risk_state
 from .NativeAccountCheck import _journal_prefix
 from .NativeCurrentComponents import _sources_snapshot
-from .OrderAudit import ATTEMPTS, EVENTS, _identity, _key, _load, _read_attempt, _state, read_history, validate_schema
+from .OrderAudit import ATTEMPTS, EVENTS, _identity, _key, _load, _read_attempt, _state, read_history, validate_schema, verify_history_prefix
 
 
 TABLE = "chanpy_native_order_transitions"
@@ -124,14 +124,43 @@ def _read(chan, record):
     """Historical original rows, not caller-supplied/resealed L1/L2 documents."""
     database = _owned(chan)
     history = read_history(database, chan.table, record)
-    reference = _reference(history, record["open_attempt"])
-    if reference is None:
+    if _reference(history, record["open_attempt"]) is None:
         _fail()
     target_key = (chan.table, record["id"], "open", record["open_attempt"])
     attempt = next(a for a in history["attempts"] if _key(a["identity"]) == target_key)
+    return _read_bound_attempt(chan, attempt)
+
+
+def _read_bound_attempt(chan, attempt):
+    """原不可变attempt/前缀重读；不依赖当前槽或授予鲜活性。"""
+    try:
+        database = _owned(chan)
+        connection, table = database.conn, chan.table
+        result = _read_bound_attempt_from_db(database, attempt)
+        Boundary._same_database(chan, database, connection, table, owned=True)
+        return result
+    except Exception:
+        _fail()
+
+
+def _read_bound_attempt_from_db(database, attempt):
+    """Frozen historical original rows, without a synthetic Engine/chan owner."""
+    connection = database.conn
+    validate_schema(database.conn, SCHEMA)
+    if database.conn is not connection:
+        _fail()
+    target_key = _key(attempt["identity"])
+    verify_history_prefix(database, [{"schema": "chan-order-history-v1", "coverage": "intents_and_applied_reports_only",
+        "economics_complete": False, "attempts": [attempt], "gaps": []}])
+    reference = attempt["events"][0].get("native_boundary_sha256")
+    if reference is None or target_key[2] != "open":
+        _fail()
+    if database.conn is not connection:
+        _fail()
     rows = database.query(f"SELECT * FROM {TABLE} WHERE trade_table=? AND record_id=? AND phase=? AND attempt=? ORDER BY event_id", target_key)
     if not 1 <= len(rows) <= 2:
         _fail()
+    rows = rows[:len(attempt["events"])]  # An old check must not borrow a later original L2.
     previous, first_root = None, None
     for ordinal, row in enumerate(rows, 1):
         document = json.loads(row["payload"])
@@ -153,8 +182,10 @@ def _read(chan, record):
                 or p["economics_complete"] is not False or p["native_admission_verified"] is not False):
             _fail()
         if prepared:
-            from .NativePreparedIntent import validate_stored_preparation
-            validate_stored_preparation(chan, root, attempt)
+            from .NativePreparedIntent import _validate_stored_preparation
+            _validate_stored_preparation(database, root, attempt)
+        if database.conn is not connection:
+            _fail()
         event_row = database.query_one(f"SELECT * FROM {EVENTS} WHERE event_id=?", (row["event_id"],))
         event = _load(event_row)
         if (tuple(event_row[k] for k in ("trade_table", "record_id", "phase", "attempt")) != target_key
@@ -170,6 +201,68 @@ def _read(chan, record):
             _fail()
         previous, first_root = document["payload_sha256"], root
     return document
+
+
+def _client_order_roots(chan, histories):
+    """仅从同一原SQLite视图加载新金额契约的完整历史引用。"""
+    database = _owned(chan)
+    connection, table = database.conn, chan.table
+    frozen = canonical_bytes(histories)
+    roots = []
+    for history in histories:
+        for attempt in history["attempts"]:
+            contract = attempt["identity"]["order_contract"]
+            if not isinstance(contract, dict) or contract.get("schema") != CLIENT_CONTRACT_SCHEMA:
+                continue
+            Boundary._same_database(chan, database, connection, table, owned=True)
+            document = _read_bound_attempt(chan, attempt)
+            Boundary._same_database(chan, database, connection, table, owned=True)
+            _client_reference(attempt, [document])
+            roots.append(document)
+    if canonical_bytes(histories) != frozen:
+        _fail()
+    Boundary._same_database(chan, database, connection, table, owned=True)
+    return roots
+
+
+def _stored_client_order_roots(database, histories):
+    """Rebuild only immutable client roots present in a persisted check prefix."""
+    roots = []
+    for history in histories:
+        for attempt in history["attempts"]:
+            contract = attempt["identity"]["order_contract"]
+            if isinstance(contract, dict) and contract.get("schema") == CLIENT_CONTRACT_SCHEMA:
+                document = _read_bound_attempt_from_db(database, attempt)
+                _client_reference(attempt, [document])
+                roots.append(document)
+    return roots
+
+
+def _client_reference(attempt, roots):
+    """纯引用连接检查；原金额/源核验由上面的原DB读取体完成。"""
+    from .NativePreparedIntent import MONETARY_BINDING_SCHEMA, _contract
+    identity = attempt["identity"]
+    target = dict(zip(("trade_table", "record_id", "phase", "attempt"), _key(identity)))
+    matched = [document for document in roots if document["payload"]["root"]["target"] == target]
+    if len(matched) != 1:
+        _fail()
+    document = matched[0]
+    payload, root = document["payload"], document["payload"]["root"]
+    binding = root["preparation"]
+    money = binding["monetary"]
+    if (document["schema"] != PREPARED_DOCUMENT_SCHEMA or document["payload_sha256"] != _sha(payload)
+            or payload["binding_sha256"] != _sha(root) or payload["stage"] not in {"intent", "claim"}
+            or payload["binding_sha256"] != attempt["events"][0].get("native_boundary_sha256")
+            or binding["schema"] != MONETARY_BINDING_SCHEMA
+            or money["schema"] != "chan-native-client-monetary-v1" or money["payload_sha256"] != _sha(money["payload"])
+            or money["payload"]["status"] != "within_model_capacity"
+            or money["payload"]["economics_complete"] is not False or money["payload"]["native_admission_verified"] is not False
+            or canonical_bytes(identity["order_contract"]) != canonical_bytes(_contract(binding))
+            or identity["order_contract"]["schema"] != CLIENT_CONTRACT_SCHEMA):
+        _fail()
+    return {"target": target, "binding_sha256": payload["binding_sha256"],
+        "transition_payload_sha256": document["payload_sha256"], "stage": payload["stage"],
+        "monetary_basis_sha256": binding["monetary"]["payload_sha256"]}
 
 
 def _current(chan, document):

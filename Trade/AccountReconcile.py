@@ -165,7 +165,7 @@ def _cash_components(facts, wallet, venue, issue):
             issue("unowned_trade_cashflow", source_id=row["source_id"], incomplete=True)
 
 
-def _build(before, after, wallets, executions, histories, projections, *, pending_validation=None):
+def _build(before, after, wallets, executions, histories, projections, *, pending_validation=None, client_roots=()):
     verify_account_snapshot(before)
     verify_account_snapshot(after)
     first, last = before["payload"], after["payload"]
@@ -236,14 +236,18 @@ def _build(before, after, wallets, executions, histories, projections, *, pendin
     positions_before = _native_positions(first, issue, "before")
     positions_after = _native_positions(last, issue, "after")
     attempts, record_events, record_open, other_accounts = {}, {}, {}, set()
+    references = []
     for history in histories:
         if history["schema"] != "chan-order-history-v1" or history["economics_complete"] is not False:
             _fail()
         for attempt in history["attempts"]:
             identity, contract = attempt["identity"], attempt["identity"]["order_contract"]
-            if not isinstance(contract, dict) or contract.get("schema") != "chan-ccxt-order-v3":
+            if not isinstance(contract, dict) or contract.get("schema") not in {"chan-ccxt-order-v3", "chan-native-client-order-v1"}:
                 issue("unidentified_attempt", incomplete=True)
                 continue
+            if contract["schema"] == "chan-native-client-order-v1":
+                from .NativeOrderTransition import _client_reference
+                references.append(_client_reference(attempt, client_roots))
             verify_account_context(contract["account_context"])
             if canonical_bytes(contract["account_context"]) != canonical_bytes(account):
                 native_keys = ("venue", "mode", "identifier_kind", "identifier_sha256")
@@ -262,6 +266,8 @@ def _build(before, after, wallets, executions, histories, projections, *, pendin
             attempts[ref] = attempt
             if attempt["events"][-1]["state"]["order_status"] not in {"closed", "canceled", "rejected"} and ref not in qualified:
                 issue("unresolved_attempt", identity=list(ref), incomplete=True)
+            if contract["schema"] == "chan-native-client-order-v1" and attempt["events"][-1]["state"]["order_status"] in {"closed", "canceled", "rejected"}:
+                issue("client_terminal_not_observed", identity=list(ref), incomplete=True)
             clocks = [e["observed_ms"] for e in attempt["events"]]
             if clocks != sorted(clocks):
                 issue("nonmonotonic_journal_clock", identity=list(ref), incomplete=True)
@@ -302,7 +308,7 @@ def _build(before, after, wallets, executions, histories, projections, *, pendin
             _fail()
         if type(source["observed_ms"]) is not int or source["observed_ms"] < last["finished_ms"]:
             issue("execution_observed_before_endpoint", instrument=symbol, incomplete=True)
-        ownership = build_execution_ownership(receipt, account, histories)["payload"]["trades"]
+        ownership = build_execution_ownership(receipt, account, histories, client_roots=client_roots)["payload"]["trades"]
         owned = {r["source_id"]: r for r in ownership}
         windows.setdefault(symbol, []).append((payload["start_ms"], payload["end_ms"]))
         for fact in payload["facts"]:
@@ -428,6 +434,8 @@ def _build(before, after, wallets, executions, histories, projections, *, pendin
               "histories": histories, "projections": projections}
     if pending_validation is not None:
         inputs["pending_validation"] = pending_validation
+    if references:
+        inputs["client_roots"] = client_roots
     payload = {"account_context": account, "start_ms": start, "end_ms": end,
         "coverage": "observed_account_interval" if pending_validation is None else "observed_account_interval_with_native_pending",
         "economics_complete": False,
@@ -440,26 +448,30 @@ def _build(before, after, wallets, executions, histories, projections, *, pendin
             "completeness": "provided_observations_only_not_trading_admission"}}
     if pending_validation is not None:
         payload["pending"] = pending_validation
-    return {"schema": SCHEMA if pending_validation is None else "chan-account-reconciliation-pending-v2",
+    schema = SCHEMA if pending_validation is None else "chan-account-reconciliation-pending-v2"
+    if references:
+        payload["client_order_references"] = references
+        schema = "chan-account-reconciliation-v2" if pending_validation is None else "chan-account-reconciliation-pending-v3"
+    return {"schema": schema,
             "payload": payload, "payload_sha256": _sha(payload)}
 
 
-def build_account_reconciliation(*, before, after, wallets, executions, histories, projections):
+def build_account_reconciliation(*, before, after, wallets, executions, histories, projections, client_roots=()):
     """Inputs from a single verified DB snapshot; no network, writes or unlock."""
     try:
-        return _build(before, after, wallets, executions, histories, projections)
+        return _build(before, after, wallets, executions, histories, projections, client_roots=client_roots)
     except (ValueError, TypeError, KeyError, AttributeError, DecimalException, ZeroDivisionError):
         _fail()
 
 
-def build_account_reconciliation_with_pending(*, before, after, wallets, executions, histories, projections, pending_orders):
+def build_account_reconciliation_with_pending(*, before, after, wallets, executions, histories, projections, pending_orders, client_roots=()):
     """New observational version; qualify only from raw pending + same ledger.
 
     The original v1 builder never takes this argument or returns this schema.
     There is no caller-supplied matched report or set of exempt attempts.
     """
     from .NativePendingOrders import verify_native_pending_orders
-    from .NativePendingOwnership import SCHEMA as PENDING_SCHEMA, _build as pending_ownership
+    from .NativePendingOwnership import SCHEMA as PENDING_SCHEMA, CLIENT_SCHEMA, _build as pending_ownership
     from .ExecutionFacts import _MONEY, _market
     from decimal import localcontext
     try:
@@ -471,8 +483,9 @@ def build_account_reconciliation_with_pending(*, before, after, wallets, executi
                    != canonical_bytes(sorted(after["payload"]["markets"], key=lambda row: row["id"]))):
             _fail()
         with localcontext(_MONEY):
-            payload = pending_ownership(source, {"histories": histories, "projections": projections})
-        pending = {"schema": PENDING_SCHEMA, "payload": payload, "payload_sha256": _sha(payload)}
-        return _build(before, after, wallets, executions, histories, projections, pending_validation=pending)
+            payload = pending_ownership(source, {"histories": histories, "projections": projections}, client_roots=client_roots)
+        pending = {"schema": CLIENT_SCHEMA if "client_order_references" in payload else PENDING_SCHEMA,
+                   "payload": payload, "payload_sha256": _sha(payload)}
+        return _build(before, after, wallets, executions, histories, projections, pending_validation=pending, client_roots=client_roots)
     except (ValueError, TypeError, KeyError, AttributeError, DecimalException, ZeroDivisionError):
         _fail()

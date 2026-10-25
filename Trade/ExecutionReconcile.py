@@ -39,12 +39,21 @@ def _order_ids(attempt):
     return {str(e["state"]["order_id"]) for e in attempt["events"] if e["state"]["order_id"] is not None}
 
 
-def _reason(attempt, fact, market, account):
+def _reason(attempt, fact, market, account, *, client_roots=()):
     identity = attempt["identity"]
     contract = identity["order_contract"]
     if (attempt["origin"] != "new_intent" or identity["contract_complete"] is not True
-            or not isinstance(contract, dict) or contract.get("schema") != "chan-ccxt-order-v3"):
+            or not isinstance(contract, dict) or contract.get("schema") not in {"chan-ccxt-order-v3", "chan-native-client-order-v1"}):
         return "legacy_attempt"
+    if contract["schema"] == "chan-native-client-order-v1":
+        from .NativeOrderTransition import _client_reference
+        try:
+            reference = _client_reference(attempt, client_roots)
+        except (CChanException, TypeError, KeyError, ValueError, AttributeError):
+            return "unverified_client_order"
+        if (reference["stage"] != "claim" or len(attempt["events"]) < 2 or attempt["events"][1]["kind"] != "claim"
+                or attempt["events"][1].get("native_boundary_sha256") != reference["binding_sha256"]):
+            return "client_claim_not_observed"
     if (contract.get("contract_id") != _digest({k: v for k, v in contract.items() if k != "contract_id"})
             or identity["contract_sha256"] != _digest(contract)):
         return "invalid_contract"
@@ -74,7 +83,7 @@ def _reason(attempt, fact, market, account):
     return None
 
 
-def build_execution_ownership(receipt, account_context, histories):
+def build_execution_ownership(receipt, account_context, histories, *, client_roots=()):
     """Bind observed trades to one historical attempt or emit an explicit gap.
 
     A matched subset or an empty scan never proves all executions were observed.
@@ -92,13 +101,19 @@ def build_execution_ownership(receipt, account_context, histories):
             if history["schema"] != "chan-order-history-v1" or history["economics_complete"] is not False:
                 _fail()
             attempts.extend(history["attempts"])
+        references = []
+        for attempt in attempts:
+            contract = attempt["identity"]["order_contract"]
+            if isinstance(contract, dict) and contract.get("schema") == "chan-native-client-order-v1":
+                from .NativeOrderTransition import _client_reference
+                references.append(_client_reference(attempt, client_roots))
         records, groups = [], {}
         with localcontext(_QUANTITIES):
             for fact in source["facts"]:
                 if fact["kind"] != "trade":
                     continue
                 candidates = [a for a in attempts if fact["order_id"] in _order_ids(a)] if fact["order_id"] is not None else []
-                checked = [(a, _reason(a, fact, source["market"], account_context)) for a in candidates]
+                checked = [(a, _reason(a, fact, source["market"], account_context, client_roots=client_roots)) for a in candidates]
                 valid = [a for a, reason in checked if reason is None]
                 reasons = {reason for _, reason in checked}
                 reason = ("missing_order_id" if fact["order_id"] is None else "unrecorded_order")
@@ -126,6 +141,9 @@ def build_execution_ownership(receipt, account_context, histories):
             "history_sha256": _digest(histories), "coverage": "observed_scan_facts_only", "economics_complete": False,
             "trades": records, "funding": [{"source_id": f["source_id"], "status": "unallocated", "reason": "native_leg_missing"}
                 for f in source["facts"] if f["kind"] == "funding"]}
-        return {"schema": "chan-execution-ownership-v1", "payload": payload, "payload_sha256": _digest(payload)}
+        if references:
+            payload["client_order_references"] = references
+        return {"schema": "chan-execution-ownership-v2" if references else "chan-execution-ownership-v1",
+                "payload": payload, "payload_sha256": _digest(payload)}
     except (TypeError, ValueError, KeyError, AttributeError, DecimalException):
         _fail()

@@ -1079,3 +1079,34 @@ C1 收尾清理计划：迁移校验由两份全表内存列表改为有序逐�
 | tests/test_native_monetary_prepared_intent.py | 21ebacb424f96edbc6df8fa9e71f1dd621b1be669dcdd8ae8aea6f76299a1927 |
 | Trade/NativeOrderCost.py | 8b90e703c3d25a9c3f6e31f8c444c2ee13afff4349079a579d2cd2d508c059b1 |
 | Trade/NativeMarginEnvelope.py | 1f16b40bc2cc612a3216f38dc42b84fa15251e90316d169ac8c719f4fcbdf06e |
+
+### 2026-10-25 / 同一金额binding的原历史消费者；完整第4步仍待
+
+- 基线pushed/clean 2921a379e348aa1f0c54dfb93fc8265e05e8576e，原Goal实查active。按[先行计划](../plans/2026-10-25-native-monetary-consumers.md)串行TDD与主线程review，无代理/OMX/工作树/新依赖，未改实际配置、权限/规则、交易/研究门禁或旧产物，未读正式绩效或真实端点。不是另换可丢弃诊断或缩小C0–C7。
+- NativeOrderTransition共享原读取体，原SQLite核实际attempt/事件/完整金额root与原source；支持不可变前缀，不借未来L2。Prepared校验仅下沉同一DB，不合成Engine/chan或续期。raw CAS ledger保持histories/projections，另加载实际client_roots，避免L1发表前递归。原execution查询保留空信号字节，扩展跨实际trade tables，同标的不能藏意图。
+- 原pending/execution、NativeAccountReconcile/Check和普通AccountReconcile/AccountRiskStore消费同一v4/monetary。新client才发显式观察版本/引用，两类持久新check保存完整roots/journal_prefix，冷读再核DB，不信hash/PASS。缺L2的ACK/相同native行仍unowned；created/unknown、仅本地terminal/pending空集不释放预留；过龄或后来ACK不改历史。native/economics未证明范围仍false，旧v2/v3不升级，原Cost/Envelope与账本不改。
+- 新增47项。真实RED含pending缺预留5、execution缺原引用/跨表5、普通check缺新版本1/完整prefix1、空信号摘要漂移1、legacy pending新依赖导入1；review后源/金额reader尾部换conn仍查外库3/坏JSON或shape漏底层异常2。最小修复捕获原connection，reader后下一SQL前复核，owned入口统一隐私域错误；无DB/proxy/查询替身、重开或额外时钟权限。初次账户fixture端点相等与一次误删writer仍用import的失败保留并修复，不算金融漏洞或最终PASS。
+- 最终同44模块：前批37模块＋6个原pending/execution/account模块＋新消费者模块。双版各4246 passed/1 skipped/3 warnings、0failure/error/deselection，4247唯一case集合差异0；新增47全通过，完整85 capacity prepare/CAS/current/cold与79 prepare Last包含。唯一skip为原test_cashflow_timing_ownership_and_channels_are_not_guessed的Binance isolated_channel分支（income无该position cash channel），不算PASS；3条既有XGBoost小样本AUC警告未隐藏。不冒称全仓/C5全链/外部认证。
+- 环境实查CPython3.14.2/3.11.15，pytest9.1.1/CCXT4.5.89/pandas3.0.6；XGB分别3.4.1/3.2.0、NumPy2.5.4/2.4.6，无安装升级，不称依赖全相同。源/测试SHA在两版最终运行前后相同；原句柄48035/55037 exit0，未因等待/截断重启。pytest进程0后才改文档，双版compileall Trade/新测试与diff通过。
+- 最终JUnit（Temp=C:\Users\yangj\AppData\Local\Temp）：chanpy-money-consumers-final-py314-6db04eea254f477bbc9a24783ba136c8.xml（终端2592.07s/JUnit2591.567s），SHA256 5749f0fd89bf8a6e4e12ca3b5b5be0cf4f4dea606e9b0517a27cc1eeecc443a5；chanpy-money-consumers-final-py311-dabd461d950147e2bf02d93eb5bef07e.xml（终端2613.04s/JUnit2612.323s），SHA256 fefde0271c0017a3fb44cf148cda4a9c0f52417cf95f42d9e6862bafd05dfe9d。
+- 中间44模块chanpy-money-consumers-py314-3b6e2745f11c4a8f98460e341af550bf.xml：4241 passed/1skip/3warnings、2608.77s/JUnit2608.197s，SHA ed30fd4b95d749f785c4539d2f17f58c7fd5404288e41ab5c8ec50f3511ef4bb。随后5 RED chanpy-money-history-tail-red-3a116099acc54f5eb07f87023b382efd.xml SHA5ab5c2f303e71b71250b3df347bf82a17e05c2756a02d587330ebdefd6bc71c1；5 GREEN chanpy-money-history-tail-green-511aafa6d2d54a92a91f6d507f495cd2.xml SHA2542d6e5406e4ff582c084c64f61edcfaa9d922164975f107427ff8ed85bb8eb。中间身份未充作最终，全部失败/fixture/trace原件保留。
+- 代表RED同Temp：chanpy-money-execution-red-16f2129ee383415285e4409d3aad3c49.xml（5fail/1pass）SHA75db0a51061eef531795b0f5b869828115dee4a96187eaccc7ca131d47a459a1；chanpy-money-interval-red-316feb3b3d9e4725adc9fc438e0cae32.xml（1fail）eb05a99435904ed6f5abdc30afb75ab5f76c321873171dcb3cb59fe3e8dbaf9b；chanpy-money-prefix-complete-red-89bb95224f60444690302daeb118f9a1.xml（1fail）d55efe6182c0bfc0a668d8c92bfc523a9ceeb411b2638c596dcb0096a820be99；chanpy-money-legacy-bytes-red-ecd1c20fad3045db942382a7ceaf8fe4.xml（1fail）d4abd50b66b0f7aa28c35c7df0b9515c46d91454e017ba255d09fe3186276b1c；chanpy-money-legacy-pending-import-red-1d7acf87ed6741b4a5030967f8c79f67.xml（1fail）a3a51b47dd84d69480cc9d2145b4881a6433cca0d684bfbfed04c5071ab21ddd。
+- 主线程review：可提交历史观察子层，完整第4步/资金执行链仍否。简化为复用原as-of/金额/事件校验与DB/表/CAS，保留旧导入/字节；无第二套公式或订单/资金状态机。下一步继续真正原生terminal/已观察释放、owned claim/L2/HTTP前和Engine查询/取消/回报/恢复/default/fake全链，不能以永久拒绝替代功能。全链未闭合前新schema软件发送阻断保留；OKX金额/C5–C7/完整Goal未完成，Goal active，不关闭/缩小/重问A/P/F。
+- 提交前结构复核：6份相关文档63个本地链接缺失0，12条最终源码/测试及未改Cost/Envelope摘要与实际文件全部一致；diff通过，pytest进程0。沿原Git行尾配置保留LF/CRLF提示，不改配置或批量转换，不把该提示当pytest警告。
+
+本批最终被测SHA256（两版运行前后相同；末两项为未改基线）：
+
+| 文件 | SHA256 |
+| --- | --- |
+| Trade/AccountReconcile.py | 071a72992430334b5b713a1331f8229fa78b0ffc94a4e4b9e5644f41aa18bef5 |
+| Trade/AccountRiskStore.py | a5801ced5e145a67e12c6c7c9ecfeb4bdb87654f9da331c1d070c6671e09b7bc |
+| Trade/ExecutionReconcile.py | d9f12e2193581b67b0b00abb46926eca54948874c5cf49149373f5a964c5fee3 |
+| Trade/NativeAccountCheck.py | 3ea1ff2ae08fe1d74cae40b75fe6af9d49754acf4b90f6e22d17c5da1ebc861f |
+| Trade/NativeAccountReconcile.py | 13dac05c9f4871def2e0b3a7dca4a4733534a42c06e50e77858f3f80abf611a2 |
+| Trade/NativeOrderTransition.py | dcfc8cea535f470a26534d29ff8b1af5a731690f6448142116964e970f187ebd |
+| Trade/NativePendingOwnership.py | c23974fc039ba47b94f8726289ddcbeeda98ed3c43a1872674aa510e73442fd0 |
+| Trade/NativePreparedIntent.py | 26b7c1bb2fd377b2e02fa17635f13de8df2166d8cbeec4089a6b0d3a29906bba |
+| Trade/db_util.py | d62c9b8be56dadf937239c10fcda32e92550f01dbc28077c728f91fe2cb38ab7 |
+| tests/test_native_monetary_consumers.py | f84f0ba0b930c39540fdfb9b63946b683c2fccd09e91143b45fe3fce27fefcc6 |
+| Trade/NativeOrderCost.py | 8b90e703c3d25a9c3f6e31f8c444c2ee13afff4349079a579d2cd2d508c059b1 |
+| Trade/NativeMarginEnvelope.py | 1f16b40bc2cc612a3216f38dc42b84fa15251e90316d169ac8c719f4fcbdf06e |

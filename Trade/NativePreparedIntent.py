@@ -203,7 +203,8 @@ def _assert_monetary(binding, values, snapshot, *, checked_ms=None):
         _fail()
 
 
-def _capacity_links(chan, binding, boundary, checked, snapshot=None, *, is_buy=None):
+def _capacity_links(database, binding, boundary, checked, snapshot=None, *, is_buy=None):
+    connection = database.conn
     source, policy = binding["capacity_evidence"], binding["capacity_policy"]
     historical, monetary = snapshot is None, binding["schema"] == MONETARY_BINDING_SCHEMA
     if type(policy) is not dict or set(policy) != {"max_age_ms", "max_observation_span_ms"}:
@@ -221,8 +222,10 @@ def _capacity_links(chan, binding, boundary, checked, snapshot=None, *, is_buy=N
         _fail()
     if snapshot is None:
         from .ExecutionStore import read_scan_with_account
-        check = read_check(chan.db, c["check_id"])
-        snapshot = {"check": check, "execution_observations": [read_scan_with_account(chan.db, key)[1]["observation"]
+        if database.conn is not connection:
+            _fail()
+        check = read_check(database, c["check_id"])
+        snapshot = {"check": check, "execution_observations": [read_scan_with_account(database, key)[1]["observation"]
                                                                 for key in c["source_ids"]["executions"]]}
     saved = snapshot["check"]["payload"]["inputs"]
     AccountLimits._bindings(source["payload"], c["market_evidence"]["payload"], saved)
@@ -259,7 +262,7 @@ def _windows(chan, binding, boundary, *, final_check=None):
         _fail()
     Boundary._windows(inputs, sources, binding["started_ms"], now)
     if with_capacity:
-        values = _capacity_links(chan, binding, boundary, now, sources)
+        values = _capacity_links(chan.db, binding, boundary, now, sources)
         if binding["schema"] == MONETARY_BINDING_SCHEMA:
             _assert_monetary(binding, values, sources)
             if binding["implementation_sha256"] != _binding_implementation(binding):
@@ -277,6 +280,15 @@ def _windows(chan, binding, boundary, *, final_check=None):
 def validate_stored_preparation(chan, root, attempt):
     """Independent raw/check/immutable-attempt links, not current admission."""
     try:
+        _validate_stored_preparation(chan.db, root, attempt)
+    except Exception:
+        _fail()
+
+
+def _validate_stored_preparation(database, root, attempt):
+    """Same original SQLite facts for frozen checks; never a live handle."""
+    try:
+        connection = database.conn
         b = root["preparation"]
         if (type(b) is not dict or b["schema"] not in {LEGACY_BINDING_SCHEMA, *CURRENT_BINDING_SCHEMAS}
                 or set(b) != {"schema", "identity", "instruments", "components", "instrument_policy", "boundary_sha256",
@@ -339,13 +351,15 @@ def validate_stored_preparation(chan, root, attempt):
                     canonical_bytes([row["market"] for row in c["market_evidence"]["payload"]["observations"]])
                 or any(row["active"] is not True for row in instrument["observations"])):
             _fail()
-        check = read_check(chan.db, c["check_id"])
+        if database.conn is not connection:
+            _fail()
+        check = read_check(database, c["check_id"])
         if check["payload"]["source_ids"] != c["source_ids"] or check["payload"]["inputs"] is None:
             _fail()
         cap_clocks = []
         snapshot = {"check": check, "execution_observations": []}
         if b["schema"] in {CAPACITY_BINDING_SCHEMA, MONETARY_BINDING_SCHEMA}:
-            values = _capacity_links(chan, b, root["boundary"], a["intent_ms"], is_buy=a["is_buy"])
+            values = _capacity_links(database, b, root["boundary"], a["intent_ms"], is_buy=a["is_buy"])
             if b["schema"] == MONETARY_BINDING_SCHEMA:
                 _assert_monetary(b, values, snapshot, checked_ms=a["intent_ms"])
             cap_clocks = [b["capacity_evidence"]["payload"][key] for key in ("started_ms", "finished_ms")]
@@ -611,7 +625,7 @@ def _acquire_prepared_diagnostic_intent(engine, record_id, amount, price, *, bef
                 snapshot = _sources_snapshot(chan, account, c["check_id"], c["market_evidence"])
                 Boundary._same_database(chan, database, connection, table, owned=True)
             Boundary._same_database(chan, database, connection, table, owned=False)
-            values = _capacity_links(chan, binding, boundary, checked, snapshot, is_buy=signal["is_buy"])
+            values = _capacity_links(chan.db, binding, boundary, checked, snapshot, is_buy=signal["is_buy"])
             binding["monetary"] = _monetary_result(binding, values, snapshot)
             Boundary._same_database(chan, database, connection, table, owned=False)
             tick_end = _monotonic_ns()

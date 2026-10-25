@@ -9,7 +9,7 @@ import json
 from Common.ChanException import CChanException, ErrCode
 from CustomBuySellPoint.Decision import canonical_bytes
 from .AccountReconcile import _number, _sha, build_account_reconciliation_with_pending
-from .AccountRiskStore import _ledger, _sources, risk_state
+from .AccountRiskStore import _ledger, _sources, _client_roots, risk_state
 from .NativeBalanceReservations import verify_native_balance_reservations
 
 
@@ -155,10 +155,11 @@ def _margin(after, balances, pending_validation, issue):
 def _result(payload, issues):
     payload["issues"] = sorted({canonical_bytes(row): row for row in issues}.values(), key=canonical_bytes)
     payload["status"] = "incomplete" if any(row["severity"] == "incomplete" for row in issues) else "mismatch" if issues else "matched_components"
-    return {"schema": SCHEMA, "payload": payload, "payload_sha256": _sha(payload)}
+    return {"schema": "chan-native-account-components-v2" if "client_order_references" in payload["interval"]["payload"] else SCHEMA,
+            "payload": payload, "payload_sha256": _sha(payload)}
 
 
-def _components(context, request, sources, ledger, pending, balances):
+def _components(context, request, sources, ledger, pending, balances, *, client_roots=()):
     """Pure historical component rebuild; no risk-state recursion or writes."""
     verify_native_balance_reservations(balances)
     after, balance = sources["after"]["payload"], balances["payload"]
@@ -166,7 +167,7 @@ def _components(context, request, sources, ledger, pending, balances):
             or canonical_bytes(balance["account_context"]) != canonical_bytes(context)
             or not sources["before"]["payload"]["finished_ms"] < balance["started_ms"] <= balance["finished_ms"] < after["started_ms"]):
         _fail()
-    interval = build_account_reconciliation_with_pending(**sources, **ledger, pending_orders=pending)
+    interval = build_account_reconciliation_with_pending(**sources, **ledger, pending_orders=pending, client_roots=client_roots)
     issues = list(interval["payload"]["issues"])
     def issue(reason, *, incomplete=False, **details):
         issues.append({"reason": reason, "severity": "incomplete" if incomplete else "mismatch", **details})
@@ -193,7 +194,9 @@ def observe_native_account_components(chan, *, account_context, before_id, after
         request = {"before": values["before_id"], "after": values["after_id"], "wallets": values["wallet_ids"], "executions": values["execution_scan_ids"]}
         with chan.db.transaction():
             sources, ledger = _sources(chan.db, request), _ledger(chan)
-            report = _components(values["account_context"], request, sources, ledger, values["pending_orders"], values["balance_reservations"])
+            roots = _client_roots(chan, ledger["histories"])
+            report = _components(values["account_context"], request, sources, ledger, values["pending_orders"],
+                                 values["balance_reservations"], client_roots=roots)
             if risk_state(chan.db, values["account_context"])["frozen"]:
                 report = _result(report["payload"], [*report["payload"]["issues"], {"reason": "persisted_account_frozen", "severity": "incomplete"}])
         if canonical_bytes(provided) != original:

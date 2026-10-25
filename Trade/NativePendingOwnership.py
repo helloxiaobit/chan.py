@@ -19,6 +19,8 @@ from .NativeMarketEvidence import _markets
 
 
 SCHEMA = "chan-native-pending-ownership-v1"
+CLIENT_SCHEMA = "chan-native-pending-ownership-v2"
+_CLIENT_ORDER_SCHEMA = "chan-native-client-order-v1"
 _TERMINAL = {"closed", "canceled", "rejected"}
 
 
@@ -39,7 +41,8 @@ def _validate_contract(identity):
     contract = identity["order_contract"]
     if set(contract) != {"schema", "market", "quantity_unit", "exchange_amount_unit", "quantity", "exchange_amount",
                          "price", "reference_price", "notional", "reduce_only", "execution", "account_observation",
-                         "post_only", "account_context", "contract_id"}:
+                         "post_only", "account_context", "contract_id"} | ({"monetary_basis_sha256"}
+                            if contract["schema"] == _CLIENT_ORDER_SCHEMA else set()):
         _fail()
     market = contract["market"]
     _markets([market], market["exchange"])
@@ -60,13 +63,13 @@ def _validate_contract(identity):
     CCCXTTradeEngine._check_limits(market, amount, reference, notional)
 
 
-def _match(attempt, order, market, context):
+def _match(attempt, order, market, context, *, client_roots=()):
     fact = {"client_order_id": order["client_order_id"], "side": order["side"].lower(),
             "position_side": "BOTH" if order["position_side"] == "net" else order["position_side"].upper(),
             "timestamp_ms": order["created_ms"]}
     # Reuse original immutable-contract/account/market/leg/intent checks. Here
     # the native event is creation of this order, not a synthetic trade fill.
-    reason = _reason(attempt, fact, market, context)
+    reason = _reason(attempt, fact, market, context, client_roots=client_roots)
     if reason:
         return reason
     identity, state = attempt["identity"], attempt["events"][-1]["state"]
@@ -98,21 +101,25 @@ def _match(attempt, order, market, context):
     return None
 
 
-def _build(source, ledger):
+def _build(source, ledger, *, client_roots=()):
     context = source["account_context"]
     markets = {market["id"]: market for market in source["markets"]}
     attempts, issues, reservations = [], [], []
+    references = []
     for history in ledger["histories"]:
         if history["gaps"] or not history["attempts"]:
             issues.append({"reason": "incomplete_attempt_history"})
         for attempt in history["attempts"]:
             identity, contract = attempt["identity"], attempt["identity"]["order_contract"]
             if (attempt["origin"] != "new_intent" or identity["contract_complete"] is not True
-                    or not isinstance(contract, dict) or contract.get("schema") != "chan-ccxt-order-v3"
+                    or not isinstance(contract, dict) or contract.get("schema") not in {"chan-ccxt-order-v3", _CLIENT_ORDER_SCHEMA}
                     or _digest(contract) != identity["contract_sha256"]
                     or _digest({key: value for key, value in contract.items() if key != "contract_id"}) != contract["contract_id"]):
                 issues.append({"reason": "unidentified_attempt", "attempt": _reference(attempt)})
                 continue
+            if contract["schema"] == _CLIENT_ORDER_SCHEMA:
+                from .NativeOrderTransition import _client_reference
+                references.append(_client_reference(attempt, client_roots))
             verify_account_context(contract["account_context"])
             if account_key(contract["account_context"]) != account_key(context):
                 continue  # Only a verified different native account can be excluded.
@@ -132,7 +139,7 @@ def _build(source, ledger):
         reason = unsupported.get(_native_key(order))
         if reason is None:
             reason = ("unrecorded_order" if not candidates else "ambiguous_order_id" if len(candidates) != 1
-                      else _match(candidates[0], order, markets[order["instrument_id"]], context))
+                      else _match(candidates[0], order, markets[order["instrument_id"]], context, client_roots=client_roots))
         reference = _reference(candidates[0]) if reason is None else None
         if reference is not None:
             owned.add(canonical_bytes(reference))
@@ -142,9 +149,13 @@ def _build(source, ledger):
                         "reason": reason, "attempt": reference})
     for attempt in attempts:
         state, identity = attempt["events"][-1]["state"], attempt["identity"]
-        if state["order_status"] in _TERMINAL:
+        terminal = state["order_status"] in _TERMINAL
+        client = identity["order_contract"]["schema"] == _CLIENT_ORDER_SCHEMA
+        if terminal and not client:
             continue
         reference = _reference(attempt)
+        if terminal and client:
+            issues.append({"reason": "client_terminal_not_observed", "attempt": reference})
         requested, filled = _requested(identity), _number(str(state["filled_qty"]))
         if not 0 <= filled <= requested:
             _fail()
@@ -157,10 +168,13 @@ def _build(source, ledger):
             "remaining_contracts": _string(remaining/size), "native_pending_matched": matched, "native_margin_amount": None})
         if not matched:
             issues.append({"reason": "local_pending_not_observed", "attempt": reference})
-    return {"source_pending_sha256": _digest(source), "account_context_id": context["context_id"],
+    payload = {"source_pending_sha256": _digest(source), "account_context_id": context["context_id"],
         "ledger_sha256": _digest(ledger), "coverage": "native_pending_and_local_nonterminal_attempts",
         "economics_complete": False, "native_admission_verified": False, "orders": records,
         "reservations": reservations, "issues": sorted(issues, key=canonical_bytes)}
+    if references:
+        payload["client_order_references"] = references
+    return payload
 
 
 def observe_native_pending_ownership(chan, *, pending_orders):
@@ -176,9 +190,13 @@ def observe_native_pending_ownership(chan, *, pending_orders):
         if chan.db_type != "sqlite":
             _fail()
         with chan.db.transaction(), localcontext(_MONEY):
-            payload = _build(document["payload"], _ledger(chan))
+            from .AccountRiskStore import _client_roots
+            ledger = _ledger(chan)
+            roots = _client_roots(chan, ledger["histories"])
+            payload = _build(document["payload"], ledger, client_roots=roots)
         if canonical_bytes(pending_orders) != original:
             _fail()
-        return {"schema": SCHEMA, "payload": payload, "payload_sha256": _digest(payload)}
+        return {"schema": CLIENT_SCHEMA if "client_order_references" in payload else SCHEMA,
+                "payload": payload, "payload_sha256": _digest(payload)}
     except Exception:
         _fail()

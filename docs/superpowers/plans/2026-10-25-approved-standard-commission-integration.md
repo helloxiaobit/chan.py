@@ -44,3 +44,9 @@ F不再是待批业务阻点。用户已明确答复恢复原Goal自动串行执
 原reader/book/Cost主体复用，无新公式/账本/依赖；RED修正初次Cost计时、current snapshot/instrument末尾预算、完整实现闭包及cold owner遗漏，未扩大预算。新增78项与扩展原状态机回归，双版各3886唯一用例、0failure/error/skip，集合差异0，各3条既有小样本AUC警告；CCXT4.5.89，源码/测试跨最终运行一致，双版compileall/diff通过。完整范围、环境差异与原件见[台账](../reports/2026-10-20-crypto-full-version-progress.md)及[审计§40](../reports/2026-10-22-native-fresh-admission-audit.md)。
 
 第4步必须继续同一binding，把完整金额及原L1/L2接所有claim/HTTP前/pending/execution/account/恢复/default消费者后再评估软件阻断，不能只扩schema；created/submitting/unknown不自动释放，历史管理不借旧点作fresh admission。C5–C7、OKX金额及完整Goal未完成，原Goal active；不因此再问A/P/F或缩小目标，不改实际配置/交易/研究门禁。
+
+## 第4步后续：历史消费者已接，完整执行链仍未完成
+
+按[历史消费者计划](2026-10-25-native-monetary-consumers.md)，原pending、execution和普通/native account现从原SQLite重建完整金额引用、不可变attempt/前缀。public DB入口不接caller roots/PASS，旧输出/空信号字节保留，raw CAS ledger不扩形；新持久化观察显式版本化，冷读再核原body/事件/source。过龄历史不续期，缺原L2的ACK/trade、仅本地terminal或pending空集不释放/认领。
+
+新增47项；主线程补审来源/金额reader尾部conn更换和坏引用错误出口，5 RED→GREEN。最终双版同44模块各4246 passed/1既有不适用skip/3既有AUC警告，4247唯一case集合相同，源码/测试SHA不变，compileall/diff通过，见[台账](../reports/2026-10-20-crypto-full-version-progress.md)与[审计§41](../reports/2026-10-22-native-fresh-admission-audit.md)。这是第4步必要进展，不能以永久拒绝或只读诊断替代最终目标；原生终态/已观察释放、owned claim/L2、HTTP前及原Engine/default/恢复E2E必须继续。全链未验前软件发送阻断保留，F/P未原生证明范围仍false，Goal active。

@@ -464,3 +464,15 @@ TDD真实RED：缺入口8、初次Cost计时1、末尾闭包2、cold闭包1、cu
 新增78项覆盖四种mode/方向×LIMIT/GTX/真实MARKET、余额恰界/差1e-40、非候选cap、费用/缺源不降级、原SQL/reference回滚、真实竞争CAS、替换库零SQL、重封完整body拒绝、过龄历史/current和真实原SDK冷重建。CPython3.14.2=同冻结身份78专项＋36模块3808回归，3.11.15=37模块3886完整运行，各3886唯一用例、0failure/error/skip、无deselection、集合差异0；包括原全部85 capacity prepare/CAS/current/cold和79 prepare Last，不排除cold。各3条既有小样本AUC警告，未称零警告。CCXT4.5.89/pytest9.1.1一致，其余原环境版本分别记录在台账，不冒称依赖全相同；无安装/升级。双版compileall/diff通过，最终源码/测试摘要跨三份JUnit一致，相关pytest进程0后才改文档。精确范围、GUID、SHA、失败证据见[台账](2026-10-20-crypto-full-version-progress.md)。
 
 主线程按review模板复核此有限第3步，通过提交条件；完整生产就绪仍否。没有把金额报告当可转移能力，也没有在未接全消费者时启用新schema：原claim、Engine/HTTP、pending/execution/account/恢复/default继续拒绝。下一步必须让同一v4完整金额/原L1/L2被各原消费者验证，不能仅扩白名单；历史管理和新风险鲜活性分开，created/submitting/unknown不自动释放，旧证明不补签/重封。所有native/economics未证明范围保持false，F/P不代表服务器锁额、原生费用完整或价格上界。实际配置/权限/规则/候选/旧产物/研究未改，无真实端点或正式绩效读取；OKX金额、S4/C5–C7和完整Goal继续未完成，原Goal active。
+
+## 41. 原金额历史消费者与不借未来事件的检查（2026-10-25）
+
+基线pushed/clean 2921a379e348aa1f0c54dfb93fc8265e05e8576e。按[先行计划](../plans/2026-10-25-native-monetary-consumers.md)接同一最终v4/monetary，不引入新公式、预留/订单账本、DB/proxy、依赖或真实端点。原transition读取体共享到实际不可变attempt/前缀；原金额/source as-of体直接用同一SQLite，不合成Engine/chan。重读原attempt/events、完整body与原来源/金额，不借后来L2追认早期检查。新版本check核完整histories/journal_prefix，不能靠缺漏/重封hash消除未观察意图。
+
+原NativePendingOwnership、CChanDB.get_execution_ownership、NativeAccountReconcile/Check及AccountReconcile/AccountRiskStore实际消费这些引用。新client才发显式观察版本与引用，旧wire/导入路径/空信号历史字节保持，跨table不能藏本单；raw CAS ledger仍仅histories/projections，避免L1/L2发表前递归。真实SDK底层fake证明新intent保留0.1未观察预留，缺原L2的ACK/相同native行仍unowned，本地terminal不释放，重启/过龄/后来ACK不改旧检查。caller roots、错DB/target/body、缺/重复/伪降级引用拒绝，失败仍沿原sticky freeze；历史观测不续期或授予资金。
+
+主线程review补齐两类真实缺口：instrument/capacity/monetary reader尾部改conn后原本仍查外库（3 RED），坏JSON/shape经新execution入口漏底层异常（2 RED）。原共享体捕获原connection，在reader后、下一SQL前复核；owned历史入口统一隐私域错误，不查询替换库、不重开/重试/迁移或写凭证。另RED保护空信号摘要和旧pending/execution不导入新transition路径。账户fixture端点相等、一次误删writer仍用import的中间失败如实保留并修复，未将fixture问题算金融漏洞。
+
+最终新增47项全通过；双CPython3.14.2/3.11.15同44模块各4246 passed、1 skipped、3 warnings，0failure/error/deselection，4247唯一case集合差异0。唯一skip为原Binance income无isolated position cash channel分支，不算PASS；3条既有AUC小样本警告不隐藏。完整85 capacity prepare/CAS/current/cold和79 prepare Last包含。pytest9.1.1/CCXT4.5.89/pandas3.0.6相同，XGB分别3.4.1/3.2.0、NumPy2.5.4/2.4.6，无安装升级，不称全部依赖相同。源码/测试SHA跨最终两版不变、双版compileall/diff通过；原句柄48035/55037 terminal exit0、pytest进程0后才改文档。此前4241/1skip/3warnings是尾部修复前身份，非最终证据；精确原件见[台账](2026-10-20-crypto-full-version-progress.md)。
+
+结论：可提交历史消费者子层，完整第4步/C5–C7/生产就绪仍否。真正原生terminal/已观察释放、原owned claim/L2/HTTP前、Engine查询/取消/回报/恢复/default/fake全链必须继续，不以永久拒绝替代功能。全消费者闭合前新schema claim/send阻断保留，旧v2/v3诊断不重封/升级，F/P未原生证明范围仍false。实际配置、权限、交易/研究/candidate门禁、旧产物无变，无真实行情/账户/订单、正式绩效或外部认证。Goal active，不关闭、不缩小、不重问A/P/F。

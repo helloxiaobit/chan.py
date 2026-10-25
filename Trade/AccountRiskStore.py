@@ -107,6 +107,16 @@ def _ledger(chan):
     return {"histories": histories, "projections": projections}
 
 
+def _client_roots(chan, histories):
+    """Load original money roots separately, never extend the raw CAS ledger."""
+    if not any(isinstance(attempt["identity"]["order_contract"], dict)
+               and attempt["identity"]["order_contract"].get("schema") == "chan-native-client-order-v1"
+               for history in histories for attempt in history["attempts"]):
+        return []
+    from .NativeOrderTransition import _client_order_roots
+    return _client_order_roots(chan, histories)
+
+
 def _failure(context):
     payload = {"account_context": context, "coverage": "evidence_unavailable", "economics_complete": False, "status": "incomplete",
         "issues": [{"reason": "evidence_unavailable", "severity": "incomplete"}]}
@@ -124,7 +134,13 @@ def reconcile(chan, context, request):
         loaded = {**_sources(db, request), **_ledger(chan)}
         if any(canonical_bytes(loaded[key]["payload"]["account_context"]) != canonical_bytes(context) for key in ("before", "after")):
             _fail()
-        report = build_account_reconciliation(**loaded)
+        roots = _client_roots(chan, loaded["histories"])
+        if roots:
+            from .NativeAccountCheck import _journal_prefix, _verify_complete_histories
+            loaded["client_roots"] = roots
+            loaded["journal_prefix"] = _journal_prefix(db)
+            _verify_complete_histories(db, loaded["histories"], loaded["journal_prefix"])
+        report = build_account_reconciliation(**{key: value for key, value in loaded.items() if key != "journal_prefix"})
         inputs = loaded
     except (CChanException, sqlite3.DatabaseError, ValueError, TypeError, KeyError, AttributeError):
         # Do not propagate arbitrary private exception text or roll back the
@@ -132,7 +148,8 @@ def reconcile(chan, context, request):
         # themselves still raise/roll back, and no order is thereby authorized.
         report = _failure(context)
     payload = {"account_context": context, "source_ids": request, "inputs": inputs, "report": report}
-    document = {"schema": "chan-account-check-v1", "payload": payload, "payload_sha256": _sha(payload)}
+    document = {"schema": "chan-account-check-v2" if inputs is not None and inputs.get("client_roots") else "chan-account-check-v1",
+                "payload": payload, "payload_sha256": _sha(payload)}
     return _publish(db, document)
 
 
@@ -154,12 +171,13 @@ def _publish(db, document):
 def _read(db, row):
     try:
         document = json.loads(row["payload"])
-        if document.get("schema") == "chan-native-account-check-v1":
+        if document.get("schema") in {"chan-native-account-check-v1", "chan-native-account-check-v2"}:
             from .NativeAccountCheck import read_native_check
             return read_native_check(db, row, document)
         payload = document["payload"]
         context, inputs, report = payload["account_context"], payload["inputs"], payload["report"]
-        if (set(document) != {"schema", "payload", "payload_sha256"} or document["schema"] != "chan-account-check-v1"
+        client = document["schema"] == "chan-account-check-v2"
+        if (set(document) != {"schema", "payload", "payload_sha256"} or document["schema"] not in {"chan-account-check-v1", "chan-account-check-v2"}
                 or set(payload) != {"account_context", "source_ids", "inputs", "report"}
                 or canonical_bytes(document).decode() != row["payload"] or _sha(document) != row["check_id"]
                 or _sha(document) != row["payload_sha256"] or _sha(payload) != document["payload_sha256"]
@@ -168,15 +186,25 @@ def _read(db, row):
             _fail()
         _identities(payload["source_ids"])
         if inputs is None:
-            if canonical_bytes(report) != canonical_bytes(_failure(context)):
+            if client or canonical_bytes(report) != canonical_bytes(_failure(context)):
                 _fail()
         else:
+            if set(inputs) != {"before", "after", "wallets", "executions", "histories", "projections"} | ({"client_roots", "journal_prefix"} if client else set()):
+                _fail()
             sources = _sources(db, payload["source_ids"])
             if any(canonical_bytes(sources[key]) != canonical_bytes(inputs[key]) for key in sources):
                 _fail()
             verify_history_prefix(db, inputs["histories"])
+            if client:
+                from .NativeAccountCheck import _verify_complete_histories
+                from .NativeOrderTransition import _stored_client_order_roots
+                _verify_complete_histories(db, inputs["histories"], inputs["journal_prefix"])
+                roots = _stored_client_order_roots(db, inputs["histories"])
+                if not roots or canonical_bytes(roots) != canonical_bytes(inputs["client_roots"]):
+                    _fail()
             if (canonical_bytes(inputs["before"]["payload"]["account_context"]) != canonical_bytes(context)
-                    or canonical_bytes(build_account_reconciliation(**inputs)) != canonical_bytes(report)):
+                    or canonical_bytes(build_account_reconciliation(**{key: value for key, value in inputs.items()
+                                                                       if key != "journal_prefix"})) != canonical_bytes(report)):
                 _fail()
         return document
     except (ValueError, TypeError, KeyError, AttributeError):
