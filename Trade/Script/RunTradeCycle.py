@@ -186,7 +186,14 @@ def run_trade_cycle(config_path, *, report_path, command=None, now_ms=None):
                         except Exception:
                             failure("pre_open_inputs", "opening_inputs_changed_or_unavailable")
                         if result["exit_code"] == 0:
-                            if env.ccxt_conf.get("mode") != "dry_run":
+                            profile = env.get_section("trade").get("native_admission")
+                            # Routing only: the original child/Engine still
+                            # validates full profile, sources and monetary CAS.
+                            native_route = (env.ccxt_conf.get("mode") in {"testnet", "live"}
+                                and env.ccxt_conf.get("exchange") in {"binance", "binanceusdm"}
+                                and env.ccxt_conf.get("default_type") == "swap"
+                                and type(profile) is dict and profile.get("schema") == "chan-native-entry-profile-v1")
+                            if env.ccxt_conf.get("mode") != "dry_run" and not native_route:
                                 failure("account_admission", "native_fresh_admission_not_integrated")
                             else:
                                 step("open", "Trade.Script.MakeOpenTrade")

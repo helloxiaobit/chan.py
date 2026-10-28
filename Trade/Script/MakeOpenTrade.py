@@ -134,9 +134,8 @@ def main():
         expected = {key: os.environ.get("CHANPY_CYCLE_"+key.upper())
                     for key in ("config_sha256", "scope_sha256", "inputs_sha256")}
         guard = COpeningInputs(config, expected=expected, now_ms=utc_now_ms, require_quotes=True)
-        if guard.env.ccxt_conf.get("mode") != "dry_run":
-            raise CChanException("原生账户鲜活准入尚未集成，非 dry-run 新风险继续闭锁", ErrCode.TRADE_UNLOCK_FAIL)
-        notional = guard.env.get_section("trade").get("bench_price", 1000.0)
+        notional = guard.env.get_section("trade").get("bench_price",
+            1000.0 if guard.env.ccxt_conf.get("mode") == "dry_run" else None)
         if type(notional) not in (int, float) or not math.isfinite(notional) or notional <= 0:
             raise CChanException("运行名义金额必须有限且为正", ErrCode.PARA_ERROR)
         chan_db = CChanDB(db_conf=guard.env.db_conf)
@@ -146,6 +145,12 @@ def main():
                 for record in chan_db.get_watching_signals())
             with configured_trade_engine(chan_db, env=guard.env, quota_gen=CBenchPriceQuotaGen(float(notional)),
                     opening_inputs=guard, now_ms=utc_now_ms) as engine:
+                if not engine.dry_run:
+                    if engine.market_type != "swap":
+                        raise CChanException("配置原生开仓仅接入已验证的swap金额路径", ErrCode.TRADE_UNLOCK_FAIL)
+                    # Configuration routing is not admission. Each add_trade
+                    # still owns fresh sources and the original monetary CAS.
+                    engine._native_entry_profile()
                 prices = {}
                 if eligible:
                     max_age = guard.env.get_section("trade").get("quote_max_age_ms")

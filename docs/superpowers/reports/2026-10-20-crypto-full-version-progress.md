@@ -37,7 +37,7 @@
 | C3 | 已完成离线实现与验收 | UTC purge/unknown、三模型身份、write-once 部署、三阶段评分与 SQLite 版本链；非实盘/外部认证 |
 | C4 | 已完成离线实现与验收 | 有界实际样本→三模型→搜索/独立验证→部署→全 trial 重放；93 项组合、608 项全仓离线通过，非经济采用 |
 | C5 | 进行中 | 单位/原生恢复/历史/来源、区间核对与持久冻结、cross/lot paper 已验；Binance已批准F/P条件金额现已贯通原CAS/claim/L2、SDK/HTTP使用点、终态/账户与cold恢复fake联合验收；OKX同等级原生金额路径、其余支持范围与C7外部认证仍待 |
-| C6 | 进行中（仍未完成） | 配置运行壳/失败传播/OS锁、输入/报价、API、软件paper进程级路径、通知脱敏与双版安装已验；Binance显式profile的原生账户/mark/book/金额默认入口已接原执行链并fake联验；信号显式换代、更广E2E、迁移和外部通知送达仍待 |
+| C6 | 进行中（仍未完成） | 配置运行壳/失败传播/OS锁、输入/报价、API、软件paper进程级路径、通知脱敏与双版安装已验；Binance显式profile现已接原Engine及配置CLI/父壳输入时代，双版319项适用fake联验通过；信号显式换代、原生独立进程/更广E2E、迁移和外部通知送达仍待 |
 | C7 | 待前置验收 | 公共行情与有准入后的外部认证；代码发布按阶段进行 |
 
 基线：前一审计在完全相同 `22a5a56`、依赖和环境上执行的所选离线功能集合为 116 passed / 1 skipped / 1 deselected，带一个 XGBoost 弃用警告和 pytest 临时目录清理提示；该证据仅覆盖列明集合，不称全仓或真实交易所验收。行为修改后补跑对应回归。
@@ -1933,3 +1933,25 @@ CPython3.11.15原JUnit实际收集69项：`test_native_monetary_execution.py`为
 终态后的收尾仅更新README、执行计划、A/B规格与本台账四份文档，157源码仍8e5a7bb8；原双版Trade/tests compileall证据适用，不因Git提交而重标为新运行。README依赖的两项既有文档检查按新文档字节串行补验：3.14为2 passed/0warning，CLI0.27s，`chanpy-native-final-docs-py314-614e822a7f9541e88279beedcb6edd6f.xml` SHA `3bf5ead8eae2e7d738b01354a36af2e7fa6a88606a0d64b45c49ef3729ae13a2`；3.11为2 passed/0warning，CLI0.22s，`chanpy-native-final-docs-py311-e3ae41c9595349ea8207c8bdb8c2bc84.xml` SHA `61c514a967d94af7dec9eb888b35d8b271337c504ce0cf27f7f779d80ea8c1cf`，均在`C:\Users\yangj\AppData\Local\Temp\`，自然exit0。文档在两次检查期间字节不变；没有新造行为RED或读取正式V29绩效。
 
 四份证据文档31处本地链接和README新增3个本地目标均存在；工作树diff检查通过，仅保留既有Git LF/CRLF提示。运行时重新只读确认CPython3.11.15/3.14.2、两版CCXT4.5.89、Requests2.34.2/urllib3 2.8.0，未安装/更新依赖。提交前只读核对`origin/full-version`仍为已授权基线`436c011cda223da4f9970cbc1a6d5067dff0b646`；origin精确属于`helloxiaobit/chan.py`，不输出可能的凭据。本执行子链的待交付范围为16生产文件、29测试/fixture与四份文档，无实际配置、规则或冻结研究资产；发布仍以接下来的实际Lore/普通push及远端身份为准，整个Goal不关闭。
+
+### 2026-10-28子链发布与配置CLI继续接线（尚未完成本轮）
+
+上一执行/恢复子链已实际Lore提交并普通push为`3a8dc558324f1ff5f633cc980f1ed24f6b91022b`，远端`refs/heads/full-version`精确一致，发布后工作树干净；非强推、无main合并。完整C5/C6、OKX和C7仍未完成，Goal保持active。
+
+后续逐项审查发现：原Engine已通，但原`RunTradeCycle`和`MakeOpenTrade.main`仍无条件拒绝非dry-run，不能拿库入口当配置壳完成。按既有S4授权和[本轮修改前计划](../plans/2026-10-28-native-configured-cycle.md)只接原Binance完整profile到原CLI/逐单Engine；无新金额假设、hook或实际配置修改。原CLI1 failed→仅接原profile校验后1 passed；新负向进一步真实发现缺bench_price会用旧1000默认发送9.9数量fake订单，以及父壳占位仍阻断。保留该6 passed/2 failed原件，再只使非dry-run金额必显式、父壳识别支持的入口声明；dry-run默认和SafetyPolicy/候选/解锁/kill门禁不变。
+
+3.14当前19项新CLI矩阵passed，四mode/side实际cold SDK→原金额CAS/L2→一次POST、重复不重下；九种缺配置/权限、四种输入时代/quote问题无不当新意图，父壳失败仍全部管理。父壳→原CLI传本次child环境另1项passed，未真实启动独立子进程或重跑外部更新/信号，明确不是完整原生进程级闭环。各轮原件/SHA与精确修改范围见本轮计划；尚无本轮提交/push或双版组合结果。
+
+接下来同源双版10模块预期319项适用回归：新CLI、原cycle/inputs/quotes、paper runtime/workflow/portfolio、notification stage/observation及native current。两个嵌套脚本会改变原OpeningInputs的evaluator身份，不能用157顶层摘要相同掩盖，也不补签旧时代；联合范围/唯一case/status及整个Trade递归源码＋tests顶层摘要另行核实。运行期间继续全部文件冻结，无真实端点、正式研究或门禁变更。候选换代/重新武装仍属未批设计，OKX新金额模型也不由Binance A/P/F隐含批准；先完成本轮已授权接线，不以此缩减原Goal。
+
+### 2026-10-28配置CLI/运行壳子步双版验收
+
+原37612（3.14，20:52:29至21:09:36）自然exit0：319 passed/0failure/error/skip/deselection、4既有合成样本AUC警告，CLI1026.14s、XML1026.032s。原38378（3.11，21:10:25至21:29:18）随后同源同集自然exit0：319 passed、同4条既有AUC警告，CLI1132.12s、XML1132.000s。源码/测试/文档全程冻结，没有并发、重启或观察超时假终态。原件位于`C:\Users\yangj\AppData\Local\Temp\`：`chanpy-native-configured-joint-py314-1360739c872342768eb4e4d14de04d54.xml` SHA `579d656971eb16376ba24785ed20a038e44ef3a7bd7bf80d73aec8446b2cfc2f`；`chanpy-native-configured-joint-py311-6fd4f322f892428a807ef831699b8e67.xml` SHA `79e2b43285c21a3cdf5b242fe148cea8f82fcb4093a3707705ee08decf59111c`。
+
+两份各319唯一case，排序case/status SHA共同`0c499a8f694e28ecf84dc9e56566d8b1237b2c674ceb82a6bfa03bab67349a44`，逐项差异0。Trade递归py＋tests顶层py共175源码前后均`e11ea739a9cd5e98c4bae3aa61a606291c3cc1d5273a239855443e848218353e`，包括MakeOpenTrade/RunTradeCycle，不能与前轮157顶层摘要混称同一口径。20新项/299旧适用项均passed：四mode/side原cold SDK/CAS/一次POST/重复不重下，缺profile/before/budget/candidate/unlock/kill/notional等先拒绝，旧epoch/quote失效、父壳路由/失败管理及父壳生成的真实输入时代交接；其余为原输入/报价/paper/通知/native current完整模块。完整模块清单和SHA见[本轮计划](../plans/2026-10-28-native-configured-cycle.md)。
+
+原CLI常量及非dry-run隐含1000名义金额已由真实RED保护后最小替换；父壳不是第二准入器，调用的仍是原CLI/Engine/profile/source/金额/CAS。主线程审查无阻断此已测子步交付的新增已证实问题；复用原reader/工厂/发送段，不新增依赖、表、hook或金额公式，实际配置、候选/环境/kill和研究/交易门禁不变。双版三改动py文件compileall和diff在相同源码下通过。
+
+只据此支持配置软件接线：新CLI正向用fake live标签，父壳的外部stage传输仍fake，实际open/原SDK在同一进程中运行；尚非独立原生子进程、真实testnet/live、服务器锁额或时延/容量认证。旧输入时代不得因这次脚本身份变化重新封成当前准入；原已知L2管理继续按历史读原证据。候选换代/重新武装、OKX金额、本轮以外更广C5/C6及C7仍未完成，原完整Goal active；本轮Lore/普通push及远端身份随后以Git结果核实。
+
+收尾仅补三份文档；两版既有README文档检查各2 passed/0warning，自然exit0：3.14 CLI0.22s、`chanpy-configured-cli-final-docs-py314-50d9d408cfbc45e2af45d0d3edd48385.xml` SHA `5ccb2aa4041b3a7d23d9a71166ef3f3d0dc9f56bca242b71dcb93261271c49a9`；3.11 CLI0.21s、`chanpy-configured-cli-final-docs-py311-1e6db9c73fd34321a64997be647b6789.xml` SHA `53eb785f2f4d089cdb57c95a6e68f6588d57e99b2bb2aca7e0824005839ee578`。本轮计划/台账27处本地链接和README新目标均存在，diff检查通过；两生产脚本/一新测试的双版compileall适用同一未改源码。待发布范围严格为两生产脚本、一测试文件与README/本计划/台账三文档，非本轮文件和真实配置均不改；实际Git发布另核身份。

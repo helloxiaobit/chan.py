@@ -1138,12 +1138,15 @@ UTF-8 canonical JSON（sort_keys=True、ensure_ascii=False、separators=(",", ":
 已批准的F/P具名客户端模型现已接入原Engine、SQLite/CAS/journal及原SDK执行/恢复链；这不是服务器锁额、原生价格/费用上界或测试网/实盘认证。
 
 - 原guard配置必须显式提供`chan-native-entry-profile-v1`的before引用、账户scope、政策及instrument/capacity/last年龄和观测跨度；没有预算默认值、caller PASS或旧v2/v3降级。实际配置文件未被自动添加或修改。
+- 原`RunTradeCycle`现可把支持的显式Binance profile交给原`MakeOpenTrade`；父壳路由不是准入，CLI先核原完整profile/before，每单仍经过原金额链。非dry-run必须显式提供正有限`trade.bench_price`，不能继承dry-run旧1000默认；报价年龄仍须显式配置，候选/环境/kill及输入时代门禁保持。
 - 原同次来源经过L0→原intent/L1→唯一claim/L2→原SDK。已批准A/B只在本调用临时核原fetch/Session owner、完整L2及旧monotonic窗口，仍委托原SDK唯一发送，不重采、重签或另造订单引擎。
 - 原SDK POST的六项已知累计事实持久于原journal，但不应用成交或释放预留。原GET终态、执行/费用/资金费、pending及完整账户观察仍需共同核对；超时/未知不退created、不重下。已有L2管理不借新资金年龄/candidate许可替代历史账户/单位/SDK核验。
 - one_way/hedged×long/short×LIMIT/MARKET/GTX、非空两币/partial、原查撤和cold混合历史使用底层fake联验。3.11完整109模块为7329 passed/2既有skip；3.14保留原2项旧spy失败，并以整模块70项补验及其余源码未变证明组合对账，7331唯一case/status差异0，不称两版各一次最终树全绿。
 - 真实配置、候选、测试网/实盘和研究门禁均未解除。OKX同等级原生金额路径、任意共享SDK并发、实际时延/容量/舍入和C7外部认证未完成，C5/C6及整个Goal也未因此关闭。
 
 精确范围、原RED/完整JUnit/摘要、警告/排除及阶段交付见[执行计划](docs/superpowers/plans/2026-10-25-native-monetary-claim-execution.md)、[A/B使用点规格](docs/superpowers/specs/2026-10-27-native-sdk-transport-use-point.md)和[验收台账](docs/superpowers/reports/2026-10-20-crypto-full-version-progress.md)。
+
+配置CLI/父壳接线另经双CPython各319项适用组合通过，含20个新边界用例和原paper/input/quote/notification/native current回归，详见[接线计划](docs/superpowers/plans/2026-10-28-native-configured-cycle.md)。新正向是fake live标签；父壳→原CLI交接在同一进程验证、外部stage传输仍fake，不声称独立原生子进程或真实交易所认证。
 
 ## A股与可选件
 
