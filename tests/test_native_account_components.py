@@ -17,6 +17,7 @@ from Trade.db_util import CChanDB
 from Trade.NativeBalanceReservations import collect_native_balance_reservations
 from Trade.NativePendingOrders import collect_native_pending_orders
 from .test_account_reconciliation import interval_case
+from .test_crypto_order_contract import open_legacy_history
 from .test_account_risk_freeze import persist
 from .test_execution_account_binding import observation
 from .test_execution_facts import NativeSources, definition, fill
@@ -70,7 +71,7 @@ def component_case(db, tmp_path, monkeypatch, venue, *, side=True, mode="one_way
         trade.quota_gen = CBenchPriceQuotaGen(60.7)
         trade.exchange.fill, trade.exchange.status = 3, "canceled" if pending_terminal else "open"
         pending_key = db.add_signal(make_signal(code=units[1]["symbol"], is_buy=side))
-        trade.add_trade(db.get_record(pending_key), 100)
+        open_legacy_history(trade, db.get_record(pending_key), 100)
         captured.update(pending_key=pending_key, native=native, clock=clock, at=clock[0])
         clock[0] += 50
         record = db.get_record(pending_key)

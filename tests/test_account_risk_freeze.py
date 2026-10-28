@@ -9,7 +9,7 @@ from Common.ChanException import CChanException
 from CustomBuySellPoint.Decision import canonical_bytes
 from Trade.db_util import CChanDB
 from .test_account_reconciliation import interval_case
-from .test_crypto_order_contract import CODE
+from .test_crypto_order_contract import CODE, open_legacy_history
 from .test_crypto_venue_parameters import venue_engine
 from .test_execution_store import store
 from .test_m6_trade import make_signal
@@ -209,7 +209,7 @@ def test_other_native_account_in_same_database_is_not_netted_or_frozen_with_this
         engine.exchange.account_alias = "different-Futures-account"
         engine.exchange.fill, engine.exchange.status = 3, "closed"
         key = other.add_signal(make_signal(code=CODE, is_buy=False))
-        engine.add_trade(other.get_record(key), 100)
+        open_legacy_history(engine, other.get_record(key), 100)
         check = db.reconcile_account(**params)
         assert check["payload"]["report"]["payload"]["status"] == "matched_observations", check["payload"]["report"]
     finally:
@@ -234,7 +234,7 @@ def test_freeze_after_successful_claim_stops_send_without_rearming_or_retrying_u
     monkeypatch.setattr(db, "claim_order_submission", freeze_after_claim)
     try:
         with pytest.raises(CChanException):
-            trade.add_trade(db.get_record(key), 100)
+            open_legacy_history(trade, db.get_record(key), 100)
         assert db.get_record(key)["open_order_status"] == "submitting"
         assert db.get_record(key)["open_order_id"] is None
         assert db.get_record(key)["open_attempt"] == 1
@@ -253,7 +253,7 @@ def test_freeze_retains_original_account_cancel_and_query_paths(store, tmp_path,
     params = persist(db, inputs)
     trade.exchange.fill, trade.exchange.status = 1, "open"
     key = db.add_signal(make_signal(code=CODE, is_buy=False))
-    result = trade.add_trade(db.get_record(key), 100)
+    result = open_legacy_history(trade, db.get_record(key), 100)
     db.reconcile_account(**{**params, "wallet_ids": []})
     assert trade.cancel_order(CODE, result.order_id) is True
     result = trade.query_order(CODE, result.order_id, client_order_id=result.client_order_id)

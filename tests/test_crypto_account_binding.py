@@ -1,4 +1,7 @@
-"""Account/environment are frozen in the real SQLite intent, not caller labels."""
+"""Legacy fake histories retain account/environment binding and real recovery checks.
+
+Historical v3 setup is not current native new-risk admission.
+"""
 import copy
 import hashlib
 import json
@@ -9,7 +12,7 @@ from Common.ChanException import CChanException
 from CustomBuySellPoint.Decision import canonical_bytes
 from Trade.AccountIdentity import observe_account_context
 from Trade.db_util import CChanDB
-from .test_crypto_order_contract import CODE, open_pre_journal_copy, order_db
+from .test_crypto_order_contract import CODE, open_legacy_history, open_pre_journal_copy, order_db, submit_legacy_history
 from .test_crypto_order_recovery import recovery_engine
 from .test_crypto_venue_parameters import venue_engine
 from .test_m6_trade import make_signal
@@ -33,7 +36,7 @@ def prepared_intent(trade):
 def test_swap_v3_binds_native_account_and_environment_to_append_only_attempt(order_db, tmp_path, venue):
     trade = venue_engine(order_db, tmp_path, venue)
     key = order_db.add_signal(make_signal(code=CODE))
-    trade.add_trade(order_db.get_record(key), 100)
+    open_legacy_history(trade, order_db.get_record(key), 100)
     contract = json.loads(order_db.get_record(key)["open_order_contract"])
     assert contract["schema"] == "chan-ccxt-order-v3"
     assert contract["account_context"] == observe_account_context(trade.exchange, "testnet")
@@ -62,7 +65,7 @@ def test_environment_or_mid_prepare_account_change_does_not_acquire_an_intent(or
         monkeypatch.setattr(trade.exchange, "fetch_position_mode", change)
     key = order_db.add_signal(make_signal(code=CODE))
     with pytest.raises(CChanException):
-        trade.add_trade(order_db.get_record(key), 100)
+        trade.prepare_order(CODE, 0.03, 100, record=order_db.get_record(key))
     assert order_db.get_record(key)["status"] == "signal"
     assert order_db.get_order_history(key)["attempts"] == []
     assert trade.exchange.created == []
@@ -79,7 +82,7 @@ def test_identity_changed_after_intent_cannot_claim_or_submit(order_db, tmp_path
     else:
         trade.exchange.isSandboxModeEnabled = False
     with pytest.raises(CChanException):
-        trade.place_order(CODE, True, quantity, price, client_order_id=client)
+        trade._read_order_contract(CODE, order_db.get_order_intent(client), amount=quantity, price=price, submitting=True)
     assert order_db.get_record(key) == before
     assert order_db.get_order_history(key) == history
     assert trade.exchange.created == []
@@ -98,7 +101,7 @@ def test_account_change_during_submit_keeps_unknown_attempt_without_ack(order_db
 
     monkeypatch.setattr(trade.exchange, "create_order", changed)
     with pytest.raises(CChanException):
-        trade.place_order(CODE, True, quantity, price, client_order_id=client)
+        submit_legacy_history(trade, client)
     record = order_db.get_record(key)
     assert record["open_order_status"] == "submitting" and record["open_order_id"] is None
     assert record["open_filled_qty"] == 0
@@ -111,7 +114,7 @@ def test_account_change_during_submit_keeps_unknown_attempt_without_ack(order_db
 def test_query_cannot_ack_or_apply_a_report_across_account_change(order_db, tmp_path, monkeypatch, venue, when):
     trade = recovery_engine(order_db, tmp_path, venue)
     key = order_db.add_signal(make_signal(code=CODE))
-    order = trade.add_trade(order_db.get_record(key), 100)
+    order = open_legacy_history(trade, order_db.get_record(key), 100)
     before, history = order_db.get_record(key), order_db.get_order_history(key)
     if when == "before_read":
         switch_account(trade.exchange)
@@ -129,7 +132,7 @@ def test_cancel_or_reduce_cannot_target_a_different_account(order_db, tmp_path, 
     trade = venue_engine(order_db, tmp_path, venue)
     trade.exchange.fill, trade.exchange.status = 3, "closed"
     key = order_db.add_signal(make_signal(code=CODE))
-    order = trade.add_trade(order_db.get_record(key), 100)
+    order = open_legacy_history(trade, order_db.get_record(key), 100)
     before, history = order_db.get_record(key), order_db.get_order_history(key)
     switch_account(trade.exchange)
     monkeypatch.setattr(trade.exchange, "cancel_order", lambda *args: pytest.fail("cancel sent to another account"))
@@ -155,7 +158,7 @@ def test_reduce_does_not_freeze_a_new_account_between_original_check_and_prepare
     trade = venue_engine(order_db, tmp_path, venue)
     trade.exchange.fill, trade.exchange.status = 3, "closed"
     key = order_db.add_signal(make_signal(code=CODE))
-    trade.add_trade(order_db.get_record(key), 100)
+    open_legacy_history(trade, order_db.get_record(key), 100)
     before, history = order_db.get_record(key), order_db.get_order_history(key)
     original = trade._execution_settings
 
@@ -176,7 +179,7 @@ def test_legacy_v2_can_be_read_but_does_not_gain_native_account_authority(order_
     trade = venue_engine(order_db, tmp_path, venue)
     trade.exchange.fill, trade.exchange.status = 3, "closed"
     key = order_db.add_signal(make_signal(code=CODE))
-    order = trade.add_trade(order_db.get_record(key), 100)
+    order = open_legacy_history(trade, order_db.get_record(key), 100)
     record = copy.deepcopy(order_db.get_record(key))
     contract = json.loads(record["open_order_contract"])
     contract.pop("account_context", None)
@@ -201,7 +204,7 @@ def test_legacy_v2_can_be_read_but_does_not_gain_native_account_authority(order_
 def test_restart_rechecks_original_context_and_still_allows_proven_management(order_db, tmp_path, venue):
     trade = venue_engine(order_db, tmp_path, venue)
     key = order_db.add_signal(make_signal(code=CODE))
-    order = trade.add_trade(order_db.get_record(key), 100)
+    order = open_legacy_history(trade, order_db.get_record(key), 100)
     history = order_db.get_order_history(key)
     reopened = CChanDB(db_conf={"type": "sqlite", "sqlite_path": str(tmp_path/"orders.db")})
     try:

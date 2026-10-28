@@ -14,6 +14,7 @@ from CustomBuySellPoint.Decision import canonical_bytes
 from Trade.OpenQuotaGen import CBenchPriceQuotaGen
 from Trade.db_util import CChanDB
 from .test_crypto_venue_parameters import venue_engine
+from .test_crypto_order_contract import open_legacy_history
 from .test_execution_store import store
 from .test_m6_trade import make_signal
 from .test_native_admission_interval import explicit_path_environment
@@ -54,7 +55,7 @@ def case(db, tmp_path, monkeypatch, source, *, mode="one_way", side=True, closin
         trade.quota_gen = CBenchPriceQuotaGen(float(Decimal(market["contractSize"])*3*100+Decimal("0.7")))
         trade.exchange.fill, trade.exchange.status = (3, "closed") if closing else (1, "open")
         key = db.add_signal(make_signal(code=market["symbol"], is_buy=side))
-        trade.add_trade(db.get_record(key), 100)
+        open_legacy_history(trade, db.get_record(key), 100)
         clock[0] += 100
         if closing:
             trade.exchange.fill, trade.exchange.status = 1, "open"

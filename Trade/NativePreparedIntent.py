@@ -6,6 +6,9 @@ bindings describe historical facts, not server signatures or capabilities.
 import hashlib
 import json
 import re
+import sys
+import types
+import weakref
 from decimal import Decimal
 from pathlib import Path
 from time import monotonic_ns as _monotonic_ns
@@ -41,6 +44,14 @@ _ROOT = Path(__file__).resolve().parents[1]
 _FILES = ("Trade/NativePreparedIntent.py", "Trade/NativeInstrumentCurrent.py", "Trade/NativeInstrumentEvidence.py",
           "Trade/NativePreparedClient.py", "DataAPI/ccxt.py", "Trade/NativeCapacityEvidence.py", "Trade/NativeAccountLimits.py",
           "Trade/NativeLeverageLimits.py", "Trade/NativeMarginEnvelope.py")
+
+
+class _NativeClaimContext:
+    """Same Engine/owned view and actual L1, never a portable receipt."""
+    __slots__ = ("__weakref__",)
+
+
+_CLAIMS = weakref.WeakKeyDictionary()
 
 
 def _fail():
@@ -81,7 +92,7 @@ def collect_prepared_binance_last_prices(engine, context, *, max_age_ms, max_obs
                 or context not in Prepare._PREPARED):
             _fail()
         entry = Prepare._PREPARED[context]
-        if len(entry) != 3 or entry[0] is not engine:
+        if len(entry) != 4 or entry[0] is not engine:
             _fail()
         chan, client, guard, policy = engine.chan_db, engine.exchange, engine.opening_inputs, engine.safety_policy
         original_clock = guard.now_ms
@@ -166,11 +177,15 @@ def _live(chan, context):
     if type(context) is not Prepare._NativePrepareContext or context not in Prepare._PREPARED:
         _fail()
     entry = Prepare._PREPARED[context]
-    if len(entry) != 4 or entry[0].chan_db is not chan:
+    if len(entry) != 5 or entry[0].chan_db is not chan:
         _fail()
-    binding = json.loads(entry[3])
+    Prepare._assert_native_prepare_owner(chan, context)
+    binding = json.loads(entry[4])
     if binding["schema"] in CURRENT_BINDING_SCHEMAS and Prepare._client_binding(entry[0].exchange) != binding["client_binding_sha256"]:
         _fail()
+    if binding["schema"] == MONETARY_BINDING_SCHEMA:
+        Prepare._assert_execution_sdk(entry[0].exchange, entry[0].mode)
+        Prepare._assert_native_prepare_owner(chan, context)
     return entry[0], binding, entry[2]
 
 
@@ -269,12 +284,21 @@ def _windows(chan, binding, boundary, *, final_check=None):
                 _fail()
         if final_check is not None:
             final_check()
-        tick_end = _monotonic_ns()
-        if type(tick_start) is not int or type(tick_end) is not int or not 0 <= tick_start <= tick_end:
-            _fail()
-        finished = now+(tick_end-tick_start+999_999)//1_000_000
-        Capacity._window(instrument["started_ms"], instrument["finished_ms"], finished, **binding["instrument_policy"])
-        AccountLimits._windows(values, sources, binding["started_ms"], finished)
+        window = sources, values, now, tick_start
+        _check_window_tail(binding, window)
+        return window  # Private original read data, never a ready/permit receipt.
+
+
+def _check_window_tail(binding, window):
+    """Recheck the original pure windows through work/transaction exit."""
+    sources, values, checked, tick_start = window
+    tick_end = _monotonic_ns()
+    if type(tick_start) is not int or type(tick_end) is not int or not 0 <= tick_start <= tick_end:
+        _fail()
+    finished = checked+(tick_end-tick_start+999_999)//1_000_000
+    instrument = binding["instruments"]["payload"]
+    Capacity._window(instrument["started_ms"], instrument["finished_ms"], finished, **binding["instrument_policy"])
+    AccountLimits._windows(values, sources, binding["started_ms"], finished)
 
 
 def validate_stored_preparation(chan, root, attempt):
@@ -379,6 +403,7 @@ def consume_prepared_context(chan, before, updates, boundary, context):
     engine, binding, _ = _live(chan, context)
     Prepare.assert_native_prepare_context_current(engine, context)
     p = binding["identity"]["payload"]
+    risk = float(before.get("risk_multiplier") or 1.0) if binding["schema"] == MONETARY_BINDING_SCHEMA else 1.0
     if (binding["schema"] == MONETARY_BINDING_SCHEMA
             and canonical_bytes(binding["monetary"]["payload"]["candidate"]) != canonical_bytes(_candidate(binding, before["is_buy"]))):
         _fail()
@@ -387,7 +412,7 @@ def consume_prepared_context(chan, before, updates, boundary, context):
             or updates["open_requested_qty"] != p["quantity"]
             or updates["open_order_contract"] != canonical_bytes(_contract(binding)).decode()
             or json.loads(updates["snapshot_before"]) != _snapshot(binding)
-            or updates["strategy_version"] != p["scope"]["strategy"] or updates["risk_multiplier"] != 1.0
+            or updates["strategy_version"] != p["scope"]["strategy"] or updates["risk_multiplier"] != risk
             or updates["model_score_before"] != (None if binding["entry_assessment"] is None else binding["entry_assessment"]["score"])):
         _fail()
     def final_check():
@@ -419,6 +444,16 @@ def assert_native_prepared_intent_current(engine, record_id):
     Requires the original owned SQLite view. No prepare, GET, new observation,
     claim or allocation; returning None cannot release the funding/send gate.
     """
+    _assert_native_prepared_transition_current(engine, record_id, stage="intent")
+
+
+def _assert_native_prepared_transition_current(engine, record_id, *, stage):
+    """One local reader; the original transition determines the exact L1/L2."""
+    return _read_native_prepared_transition_current(engine, record_id, stage=stage)[0]
+
+
+def _read_native_prepared_transition_current(engine, record_id, *, stage):
+    """Same full reader, retaining only its internal pure window data."""
     try:
         from . import NativeOrderTransition as Transition
         from . import NativeInstrumentCurrent as Instrument
@@ -426,7 +461,8 @@ def assert_native_prepared_intent_current(engine, record_id):
         from .CCXTTradeEngine import CCCXTTradeEngine
         from .Script.OpeningInputs import COpeningInputs
         from .SafetyPolicy import TradingSafetyPolicy
-        if (type(engine) is not CCCXTTradeEngine or type(record_id) is not int or record_id <= 0
+        if (stage not in {"intent", "claim"}
+                or type(engine) is not CCCXTTradeEngine or type(record_id) is not int or record_id <= 0
                 or type(engine.opening_inputs) is not COpeningInputs or type(engine.safety_policy) is not TradingSafetyPolicy
                 or engine.exchange is None):
             _fail()
@@ -441,12 +477,14 @@ def assert_native_prepared_intent_current(engine, record_id):
                 _fail()
 
         document = Transition._read(chan, chan.get_record(record_id))
-        if document["schema"] != Transition.PREPARED_DOCUMENT_SCHEMA or document["payload"]["stage"] != "intent":
+        if document["schema"] != Transition.PREPARED_DOCUMENT_SCHEMA or document["payload"]["stage"] != stage:
             _fail()
         root, after_sha = document["payload"]["root"], document["payload"]["after_record_sha256"]
         binding = root["preparation"]
         p, instrument = binding["identity"]["payload"], binding["instruments"]["payload"]
-        if (binding["schema"] not in CURRENT_BINDING_SCHEMAS or binding["implementation_sha256"] != _binding_implementation(binding) or p["implementation_sha256"] != Prepare._implementation()
+        if (binding["schema"] not in CURRENT_BINDING_SCHEMAS
+                or (stage == "claim" and binding["schema"] != MONETARY_BINDING_SCHEMA)
+                or binding["implementation_sha256"] != _binding_implementation(binding) or p["implementation_sha256"] != Prepare._implementation()
                 or exchange.id != instrument["exchange_id"]):
             _fail()
         owners()
@@ -462,7 +500,8 @@ def assert_native_prepared_intent_current(engine, record_id):
             runtime = Prepare._selected_runtime(engine, guard, policy)
             owners()
             observed, actual = Prepare._local_prepare_view(engine, guard, policy, chan, database, table,
-                record_id, p["request"]["price"], runtime, owners, persisted_record_sha256=after_sha)
+                record_id, p["request"]["price"], runtime, owners, persisted_record_sha256=after_sha,
+                persisted_order_status="created" if stage == "intent" else "submitting")
             # Only the independently verified original event supplies this hash.
             # Every current column is checked, not excluded as an "own" delta.
             expected = {key: p[key] for key in observed}
@@ -490,6 +529,9 @@ def assert_native_prepared_intent_current(engine, record_id):
             owners()
             if Prepare._client_binding(exchange) != original_client:
                 _fail()
+            if binding["schema"] == MONETARY_BINDING_SCHEMA:
+                Prepare._assert_execution_sdk(exchange, engine.mode)
+                owners()
             cache_before = cache
         for step in range(2):
             check_local()
@@ -502,9 +544,411 @@ def assert_native_prepared_intent_current(engine, record_id):
             Transition._current(chan, document)
             check_local()
             owners()
-        _windows(chan, binding, root["boundary"], final_check=final_check)
+            Transition._current(chan, document)
+            owners()
+        window = _windows(chan, binding, root["boundary"], final_check=final_check)
         owners()
+        return document, window
     except Exception:
+        _fail()
+
+
+def assert_native_prepared_claim_before_http(engine, record_id):
+    """Original complete assertion; success remains None, never a permit."""
+    _read_native_prepared_claim_before_http(engine, record_id)
+
+
+def _assert_native_fetch_policy(exchange):
+    """SDK fetch-source identity only; no cash, age or trading permission."""
+    from inspect import getattr_static
+
+    for name in ("proxyUrlCallback", "proxy_url_callback", "httpProxyCallback", "http_proxy_callback",
+                 "httpsProxyCallback", "https_proxy_callback", "socksProxyCallback", "socks_proxy_callback", "proxy"):
+        if getattr_static(exchange, name, None) is not None:
+            _fail()  # Do not execute an unproven SDK callback/descriptor to qualify it.
+
+
+def _assert_native_adapter_retry_policy(exchange):
+    """Necessary original POST-adapter configuration, never a send permit."""
+    from collections import OrderedDict
+    from requests import Session, sessions
+    from requests.adapters import HTTPAdapter
+    from urllib3.util.retry import Retry
+
+    session = exchange.session
+    if (type(session) is not Session or type(session.adapters) is not OrderedDict
+            or not session.adapters or any(type(prefix) is not str for prefix in session.adapters)):
+        _fail()
+    descriptor = vars(Session).get("get_adapter")
+    if type(descriptor) is not types.FunctionType:
+        _fail()
+    method = session.get_adapter
+    if type(method) is not types.MethodType or method.__self__ is not session or method.__func__ is not descriptor:
+        _fail()
+    Prepare._function_identity("requests.sessions", "Session.get_adapter", descriptor, {}, path=Path(sessions.__file__).resolve())
+    base = exchange.urls["api"]["fapiPrivate"]
+    if type(base) is not str:
+        _fail()
+    adapter = method(base.rstrip("/")+"/order")
+    if type(adapter) is not HTTPAdapter:
+        _fail()
+    retry = vars(adapter).get("max_retries")
+    if type(retry) is not Retry or type(vars(retry).get("total")) is not int or vars(retry)["total"] != 0:
+        _fail()
+
+
+def _read_native_prepared_claim_before_http(engine, record_id):
+    """Original L2/profile/use-time checks; no claim, send or permission token.
+
+    Native I/O is outside every writer lock. Existing source clocks/budgets
+    are not renewed, and failures cannot recreate or release a claimed order.
+    Private original read data stays in this invocation, never caller JSON.
+    """
+    source_started, account, request = False, None, None
+    try:
+        from .CCXTTradeEngine import CCCXTTradeEngine
+        from .Script.OpeningInputs import COpeningInputs
+        from .SafetyPolicy import TradingSafetyPolicy
+        if (type(engine) is not CCCXTTradeEngine or type(record_id) is not int or record_id <= 0
+                or type(engine.opening_inputs) is not COpeningInputs or type(engine.safety_policy) is not TradingSafetyPolicy
+                or engine.dry_run is not False or engine.market_type != "swap" or engine.exchange is None):
+            _fail()
+        chan, exchange, guard, policy = engine.chan_db, engine.exchange, engine.opening_inputs, engine.safety_policy
+        from requests import Session
+        session = exchange.session
+        if type(session) is not Session or type(session.request) not in {types.FunctionType, types.MethodType}:
+            _fail()
+        delegate, expected_transport = session.request, [session.request]
+        database = Boundary._database(chan)
+        connection, table, clock, mode = database.conn, chan.table, guard.now_ms, engine.mode
+        configuration, client_binding = canonical_bytes(engine.ccxt_conf), Prepare._client_binding(exchange)
+        runtime = None
+
+        def database_owner(*, owned=False):
+            Boundary._same_database(chan, database, connection, table, owned=owned)
+            if engine.chan_db is not chan:
+                _fail()
+
+        def owners(*, owned=False):
+            database_owner(owned=owned)
+            if (engine.exchange is not exchange or engine.opening_inputs is not guard
+                    or exchange.session is not session or session.request != expected_transport[0]
+                    or engine.safety_policy is not policy or guard.now_ms is not clock or engine.mode != mode
+                    or engine.dry_run is not False or engine.market_type != "swap"
+                    or canonical_bytes(engine.ccxt_conf) != configuration or Prepare._client_binding(exchange) != client_binding):
+                _fail()
+            observed_runtime = Prepare._selected_runtime(engine, guard, policy)
+            if runtime is not None and canonical_bytes(observed_runtime) != canonical_bytes(runtime):
+                _fail()
+            Prepare._assert_execution_sdk(exchange, mode)
+            _assert_native_adapter_retry_policy(exchange)
+
+        def source_failure():
+            database_owner()
+            with database.transaction():
+                database_owner(owned=True)
+                if not risk_state(database, account)["frozen"]:
+                    from .NativeAccountCheck import _publish_unavailable
+                    _publish_unavailable(database, account, request)
+                database_owner(owned=True)
+
+        owners()
+        with database.transaction():
+            owners(owned=True)
+            document = _assert_native_prepared_transition_current(engine, record_id, stage="claim")
+            owners(owned=True)
+        owners()
+        binding = document["payload"]["root"]["preparation"]
+        if binding["schema"] != MONETARY_BINDING_SCHEMA:
+            _fail()
+        runtime = binding["identity"]["payload"]["runtime"]
+        contract = _contract(binding)
+        account, request = contract["account_context"], binding["components"]["payload"]["source_ids"]
+        if client_binding != binding["client_binding_sha256"]:
+            _fail()
+        owners()
+        source_started = True
+        engine._assert_account_context(contract)
+        owners()
+        observation = engine._observe_account(contract["market"]["symbol"], contract["execution"], reduce_only=False,
+                                              _assert_current=owners)
+        owners()
+        if canonical_bytes(observation) != canonical_bytes(contract["account_observation"]):
+            _fail()
+        with database.transaction():
+            owners(owned=True)
+            current, window = _read_native_prepared_transition_current(engine, record_id, stage="claim")
+            owners(owned=True)
+            if canonical_bytes(current) != canonical_bytes(document):
+                _fail()
+            record = chan.get_record(record_id)
+            owners(owned=True)
+            if _sha(record) != document["payload"]["after_record_sha256"]:
+                _fail()
+            client_id = record["open_client_order_id"]
+        owners()
+        Prepare._assert_execution_sdk(exchange, mode)
+        owners()
+        if Prepare._client_binding(exchange) != client_binding:
+            _fail()
+        owners()
+        # Include final code/SDK checks and the original transaction exit in
+        # use time, without another caller/business-clock callback afterward.
+        _check_window_tail(binding, window)
+        return document, binding, window, owners, source_failure, (session, delegate, expected_transport, client_id)
+    except Exception:
+        if source_started and account is not None:
+            try:
+                source_failure()
+            except Exception:
+                _fail()
+        _fail()
+
+
+def _native_http_fetch_delegate(exchange, bridge):
+    """Read only this suspended original invocation, not wrapper metadata/proof.
+
+    The caller still fresh-checks the returned bound SDK method against its
+    installed descriptor. No registry, caller context or permission is used.
+    """
+    from threading import get_ident
+
+    modules = {}
+    qualname = "_native_prepared_claim_http_use.<locals>.use.<locals>.fetch_guard"
+    Prepare._function_identity(__name__, qualname, bridge, modules)
+    if bridge.__dict__ or not bridge.__closure__:
+        _fail()
+    cells = {name: cell.cell_contents for name, cell in zip(bridge.__code__.co_freevars, bridge.__closure__)}
+    frame = cells.get("call_frame")
+    if type(frame) is not types.FrameType or frame.f_globals is not globals():
+        _fail()
+    compiled = modules[__name__][1]
+    expected = next(code for code in Prepare._codes(compiled)
+                    if code.co_qualname == "_native_prepared_claim_http_use.<locals>.use")
+    local = frame.f_locals
+    if (frame.f_code != expected or local.get("call_frame") is not frame
+            or local.get("fetch_guard") is not bridge or local.get("installed_fetch") is not bridge or exchange.fetch is not bridge
+            or local.get("exchange") is not exchange or local.get("active") is not True
+            or type(local.get("thread_id")) is not int or local["thread_id"] != get_ident()
+            or local.get("engine") is None or local["engine"].exchange is not exchange
+            or any(name not in local or local[name] is not value for name, value in cells.items())):
+        _fail()
+    for name, qualname in (
+        ("current_claim", "_native_prepared_claim_http_use.<locals>.use.<locals>.current_claim"),
+        ("owners", "_read_native_prepared_claim_before_http.<locals>.owners"),
+        ("source_failure", "_read_native_prepared_claim_before_http.<locals>.source_failure"),
+    ):
+        Prepare._function_identity(__name__, qualname, local[name], modules)
+    checker = local["current_claim"]
+    if any(local.get(name) is not cell.cell_contents for name, cell in zip(checker.__code__.co_freevars, checker.__closure__)):
+        _fail()
+    owner = local["owners"]
+    captured = {name: cell.cell_contents for name, cell in zip(owner.__code__.co_freevars, owner.__closure__)}
+    if any(captured[name] is not local[field] for name, field in (
+        ("engine", "engine"), ("exchange", "exchange"), ("session", "session"), ("expected_transport", "expected"),
+    )):
+        _fail()
+    database_owner = captured["database_owner"]
+    Prepare._function_identity(__name__, "_read_native_prepared_claim_before_http.<locals>.database_owner", database_owner, modules)
+    database_cells = {name: cell.cell_contents for name, cell in zip(database_owner.__code__.co_freevars, database_owner.__closure__)}
+    engine, database = local["engine"], local["database"]
+    if (database_cells["engine"] is not engine or database_cells["chan"] is not engine.chan_db
+            or database_cells["database"] is not database or database_cells["connection"] is not database.conn
+            or database_cells["table"] != engine.chan_db.table
+            or captured["guard"] is not engine.opening_inputs or captured["policy"] is not engine.safety_policy
+            or captured["clock"] is not engine.opening_inputs.now_ms
+            or captured["mode"] != engine.mode or captured["configuration"] != canonical_bytes(engine.ccxt_conf)
+            or captured["client_binding"] != local["binding"]["client_binding_sha256"]
+            or canonical_bytes(captured["runtime"]) != canonical_bytes(local["binding"]["identity"]["payload"]["runtime"])):
+        _fail()
+    failure = local["source_failure"]
+    failure_cells = {name: cell.cell_contents for name, cell in zip(failure.__code__.co_freevars, failure.__closure__)}
+    if failure_cells["database_owner"] is not database_owner or failure_cells["database"] is not database:
+        _fail()
+    return local["fetch_delegate"]
+
+
+def _native_prepared_claim_http_use(engine, record_id):
+    """One original SDK invocation, old L2/window, original request delegate."""
+    from contextlib import contextmanager
+    from threading import get_ident
+    from urllib.parse import parse_qs
+
+    @contextmanager
+    def use():
+        from .CCXTTradeEngine import CCCXTTradeEngine
+        if type(engine) is not CCCXTTradeEngine or engine.exchange is None:
+            _fail()
+        if getattr(engine.exchange.session.request, "_chan_native_http_scope", False):
+            _fail()  # Negative reentry marker, never permission or caller proof.
+        document, binding, window, owners, source_failure, transport = _read_native_prepared_claim_before_http(engine, record_id)
+        session, delegate, expected, client_id = transport
+        exchange, database = engine.exchange, engine.chan_db.db
+        fetch_delegate = exchange.fetch
+        fetch_override, had_fetch_override = exchange.__dict__.get("fetch"), "fetch" in exchange.__dict__
+        original_override = session.__dict__.get("request")
+        had_override = "request" in session.__dict__
+        thread_id, active, used, fetch_used, completed = get_ident(), True, False, False, False
+        call_frame = sys._getframe()
+        expected_url = exchange.urls["api"]["fapiPrivate"].rstrip("/")+"/order"
+
+        def current_claim():
+            owners()
+            with database.transaction():
+                owners(owned=True)
+                current = _assert_native_prepared_transition_current(engine, record_id, stage="claim")
+                owners(owned=True)
+                if canonical_bytes(current) != canonical_bytes(document):
+                    _fail()
+            owners()
+
+        def fetch_guard(url, method="GET", headers=None, body=None):
+            nonlocal fetch_used
+            if method != "POST":
+                return fetch_delegate(url, method, headers, body)
+            if call_frame is None or not active or fetch_used or get_ident() != thread_id:
+                _fail()  # A stale/reused/foreign-thread callback owns no failure writer.
+            Prepare._function_identity(__name__, "_native_http_fetch_delegate", _native_http_fetch_delegate, {})
+            _native_http_fetch_delegate(exchange, fetch_guard)
+            try:
+                if exchange.fetch is not fetch_guard or url != expected_url:
+                    _fail()
+                # owners checks the actual bridge/closure AND all original SDK
+                # descriptors, including the captured unwrapped bound fetch.
+                current_claim()
+            except Exception:
+                source_failure()
+                _fail()
+            fetch_used = True
+            return fetch_delegate(url, method, headers, body)
+
+        def guarded(method, url, **kwargs):
+            nonlocal used
+            if method != "POST":
+                return delegate(method, url, **kwargs)
+            body = kwargs.get("data", b"")
+            if type(body) is bytes:
+                body = body.decode("utf-8")
+            fields = parse_qs(body, keep_blank_values=True, strict_parsing=True)
+            own_order = fields.get("newClientOrderId") == [client_id]
+            if get_ident() != thread_id:
+                if own_order:
+                    _fail()
+                return delegate(method, url, **kwargs)  # No new budget on other management calls.
+            Prepare._function_identity(__name__, "_native_http_fetch_delegate", _native_http_fetch_delegate, {})
+            _native_http_fetch_delegate(exchange, fetch_guard)
+            try:
+                if not active or used or not own_order or url != expected_url or kwargs.get("verify") is not True:
+                    _fail()
+                kwargs["allow_redirects"] = False  # One guarded POST must not spawn an unchecked send below Requests.
+                current_claim()
+                _check_window_tail(binding, window)  # Keep the PRE-SDK anchor, including SDK wait/work.
+            except Exception:
+                source_failure()
+                _fail()
+            used = True  # Unknown transport outcome still consumes this one invocation.
+            return delegate(method, url, **kwargs)
+
+        guarded._chan_native_http_scope = True
+        installed_fetch = fetch_guard  # Original fast local, not a rebindable bridge closure cell.
+        try:
+            session.request, expected[0] = guarded, guarded
+            exchange.fetch = fetch_guard
+            yield None
+            completed = True
+        finally:
+            active = False
+            changed = False
+            if exchange.fetch is not installed_fetch:
+                changed = True
+            elif had_fetch_override:
+                exchange.fetch = fetch_override
+            else:
+                del exchange.fetch
+            if session.request is not guarded:
+                changed = True  # Restore the other hook, never an external replacement.
+            elif had_override:
+                session.request = original_override
+            else:
+                del session.request
+            expected[0] = delegate
+            call_frame = None
+            if changed:
+                _fail()
+            Prepare._function_identity(__name__, "_read_native_prepared_claim_before_http.<locals>.owners", owners, {})
+            owners()
+            if completed and (not used or not fetch_used):
+                _fail()
+    return use()
+
+
+def _capture_native_claim_context(engine, record_id):
+    """Capture real current L1 under the original lock, without collection/send."""
+    try:
+        from . import NativeOrderTransition as Transition
+        document = _assert_native_prepared_transition_current(engine, record_id, stage="intent")
+        if document["payload"]["root"]["preparation"]["schema"] != MONETARY_BINDING_SCHEMA:
+            _fail()  # Older diagnostic bindings never acquire monetary execution.
+        chan, exchange, guard, policy = engine.chan_db, engine.exchange, engine.opening_inputs, engine.safety_policy
+        database = Transition._owned(chan)
+        connection, table, clock = database.conn, chan.table, guard.now_ms
+        frozen = canonical_bytes(document)
+
+        def owners(*, owned=True):
+            Boundary._same_database(chan, database, connection, table,
+                                    owned=connection.in_transaction if owned is None else owned)
+            if (engine.chan_db is not chan or engine.exchange is not exchange or engine.opening_inputs is not guard
+                    or engine.safety_policy is not policy or guard.now_ms is not clock):
+                _fail()
+
+        def check(stage):
+            owners()
+            actual = _assert_native_prepared_transition_current(engine, record_id, stage=stage)
+            owners()
+            if stage == "intent":
+                if canonical_bytes(actual) != frozen:
+                    _fail()
+            elif (canonical_bytes(actual["payload"]["root"]) != canonical_bytes(document["payload"]["root"])
+                    or actual["payload"]["previous_sha256"] != document["payload_sha256"]):
+                _fail()
+            return actual
+
+        owners()
+        context = _NativeClaimContext()
+        _CLAIMS[context] = (engine, owners, check)
+        return context
+    except Exception:
+        _fail()
+
+
+def _assert_native_claim_owner(chan, context):
+    """No SQL: reject a changed owner before the original writer opens a txn."""
+    if type(context) is not _NativeClaimContext or context not in _CLAIMS:
+        _fail()
+    engine, owners, _ = _CLAIMS[context]
+    if engine.chan_db is not chan:
+        _fail()
+    owners(owned=None)
+
+
+def _claim_live(chan, context, *, stage):
+    _assert_native_claim_owner(chan, context)
+    _, _, check = _CLAIMS[context]
+    return check(stage)
+
+
+def consume_prepared_claim_context(chan, before, context, document):
+    """Original writer verifies its actual L1, not caller-provided identity."""
+    current = _claim_live(chan, context, stage="intent")
+    if (canonical_bytes(current) != canonical_bytes(document)
+            or _sha(before) != current["payload"]["after_record_sha256"]):
+        _fail()
+
+
+def finish_prepared_claim_context(chan, context, document):
+    """After the original single claim event, validate exact L2 and its tail."""
+    current = _claim_live(chan, context, stage="claim")
+    if canonical_bytes(current) != canonical_bytes(document):
         _fail()
 
 
@@ -562,6 +1006,12 @@ def _acquire_prepared_diagnostic_intent(engine, record_id, amount, price, *, bef
                 _fail()
             for value in monetary_policy.values():
                 _budget(value)
+            Prepare._assert_execution_sdk(engine.exchange, engine.mode)
+            Prepare._function_identity(__name__, "_assert_native_adapter_retry_policy", _assert_native_adapter_retry_policy, {})
+            _assert_native_adapter_retry_policy(engine.exchange)
+            retries, _ = engine.exchange.handle_option_integer_and_params({}, "order", "maxRetriesOnFailure", 0)
+            if type(retries) is not int or retries != 0:
+                _fail()  # An accepted but unknown POST must never be retried by the SDK.
         policy_value = read_native_component_policy(policy)
         venue_pattern = r"[.A-Za-z0-9_:/-]{1,36}" if engine.ccxt_conf.get("exchange") in {"binance", "binanceusdm"} else r"[A-Za-z0-9]{1,32}"
         if (type(client_order_id) is not str or re.fullmatch(venue_pattern, client_order_id) is None
@@ -646,6 +1096,7 @@ def _acquire_prepared_diagnostic_intent(engine, record_id, amount, price, *, bef
         Prepare._PREPARED[context] = (*Prepare._PREPARED[context], canonical_bytes(binding))
         return chan.acquire_open_intent(record_id, requested_qty=identity["payload"]["quantity"], client_order_id=client_order_id,
             position_side=identity["payload"]["order_contract"]["execution"]["position_side"], strategy_version=identity["payload"]["scope"]["strategy"],
+            risk_multiplier=float(signal.get("risk_multiplier") or 1.0) if monetary_policy is not None else 1.0,
             score_before=None if entry_assessment is None else entry_assessment["score"], snapshot=_snapshot(binding),
             order_contract=_contract(binding), native_boundary=boundary, native_preparation=context)
     except Exception:

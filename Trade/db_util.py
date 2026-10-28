@@ -170,20 +170,40 @@ class CChanDB:
 
     # ===== 可恢复订单状态机 =====
     def _order_write(self, record_id, prefix, kind, sql, args, *, native_boundary=None, native_updates=None, native_preparation=None):
+        database, table, db_type = self.db, self.table, self.db_type
+        connection = database.conn if db_type == "sqlite" else None
+        def owner():
+            if (self.db is not database or self.table != table or self.db_type != db_type
+                    or (db_type == "sqlite" and database.conn is not connection)):
+                raise CChanException("原订单writer的数据库owner已变", ErrCode.TRADE_UNLOCK_FAIL)
+            if prefix == "open" and native_preparation is not None:
+                if kind == "claim":
+                    from .NativePreparedIntent import _assert_native_claim_owner
+                    _assert_native_claim_owner(self, native_preparation)
+                elif kind == "intent":
+                    from .NativePreparation import _assert_native_prepare_owner
+                    _assert_native_prepare_owner(self, native_preparation)
+        owner()
         if self.db_type != "sqlite":
             return self.db.execute(sql, args)  # Legacy only; no crypto migration certification.
         from .OrderAudit import read_history, record_transition
         with self.db.transaction():
+            owner()
             before = self.get_record(record_id)
+            owner()
             history = read_history(self.db, self.table, before)
+            owner()
             transition = None
             if prefix == "open" and kind in {"intent", "claim"}:
                 from .NativeOrderTransition import prepare_transition
                 preparation = {} if native_preparation is None else {"prepared_context": native_preparation}
                 transition = prepare_transition(self, before, kind, native_updates, native_boundary, history=history, **preparation)
+            owner()
             changed = self.db.execute(sql, args)
+            owner()
             if changed == 1:
                 after = self.get_record(record_id)
+                owner()
                 if prefix == "open" and kind in {"intent", "claim"} and after.get("open_order_contract") is not None:
                     from .AccountRiskStore import assert_new_risk_allowed
                     contract = json.loads(after["open_order_contract"])
@@ -196,6 +216,7 @@ class CChanDB:
                     record_transition(self.db, self.table, before, after, prefix, kind,
                                       native_boundary_sha256=transition["binding_sha256"], native_delta=transition["native_delta"])
                     finish_transition(self, before, after, transition)
+                owner()
         return changed
 
     def get_order_history(self, record_id):
@@ -462,16 +483,22 @@ class CChanDB:
         if phase not in {"open", "close"} or not isinstance(order_id, str) or not order_id.strip():
             raise CChanException("ACK 阶段/交易所订单号无效", ErrCode.LIST_ORDER_FAIL)
         prefix = "open" if phase == "open" else "cover"
+        database, table, db_type = self.db, self.table, self.db_type
+        connection = database.conn if db_type == "sqlite" else None
         record = self.get_record(record_id)
         self._fill_identity(record, prefix, client_order_id, order_id, expected_attempt)
         observed_client = record.get(f"{prefix}_client_order_id") or ""
         observed_attempt = record.get(f"{prefix}_attempt") or 0
         states = "('submitted', 'partially_filled')" if phase == "open" else "('closing')"
+        stamp = now_str()
+        if (self.db is not database or self.table != table or self.db_type != db_type
+                or (db_type == "sqlite" and database.conn is not connection)):
+            raise CChanException("原ACK的数据库owner已变", ErrCode.TRADE_UNLOCK_FAIL)
         changed = self._order_write(record_id, prefix, "ack",
             f"UPDATE {self.table} SET {prefix}_order_id=?, order_last_update=? WHERE id=? "
             f"AND status IN {states} AND {prefix}_order_status='submitting' AND {prefix}_order_id IS NULL "
             f"AND COALESCE({prefix}_client_order_id, '')=? AND COALESCE({prefix}_attempt, 0)=?",
-            (order_id, now_str(), record_id, observed_client, observed_attempt),
+            (order_id, stamp, record_id, observed_client, observed_attempt),
         )
         if changed != 1:
             fresh = self.get_record(record_id)
@@ -512,7 +539,12 @@ class CChanDB:
                    (("open", "open_order_id"), ("close", "cover_order_id")) if record.get(field) == order_id]
         return matches[0] if len(matches) == 1 else None
 
-    def claim_order_submission(self, record_id: int, phase: str) -> bool:
+    def claim_order_submission(self, record_id: int, phase: str, *, native_claim=None) -> bool:
+        if native_claim is not None and (phase != "open" or self.db_type != "sqlite"):
+            raise CChanException("原生 claim 活上下文不适用于该阶段/数据库", ErrCode.TRADE_UNLOCK_FAIL)
+        if native_claim is not None:
+            from .NativePreparedIntent import _assert_native_claim_owner
+            _assert_native_claim_owner(self, native_claim)
         if phase == "open":
             updated_at = now_str()
             changed = self._order_write(record_id, "open", "claim",
@@ -521,6 +553,7 @@ class CChanDB:
                 "AND status IN ('submitted', 'partially_filled') "
                 "AND open_order_status='created' AND open_order_id IS NULL",
                 (updated_at, record_id), native_updates={"open_order_status": "submitting", "order_last_update": updated_at},
+                native_preparation=native_claim,
             )
         elif phase == "close":
             changed = self._order_write(record_id, "cover", "claim",

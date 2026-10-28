@@ -955,7 +955,7 @@ SQLite 检查与插入共用原事务，已有冻结 bytes 必须完全相同才
 
 管理 CLI 遇 unresolved/输入问题返回非零并释放 DB/store；确认终态的部分平仓撤单可继续减少剩余量，
 未知/提交中的旧请求不能被重下。模型损坏阻断新开仓，但不要求原模型可读才能查询、撤销或减少原 paper 仓位。
-原生非 dry-run 新风险仍然关闭。此 profile 只替换交易/报价路径，`RunTradeCycle` 的 OHLCV 更新阶段仍会调用
+此软件 paper profile 不提供原生非 dry-run 新风险准入；独立的Binance条件金额软件路径见下方C5/C6补充。此 profile 只替换交易/报价路径，`RunTradeCycle` 的 OHLCV 更新阶段仍会调用
 配置的更新器；完全无网络演练请用前面的 `PaperRehearsal`，不能把 profile 当作全局断网开关。
 本轮默认整轮测试只 fake 公共更新传输，其余真实模型、SQLite、CLI 和新进程均实际执行。
 Binance/OKX 的默认软件流程验证范围见下；它不是任何测试网/实盘认证。容量、外部通知送达、迁移及 C5–C7 其余项仍待。
@@ -1132,6 +1132,18 @@ UTF-8 canonical JSON（sort_keys=True、ensure_ascii=False、separators=(",", ":
 
 本次改动在现有模型绑定的 Chan/Common 代码范围内，旧模型/部署清单会被实际 reader 判为代码漂移；
 须由新样本重生成模型并重新发布，不能修改旧契约摘要续用。C6 其余验收和 C7 外部认证仍未完成。
+
+### C5/C6 Binance条件金额原执行链（fake离线验收，2026-10-28）
+
+已批准的F/P具名客户端模型现已接入原Engine、SQLite/CAS/journal及原SDK执行/恢复链；这不是服务器锁额、原生价格/费用上界或测试网/实盘认证。
+
+- 原guard配置必须显式提供`chan-native-entry-profile-v1`的before引用、账户scope、政策及instrument/capacity/last年龄和观测跨度；没有预算默认值、caller PASS或旧v2/v3降级。实际配置文件未被自动添加或修改。
+- 原同次来源经过L0→原intent/L1→唯一claim/L2→原SDK。已批准A/B只在本调用临时核原fetch/Session owner、完整L2及旧monotonic窗口，仍委托原SDK唯一发送，不重采、重签或另造订单引擎。
+- 原SDK POST的六项已知累计事实持久于原journal，但不应用成交或释放预留。原GET终态、执行/费用/资金费、pending及完整账户观察仍需共同核对；超时/未知不退created、不重下。已有L2管理不借新资金年龄/candidate许可替代历史账户/单位/SDK核验。
+- one_way/hedged×long/short×LIMIT/MARKET/GTX、非空两币/partial、原查撤和cold混合历史使用底层fake联验。3.11完整109模块为7329 passed/2既有skip；3.14保留原2项旧spy失败，并以整模块70项补验及其余源码未变证明组合对账，7331唯一case/status差异0，不称两版各一次最终树全绿。
+- 真实配置、候选、测试网/实盘和研究门禁均未解除。OKX同等级原生金额路径、任意共享SDK并发、实际时延/容量/舍入和C7外部认证未完成，C5/C6及整个Goal也未因此关闭。
+
+精确范围、原RED/完整JUnit/摘要、警告/排除及阶段交付见[执行计划](docs/superpowers/plans/2026-10-25-native-monetary-claim-execution.md)、[A/B使用点规格](docs/superpowers/specs/2026-10-27-native-sdk-transport-use-point.md)和[验收台账](docs/superpowers/reports/2026-10-20-crypto-full-version-progress.md)。
 
 ## A股与可选件
 

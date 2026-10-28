@@ -194,27 +194,30 @@ class CSqliteDB:
     @contextmanager
     def transaction(self):
         """Publish related writes together; nested calls own only a savepoint."""
+        connection = self.conn
         depth = self._transaction_depth
         savepoint = f"chanpy_sp_{depth}"
         if depth:
-            self.conn.execute(f"SAVEPOINT {savepoint}")
+            connection.execute(f"SAVEPOINT {savepoint}")
         else:
-            if self.conn.in_transaction:
+            if connection.in_transaction:
                 raise RuntimeError("Cannot adopt an unowned SQLite transaction")
-            self.conn.execute("BEGIN IMMEDIATE")
+            connection.execute("BEGIN IMMEDIATE")
         self._transaction_depth += 1
         try:
             yield
+            if self.conn is not connection:
+                raise RuntimeError("Cannot commit a replaced SQLite connection")
             if depth:
-                self.conn.execute(f"RELEASE SAVEPOINT {savepoint}")
+                connection.execute(f"RELEASE SAVEPOINT {savepoint}")
             else:
-                self.conn.commit()
+                connection.commit()
         except BaseException:
             if depth:
-                self.conn.execute(f"ROLLBACK TO SAVEPOINT {savepoint}")
-                self.conn.execute(f"RELEASE SAVEPOINT {savepoint}")
+                connection.execute(f"ROLLBACK TO SAVEPOINT {savepoint}")
+                connection.execute(f"RELEASE SAVEPOINT {savepoint}")
             else:
-                self.conn.rollback()
+                connection.rollback()
             raise
         finally:
             self._transaction_depth = depth

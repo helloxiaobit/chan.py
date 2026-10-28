@@ -29,7 +29,7 @@ def native_capacity_prepare_case(db, conf, tmp_path, monkeypatch, *, mode="one_w
     case = native_order_case(db, conf, tmp_path, monkeypatch, "binance", mode=mode, side=side, execution_mode="live")
     client = case["client"]
     handlers = {name: getattr(client, name) for name in PATHS.values() if name in client.__dict__}
-    for name in (*handlers, "request"):
+    for name in (*handlers, "request", "create_order"):
         if name in client.__dict__:
             monkeypatch.delattr(client, name)
     # Install fake credentials on this isolated SDK only, matching its fake

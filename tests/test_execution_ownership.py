@@ -30,7 +30,7 @@ def scenario(db, tmp_path, monkeypatch, venue, *, side=True, mode="one_way", oth
         switch_account(trade.exchange)
     trade.exchange.fill, trade.exchange.status = 3, "closed"
     key = db.add_signal(make_signal(code=CODE, is_buy=side))
-    trade.add_trade(db.get_record(key), 100)
+    order_fixture.open_legacy_history(trade, db.get_record(key), 100)
     clock[0] += 100
     trade.exchange.fill, trade.exchange.status = 1, "canceled"
     trade.cover_trade(db.get_record(key), 101, "first partial close")

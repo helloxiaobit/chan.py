@@ -171,7 +171,7 @@ def _publish(db, document):
 def _read(db, row):
     try:
         document = json.loads(row["payload"])
-        if document.get("schema") in {"chan-native-account-check-v1", "chan-native-account-check-v2"}:
+        if document.get("schema") in {"chan-native-account-check-v1", "chan-native-account-check-v2", "chan-native-account-check-v3"}:
             from .NativeAccountCheck import read_native_check
             return read_native_check(db, row, document)
         payload = document["payload"]

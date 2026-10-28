@@ -190,7 +190,13 @@ def test_v3_uses_original_atomic_cas_and_rolls_back_its_reference(single_case, m
         monkeypatch.setattr(case["db"], "_order_write", forged)
     with pytest.raises(CChanException) as caught:
         acquire(case)
-    assert touched and "PRIVATE_" not in str(caught.value)
+    if stage == "forged_context":
+        # The original runtime check now rejects the replaced writer before
+        # it can receive any live context or start source collection.
+        assert touched == [] and case["http_calls"] == []
+    else:
+        assert touched
+    assert "PRIVATE_" not in str(caught.value)
     assert case["db"].get_record(case["key"])["open_attempt"] == 0
     assert case["db"].get_order_history(case["key"])["attempts"] == []
     assert case["db"].db.query("SELECT * FROM chanpy_native_order_transitions") == []

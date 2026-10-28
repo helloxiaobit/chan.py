@@ -13,6 +13,7 @@ from CustomBuySellPoint.Decision import canonical_bytes
 from Trade.db_util import CChanDB
 from .test_execution_store import store
 from .test_native_account_components import component_case, components_api
+from .test_crypto_order_contract import open_legacy_history
 from .test_native_admission_interval import explicit_path_environment
 from .test_m6_trade import make_signal
 
@@ -239,7 +240,7 @@ def test_another_connection_native_freeze_between_claim_and_http_blocks_send_and
     monkeypatch.setattr(db, "claim_order_submission", freeze_after_claim)
     try:
         with pytest.raises(CChanException):
-            trade.add_trade(db.get_record(key), 100)
+            open_legacy_history(trade, db.get_record(key), 100)
         assert db.get_record(key)["open_order_status"] == "submitting"
         assert db.get_record(key)["open_attempt"] == 1 and db.get_record(key)["open_order_id"] is None
         assert db.get_account_risk_state(params["account_context"])["frozen"] is True

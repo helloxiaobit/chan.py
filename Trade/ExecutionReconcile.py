@@ -97,8 +97,9 @@ def build_execution_ownership(receipt, account_context, histories, *, client_roo
         if account_context["venue"] != source["venue"] or account_context["mode"] != source["mode"]:
             _fail()
         attempts = []
+        from .OrderAudit import _history_header
         for history in histories:
-            if history["schema"] != "chan-order-history-v1" or history["economics_complete"] is not False:
+            if canonical_bytes({key: history[key] for key in ("schema", "coverage", "economics_complete")}) != canonical_bytes(_history_header(history["attempts"])):
                 _fail()
             attempts.extend(history["attempts"])
         references = []

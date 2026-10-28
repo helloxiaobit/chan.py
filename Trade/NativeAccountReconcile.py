@@ -155,7 +155,8 @@ def _margin(after, balances, pending_validation, issue):
 def _result(payload, issues):
     payload["issues"] = sorted({canonical_bytes(row): row for row in issues}.values(), key=canonical_bytes)
     payload["status"] = "incomplete" if any(row["severity"] == "incomplete" for row in issues) else "mismatch" if issues else "matched_components"
-    return {"schema": "chan-native-account-components-v2" if "client_order_references" in payload["interval"]["payload"] else SCHEMA,
+    return {"schema": "chan-native-account-components-v3" if payload["interval"]["schema"] == "chan-account-reconciliation-pending-v4"
+            else "chan-native-account-components-v2" if "client_order_references" in payload["interval"]["payload"] else SCHEMA,
             "payload": payload, "payload_sha256": _sha(payload)}
 
 

@@ -63,7 +63,7 @@ def test_original_unconsumed_context_owns_full_scope_last_without_a_new_intent_o
     assert document["schema"] == Last.SCHEMA
     assert calls == ["ALTUSDT", "TESTUSDT"] and document["payload"]["requests"] == 2
     assert document["payload"]["economics_complete"] is document["payload"]["native_admission_verified"] is False
-    assert Prepare._PREPARED[context] is entry and len(entry) == 3
+    assert Prepare._PREPARED[context] is entry and len(entry) == 4
     assert case["db"].db.conn.total_changes == changes and len(case["created"]) == orders
     assert case["http_calls"] == private_calls
     assert canonical_bytes(case["db"].get_record(case["key"])) == before

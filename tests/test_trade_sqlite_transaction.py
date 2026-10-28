@@ -1,5 +1,6 @@
 """Real SQLite commit boundaries; no broker or research assets."""
 import sqlite3
+from contextlib import nullcontext
 
 import pytest
 
@@ -78,3 +79,31 @@ def test_a_failed_standalone_statement_does_not_leave_an_open_transaction(store)
     assert not db.conn.in_transaction
     db.execute("INSERT INTO notes(value) VALUES(?)", ("usable",))
     assert reader.execute("SELECT value FROM notes").fetchall() == [("usable",)]
+
+
+@pytest.mark.parametrize("nested", [False, True])
+@pytest.mark.parametrize("raises", [False, True])
+def test_transaction_pins_original_connection_for_exit_and_rejects_replacement(store, nested, raises):
+    db, reader = store
+    original, replacement = db.conn, sqlite3.connect(":memory:")
+    statements = []
+    replacement.set_trace_callback(statements.append)
+    try:
+        with db.transaction() if nested else nullcontext():
+            if nested:
+                db.execute("INSERT INTO notes(value) VALUES('outer')")
+            try:
+                with pytest.raises(ValueError if raises else RuntimeError):
+                    with db.transaction():
+                        db.execute("INSERT INTO notes(value) VALUES('must roll back')")
+                        db.conn = replacement
+                        if raises:
+                            raise ValueError("original audit refusal must survive")
+            finally:
+                db.conn = original
+            assert statements == []
+            assert original.in_transaction is nested
+        assert reader.execute("SELECT value FROM notes").fetchall() == ([("outer",)] if nested else [])
+    finally:
+        db.conn = original
+        replacement.close()

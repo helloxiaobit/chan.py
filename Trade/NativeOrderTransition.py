@@ -107,8 +107,9 @@ def _historical_ledger(database, root, attempt, ordinal):
     if key in entries or attempt["origin"] != "new_intent" or identity["phase"] != "open" or identity["attempt"] != 1:
         _fail()
     events = attempt["events"][:ordinal]
-    history = {"schema": "chan-order-history-v1", "coverage": "intents_and_applied_reports_only", "economics_complete": False,
-               "attempts": [{**attempt, "events": events}], "gaps": []}
+    from .OrderAudit import _history_header
+    attempts = [{**attempt, "events": events}]
+    history = {**_history_header(attempts), "attempts": attempts, "gaps": []}
     projection = {"trade_table": key[0], "record_id": key[1], "instrument": identity["instrument"],
                   "current_qty": events[-1]["state"]["current_qty"], "position_side": identity["position_side"], "is_buy": bool(identity["is_buy"])}
     entries[key] = (history, projection)
@@ -150,8 +151,8 @@ def _read_bound_attempt_from_db(database, attempt):
     if database.conn is not connection:
         _fail()
     target_key = _key(attempt["identity"])
-    verify_history_prefix(database, [{"schema": "chan-order-history-v1", "coverage": "intents_and_applied_reports_only",
-        "economics_complete": False, "attempts": [attempt], "gaps": []}])
+    from .OrderAudit import _history_header
+    verify_history_prefix(database, [{**_history_header([attempt]), "attempts": [attempt], "gaps": []}])
     reference = attempt["events"][0].get("native_boundary_sha256")
     if reference is None or target_key[2] != "open":
         _fail()
@@ -299,6 +300,8 @@ def prepare_transition(chan, before, kind, updates, boundary, *, history, prepar
                 _fail()
             return None
         reference = _reference(history, before["open_attempt"])
+        if kind == "claim" and prepared_context is not None and reference is None:
+            _fail()
         if kind == "claim" and (reference is None or before["open_order_status"] != "created"):
             if reference is None and before.get("open_order_contract") is not None and json.loads(before["open_order_contract"]).get("schema") in {CONTRACT_SCHEMA, CLIENT_CONTRACT_SCHEMA}:
                 _fail()  # Missing metadata cannot downgrade this new schema.
@@ -341,9 +344,12 @@ def prepare_transition(chan, before, kind, updates, boundary, *, history, prepar
             reference, previous = _sha(root), None
         else:
             previous_document = _read(chan, before)
-            if previous_document["schema"] == PREPARED_DOCUMENT_SCHEMA:
-                _fail()  # Post-intent local reconstitution/funding is not implemented.
             if previous_document["payload"]["stage"] != "intent":
+                _fail()
+            if previous_document["schema"] == PREPARED_DOCUMENT_SCHEMA:
+                from .NativePreparedIntent import consume_prepared_claim_context
+                consume_prepared_claim_context(chan, before, prepared_context, previous_document)
+            elif prepared_context is not None:
                 _fail()
             _current(chan, previous_document)
             root, previous = previous_document["payload"]["root"], previous_document["payload_sha256"]
@@ -412,8 +418,12 @@ def finish_transition(chan, before, after, transition):
             _fail()
         Boundary._same_database(chan, t["database"], t["connection"], t["table"], owned=True)
         if "preparation" in t["root"]:
-            from .NativePreparedIntent import finish_prepared_context
-            finish_prepared_context(chan, t["prepared_context"], t["expected"], document)
+            if stage == "intent":
+                from .NativePreparedIntent import finish_prepared_context
+                finish_prepared_context(chan, t["prepared_context"], t["expected"], document)
+            else:
+                from .NativePreparedIntent import finish_prepared_claim_context
+                finish_prepared_claim_context(chan, t["prepared_context"], document)
         else:
             _current(chan, document)  # Publication/readback must not escape source budgets.
     except Exception:

@@ -1,4 +1,7 @@
-"""协议参数用真实 CCXT request builder 验证；所有账户/订单 I/O 均为 fake。"""
+"""Legacy parameters/recovery and spot, not current native-risk admission.
+
+Protocol parameters use the real CCXT builder; all server I/O stays fake.
+"""
 import copy
 import hashlib
 import json
@@ -11,7 +14,7 @@ from CustomBuySellPoint.Decision import canonical_bytes
 from Common.ChanException import CChanException
 from Trade.CCXTTradeEngine import CCCXTTradeEngine
 from Trade.OpenQuotaGen import CBenchPriceQuotaGen
-from .test_crypto_order_contract import CODE, COfflineExchange, market, open_pre_journal_copy, order_db
+from .test_crypto_order_contract import CODE, COfflineExchange, market, open_pre_journal_copy, order_db, open_legacy_history
 from .test_m6_trade import make_signal
 from .test_trade_safety import enabled_trade_conf, write_candidate_receipt
 
@@ -75,7 +78,7 @@ def test_native_open_and_reduce_requests_bind_the_correct_account_leg(order_db, 
     trade = venue_engine(order_db, tmp_path, venue, mode, margin)
     trade.exchange.fill, trade.exchange.status = 3, "closed"
     record_id = order_db.add_signal(make_signal(code=CODE, is_buy=is_buy))
-    opened = trade.add_trade(order_db.get_record(record_id), 100)
+    opened = open_legacy_history(trade, order_db.get_record(record_id), 100)
     assert opened.filled == pytest.approx(0.03)
     side = "BOTH" if mode == "one_way" else "LONG" if is_buy else "SHORT"
     assert order_db.get_record(record_id)["position_side"] == side
@@ -115,7 +118,7 @@ def test_account_mismatch_refuses_new_risk_without_reconfiguring_or_claiming(ord
         setattr(trade.exchange, field, value)
     record_id = order_db.add_signal(make_signal(code=CODE))
     with pytest.raises(CChanException):
-        trade.add_trade(order_db.get_record(record_id), 100)
+        open_legacy_history(trade, order_db.get_record(record_id), 100)
     assert trade.exchange.created == [] and trade.exchange.leverage_calls == []
     assert order_db.get_record(record_id)["status"] == "signal"
 
@@ -125,7 +128,7 @@ def test_existing_leg_can_reduce_after_global_config_and_leverage_change(order_d
     trade = venue_engine(order_db, tmp_path, venue, "hedged", "isolated")
     trade.exchange.fill, trade.exchange.status = 3, "closed"
     record_id = order_db.add_signal(make_signal(code=CODE))
-    trade.add_trade(order_db.get_record(record_id), 100)
+    open_legacy_history(trade, order_db.get_record(record_id), 100)
     trade.ccxt_conf.update(position_mode="one_way", margin_mode="cross")
     trade.exchange.leverage = 9
     trade.cover_trade(order_db.get_record(record_id), 101, "still reduce original leg")
@@ -150,7 +153,7 @@ def test_post_only_reduce_limit_uses_the_native_maker_flag(order_db, tmp_path, v
     trade = venue_engine(order_db, tmp_path, venue)
     trade.exchange.fill, trade.exchange.status = 3, "closed"
     record_id = order_db.add_signal(make_signal(code=CODE))
-    trade.add_trade(order_db.get_record(record_id), 100)
+    open_legacy_history(trade, order_db.get_record(record_id), 100)
     record = order_db.get_record(record_id)
     quantity, price, contract = trade.prepare_order(CODE, 0.03, 101, reduce_only=True, record=record, post_only=True)
     client_id = trade.make_client_order_id(record, "close")
@@ -190,7 +193,7 @@ def replace_contract(db, record_id, contract):
 def test_rehashed_execution_evidence_is_checked_during_restore(order_db, tmp_path, changed):
     trade = venue_engine(order_db, tmp_path, "okx")
     record_id = order_db.add_signal(make_signal(code=CODE))
-    order = trade.add_trade(order_db.get_record(record_id), 100)
+    order = open_legacy_history(trade, order_db.get_record(record_id), 100)
     contract = json.loads(order_db.get_record(record_id)["open_order_contract"])
     if changed == "missing_leg":
         del contract["execution"]["position_side"]
@@ -211,7 +214,7 @@ def test_v1_units_remain_readable_but_cannot_silently_supply_missing_execution_s
     trade = venue_engine(order_db, tmp_path, "okx")
     trade.exchange.fill, trade.exchange.status = 3, "closed"
     record_id = order_db.add_signal(make_signal(code=CODE))
-    order = trade.add_trade(order_db.get_record(record_id), 100)
+    order = open_legacy_history(trade, order_db.get_record(record_id), 100)
     contract = json.loads(order_db.get_record(record_id)["open_order_contract"])
     contract["schema"] = "chan-ccxt-order-v1"
     del contract["execution"], contract["account_observation"], contract["post_only"], contract["account_context"]
@@ -235,7 +238,7 @@ def test_incomplete_account_read_is_a_closed_failure_before_intent(order_db, tmp
     monkeypatch.setattr(trade.exchange, method, lambda *args, **kwargs: None)
     record_id = order_db.add_signal(make_signal(code=CODE))
     with pytest.raises(CChanException):
-        trade.add_trade(order_db.get_record(record_id), 100)
+        open_legacy_history(trade, order_db.get_record(record_id), 100)
     assert order_db.get_record(record_id)["status"] == "signal"
     assert trade.exchange.created == []
 
@@ -252,7 +255,7 @@ def test_account_read_failure_after_cas_is_reported_without_claim_or_submission(
     monkeypatch.setattr(trade.exchange, "fetch_position_mode", interrupted)
     record_id = order_db.add_signal(make_signal(code=CODE))
     with pytest.raises(CChanException):
-        trade.add_trade(order_db.get_record(record_id), 100)
+        open_legacy_history(trade, order_db.get_record(record_id), 100)
     assert order_db.get_record(record_id)["open_order_status"] == "created"
     assert trade.exchange.created == []
 
@@ -262,7 +265,7 @@ def test_one_way_configuration_cannot_also_request_a_hedge_leg(order_db, tmp_pat
     trade.position_side = "LONG"
     record_id = order_db.add_signal(make_signal(code=CODE))
     with pytest.raises(CChanException):
-        trade.add_trade(order_db.get_record(record_id), 100)
+        open_legacy_history(trade, order_db.get_record(record_id), 100)
     assert order_db.get_record(record_id)["status"] == "signal"
 
 
@@ -274,7 +277,8 @@ def test_post_only_cannot_be_changed_after_the_intent_has_been_persisted(order_d
     client_id = trade.make_client_order_id(record, "open")
     assert order_db.acquire_open_intent(record_id, quantity, client_id, order_contract=contract)
     with pytest.raises(CChanException):
-        trade.place_order(CODE, True, quantity, price, post_only=True, client_order_id=client_id)
+        trade._venue_params(contract, client_id, is_buy=True, reduce_only=False, post_only=True,
+            side=contract["execution"]["position_side"])
     assert order_db.get_record(record_id)["open_order_status"] == "created"
     assert trade.exchange.created == []
 
@@ -306,7 +310,7 @@ def test_account_verification_cannot_outlive_revoked_order_authority(order_db, t
     monkeypatch.setattr(order_db, "claim_order_submission", revoke_after_claim)
     record_id = order_db.add_signal(make_signal(code=CODE))
     with pytest.raises(CChanException):
-        trade.add_trade(order_db.get_record(record_id), 100)
+        open_legacy_history(trade, order_db.get_record(record_id), 100)
     assert trade.exchange.created == []
     stored = order_db.get_record(record_id)
     assert stored["open_order_status"] == ({"prepare": None, "read": "created", "claim": "submitting"}[at])

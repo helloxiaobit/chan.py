@@ -1,4 +1,8 @@
-"""真实 CCXT precision + fake 交易 I/O + SQLite；无网络请求。"""
+"""Legacy unit/history compatibility and spot regression, not native admission.
+
+Use original CCXT precision/readers/writers and fake servers only. Historical
+v3 construction is separate from current swap entry and grants no permission.
+"""
 import copy
 import json
 import sqlite3
@@ -7,9 +11,10 @@ from decimal import localcontext
 import ccxt
 import pytest
 
-from Common.ChanException import CChanException
+from Common.ChanException import CChanException, ErrCode
 from Common.KLineTime import utc_now_ms
-from Trade.CCXTTradeEngine import CCCXTTradeEngine
+from Trade.CCXTTradeEngine import CCCXTTradeEngine, _float_exact, _quantity
+from Trade import TradeEngine as base_engine
 from Trade.OpenQuotaGen import CBenchPriceQuotaGen
 from Trade.db_util import CChanDB
 from .test_m6_trade import make_signal
@@ -108,6 +113,59 @@ class COfflineExchange(ccxt.Exchange):
         return copy.deepcopy(self.orders[order_id])
 
 
+def submit_legacy_history(trade, client_id, *, post_only=False):
+    """Fake historical v3 facts, not current admission or a native L2.
+
+    Use original readers/writers and the existing fake server only. Never
+    disable a production gate or accept a new monetary contract here.
+    """
+    assert not trade.dry_run and trade.market_type == "swap" and trade.opening_inputs is None
+    assert isinstance(trade.exchange, COfflineExchange)
+    trade.safety_policy.assert_order_allowed()
+    intent = trade.chan_db.get_order_intent(client_id)
+    assert intent["phase"] == "open"
+    record = intent["record"]
+    frozen = json.loads(record["open_order_contract"])
+    assert frozen["schema"] == "chan-ccxt-order-v3" and record["open_order_status"] == "created"
+    assert not record["open_order_id"]
+    quantity = _float_exact(_quantity(frozen["quantity"], positive=True))
+    price = None if frozen["price"] is None else _float_exact(_quantity(frozen["price"], positive=True))
+    contract = trade._read_order_contract(record["stock_code"], intent, amount=quantity, price=price, submitting=True)
+    side = contract["execution"]["position_side"]
+    params = trade._venue_params(contract, client_id, is_buy=bool(record["is_buy"]), reduce_only=False, post_only=post_only, side=side)
+    trade.safety_policy.assert_order_allowed()
+    assert trade.chan_db.claim_order_submission(record["id"], "open")
+    trade.safety_policy.assert_order_allowed()
+    trade.chan_db.assert_account_new_risk_allowed(contract["account_context"])
+    try:
+        order = trade.exchange.create_order(record["stock_code"], "market" if price is None else "limit",
+            "buy" if record["is_buy"] else "sell", _float_exact(_quantity(contract["exchange_amount"], positive=True)), price, params)
+    except ccxt.BaseError as error:
+        # Model a historical transport gap, never retry or fabricate an ACK.
+        raise CChanException("历史fake返回丢失，保留原submitting意图", ErrCode.PLACE_ORDER_FAIL) from error
+    trade._assert_account_context(contract)
+    trade._check_order_identity(order, record["stock_code"], intent, contract, partial=True)
+    trade.chan_db.record_order_ack(record["id"], "open", str(order["id"]), client_order_id=client_id,
+        expected_attempt=record["open_attempt"])
+    if any(order.get(key) is None for key in ("symbol", "side", "type", "filled", "status")):
+        # Only the real persisted-order reader may resolve an identity-only ACK.
+        result = trade.query_order(record["stock_code"], str(order["id"]), client_order_id=client_id)
+    else:
+        result = trade._result_from_ccxt(order, code=record["stock_code"], intent=intent, contract=contract)
+    trade._apply_order_report(record["id"], "open", result, client_id, record["open_attempt"])
+    return result
+
+
+def open_legacy_history(trade, record, price):
+    """Seed a legacy-only fake history through original unit/CAS writers."""
+    assert not trade.dry_run and trade.market_type == "swap" and trade.opening_inputs is None
+    assert isinstance(trade.exchange, COfflineExchange)
+    snapshot = {"price": price, "entry_observed_ms": record.get("entry_observed_ms", base_engine.utc_now_ms())}
+    _, _, client_id = base_engine.CTradeEngine._acquire_open_intent(trade, record, price,
+        snapshot=snapshot, score_before=record.get("model_score_before"))
+    return submit_legacy_history(trade, client_id)
+
+
 @pytest.fixture()
 def order_db(tmp_path):
     db = CChanDB(db_conf={"type": "sqlite", "sqlite_path": str(tmp_path/"orders.db")})
@@ -129,7 +187,7 @@ def engine(db, tmp_path, exchange=None, *, spot=False):
 def test_contract_size_and_precision_are_frozen_before_the_real_db_intent(order_db, tmp_path):
     trade = engine(order_db, tmp_path)
     record_id = order_db.add_signal(make_signal(code=CODE))
-    result = trade.add_trade(order_db.get_record(record_id), 100.07)
+    result = open_legacy_history(trade, order_db.get_record(record_id), 100.07)
     stored = order_db.get_record(record_id)
     assert stored["open_requested_qty"] == pytest.approx(0.03)
     assert stored["open_filled_qty"] == stored["current_qty"] == pytest.approx(0.01)
@@ -147,7 +205,7 @@ def test_contract_size_and_precision_are_frozen_before_the_real_db_intent(order_
 def test_restore_converts_partial_reports_once_including_lookup_without_client_id(order_db, tmp_path):
     trade = engine(order_db, tmp_path)
     record_id = order_db.add_signal(make_signal(code=CODE))
-    placed = trade.add_trade(order_db.get_record(record_id), 100)
+    placed = open_legacy_history(trade, order_db.get_record(record_id), 100)
     trade.exchange.orders[placed.order_id].update(filled=2, clientOrderId=None)
     restored = engine(order_db, tmp_path, trade.exchange)
     assert restored.query_order(CODE, placed.order_id).filled == pytest.approx(0.02)
@@ -177,7 +235,7 @@ def test_zero_or_post_precision_limits_fail_before_cas(order_db, tmp_path, defin
     trade.quota_gen = CBenchPriceQuotaGen(bench)
     record_id = order_db.add_signal(make_signal(code=CODE))
     with pytest.raises(CChanException):
-        trade.add_trade(order_db.get_record(record_id), 100.07)
+        open_legacy_history(trade, order_db.get_record(record_id), 100.07)
     record = order_db.get_record(record_id)
     assert record["status"] == "signal" and record["open_attempt"] == 0
     assert trade.exchange.created == []
@@ -192,7 +250,7 @@ def test_unknown_or_unsupported_contract_metadata_cannot_create_an_intent(order_
     trade = engine(order_db, tmp_path, COfflineExchange(definition))
     record_id = order_db.add_signal(make_signal(code=CODE))
     with pytest.raises(CChanException):
-        trade.add_trade(order_db.get_record(record_id), 100.07)
+        open_legacy_history(trade, order_db.get_record(record_id), 100.07)
     assert order_db.get_record(record_id)["status"] == "signal"
     assert trade.exchange.created == []
 
@@ -220,8 +278,10 @@ def test_legacy_contract_intent_without_units_is_not_claimed_or_resubmitted(orde
     trade = engine(order_db, tmp_path)
     record_id = order_db.add_signal(make_signal(code=CODE))
     assert order_db.acquire_open_intent(record_id, 0.03, "legacy-without-unit")
-    with pytest.raises(CChanException, match="单位契约"):
+    with pytest.raises(CChanException, match="原生.*新风险"):
         trade.place_order(CODE, True, 0.03, 100, client_order_id="legacy-without-unit")
+    with pytest.raises(CChanException, match="单位契约"):
+        trade.query_order(CODE, client_order_id="legacy-without-unit")
     assert order_db.get_record(record_id)["open_order_status"] == "created"
     assert trade.exchange.created == []
 
@@ -237,7 +297,7 @@ def test_metadata_change_between_cas_and_submission_does_not_send_a_new_unit(ord
     monkeypatch.setattr(order_db, "acquire_open_intent", change_after_intent)
     record_id = order_db.add_signal(make_signal(code=CODE))
     with pytest.raises(CChanException, match="漂移"):
-        trade.add_trade(order_db.get_record(record_id), 100)
+        open_legacy_history(trade, order_db.get_record(record_id), 100)
     assert trade.exchange.created == []
     assert order_db.get_record(record_id)["open_order_status"] == "created"
 
@@ -246,7 +306,7 @@ def test_market_close_uses_frozen_reference_but_does_not_turn_it_into_a_limit_pr
     trade = engine(order_db, tmp_path)
     record_id = order_db.add_signal(make_signal(code=CODE))
     trade.exchange.fill, trade.exchange.status = 3, "closed"
-    trade.add_trade(order_db.get_record(record_id), 100)
+    open_legacy_history(trade, order_db.get_record(record_id), 100)
     order = trade.cover_trade(order_db.get_record(record_id), None, "market close")
     assert order.filled == pytest.approx(0.03)
     assert trade.exchange.created[-1][1] == "market" and trade.exchange.created[-1][4] is None
@@ -260,7 +320,7 @@ def test_order_fill_conversion_is_independent_of_callers_decimal_context(order_d
     record_id = order_db.add_signal(make_signal(code=CODE))
     with localcontext() as context:
         context.prec = 2
-        order = trade.add_trade(order_db.get_record(record_id), 100)
+        order = open_legacy_history(trade, order_db.get_record(record_id), 100)
     assert order.filled == pytest.approx(0.001234)
     assert order_db.get_record(record_id)["current_qty"] == pytest.approx(0.001234)
 
@@ -289,7 +349,7 @@ def test_inconsistent_exchange_reports_are_not_booked_as_fills(order_db, tmp_pat
     monkeypatch.setattr(trade.exchange, "create_order", bad_response)
     record_id = order_db.add_signal(make_signal(code=CODE))
     with pytest.raises(CChanException):
-        trade.add_trade(order_db.get_record(record_id), 100)
+        open_legacy_history(trade, order_db.get_record(record_id), 100)
     stored = order_db.get_record(record_id)
     assert stored["open_order_status"] == "submitting" and stored["current_qty"] == 0
     # Server acceptance is deliberately still present: recover by the original
@@ -302,7 +362,7 @@ def test_inconsistent_exchange_reports_are_not_booked_as_fills(order_db, tmp_pat
 def test_known_exchange_id_cannot_be_replaced_by_another_order_with_the_same_client_id(order_db, tmp_path):
     trade = engine(order_db, tmp_path)
     record_id = order_db.add_signal(make_signal(code=CODE))
-    placed = trade.add_trade(order_db.get_record(record_id), 100)
+    placed = open_legacy_history(trade, order_db.get_record(record_id), 100)
     trade.exchange.orders[placed.order_id]["id"] = "unexpected-id"
     client_id = order_db.get_record(record_id)["open_client_order_id"]
     with pytest.raises(CChanException):
@@ -312,7 +372,7 @@ def test_known_exchange_id_cannot_be_replaced_by_another_order_with_the_same_cli
 def test_order_tracking_uses_frozen_units_after_only_limits_or_ticks_change(order_db, tmp_path):
     trade = engine(order_db, tmp_path)
     record_id = order_db.add_signal(make_signal(code=CODE))
-    order = trade.add_trade(order_db.get_record(record_id), 100)
+    order = open_legacy_history(trade, order_db.get_record(record_id), 100)
     trade.exchange.market(CODE)["limits"]["cost"]["min"] = 1000
     trade.exchange.market(CODE)["precision"]["amount"] = 5
     trade.exchange.market(CODE)["active"] = False
@@ -331,7 +391,7 @@ def test_units_that_cannot_roundtrip_through_db_and_ccxt_numeric_boundary_fail_b
     trade = engine(order_db, tmp_path, COfflineExchange(definition))
     record_id = order_db.add_signal(make_signal(code=CODE))
     with pytest.raises(CChanException):
-        trade.add_trade(order_db.get_record(record_id), 100)
+        open_legacy_history(trade, order_db.get_record(record_id), 100)
     assert order_db.get_record(record_id)["status"] == "signal"
     assert trade.exchange.created == []
 
@@ -354,7 +414,7 @@ def test_unit_contract_survives_sqlite_reopen_without_changing_any_quantity(tmp_
     try:
         trade = engine(db, tmp_path)
         record_id = db.add_signal(make_signal(code=CODE))
-        trade.add_trade(db.get_record(record_id), 100)
+        open_legacy_history(trade, db.get_record(record_id), 100)
         before = db.get_record(record_id)
     finally:
         db.close()
@@ -370,6 +430,6 @@ def test_mysql_unit_contract_path_is_disabled_before_any_intent(order_db, tmp_pa
     monkeypatch.setattr(order_db, "db_type", "mysql")
     record_id = order_db.add_signal(make_signal(code=CODE))
     with pytest.raises(CChanException, match="MySQL"):
-        trade.add_trade(order_db.get_record(record_id), 100)
+        open_legacy_history(trade, order_db.get_record(record_id), 100)
     assert order_db.get_record(record_id)["status"] == "signal"
     assert trade.exchange.created == []

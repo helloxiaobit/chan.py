@@ -9,6 +9,7 @@ import hashlib
 import json
 import math
 import re
+from contextlib import nullcontext
 from dataclasses import dataclass, field
 from decimal import Context, Decimal, DecimalException, InvalidOperation, ROUND_CEILING, ROUND_FLOOR, localcontext
 from fractions import Fraction
@@ -235,6 +236,105 @@ class CCCXTTradeEngine(CTradeEngine):
             return self.opening_inputs.check(record, engine=self, price=price)
         return None
 
+    def _native_entry_profile(self):
+        """Read only the original guard's frozen config, never trade_info proof."""
+        from .NativeCurrentComponents import read_native_component_policy
+        from . import NativePreparedIntent as Prepared
+        from . import NativeOrderBoundary as Boundary
+        from .AccountSources import SNAPSHOT_SCHEMA
+        from .AccountStore import read_evidence
+        from .Script.OpeningInputs import COpeningInputs
+        try:
+            guard = self.opening_inputs
+            if type(guard) is not COpeningInputs:
+                raise ValueError
+            chan = self.chan_db
+            database = Boundary._database(chan)
+            connection, table = database.conn, chan.table
+            guard.assert_current()
+            Boundary._same_database(chan, database, connection, table, owned=False)
+            if self.chan_db is not chan or self.opening_inputs is not guard:
+                raise ValueError
+            profile = guard.env.get_section("trade").get("native_admission")
+            budgets = {name+suffix for name in ("instrument", "capacity", "last")
+                       for suffix in ("_max_age_ms", "_max_observation_span_ms")}
+            if (type(profile) is not dict or set(profile) != budgets | {"schema", "before_id", "account_scope", "policy"}
+                    or profile["schema"] != "chan-native-entry-profile-v1"
+                    or type(profile["before_id"]) is not str or re.fullmatch(r"[0-9a-f]{64}", profile["before_id"]) is None
+                    or type(profile["account_scope"]) is not str or re.fullmatch(r"[A-Za-z0-9_.:-]{1,64}", profile["account_scope"]) is None
+                    or self.ccxt_conf.get("exchange") not in {"binance", "binanceusdm"}):
+                raise ValueError
+            for name in budgets:
+                Prepared._budget(profile[name])
+            read_native_component_policy(profile["policy"])
+            with database.transaction():
+                Boundary._same_database(chan, database, connection, table, owned=True)
+                before = read_evidence(database, profile["before_id"])
+                if (before["schema"] != SNAPSHOT_SCHEMA or before["payload"]["account_context"]["mode"] != self.mode
+                        or before["payload"]["account_context"]["venue"] != "binance"):
+                    raise ValueError
+                chan.assert_account_new_risk_allowed(before["payload"]["account_context"])
+                Boundary._same_database(chan, database, connection, table, owned=True)
+                if self.chan_db is not chan or self.opening_inputs is not guard:
+                    raise ValueError
+            Boundary._same_database(chan, database, connection, table, owned=False)
+            return json.loads(canonical_bytes(profile))
+        except Exception:
+            raise CChanException("原生新风险profile须来自原配置，完整声明before/政策/预算且不得降级", ErrCode.CONFIG_ERROR) from None
+
+    def _acquire_open_intent(self, record, price, *, snapshot, score_before):
+        # Native new risk cannot downgrade to old v3 when its guard is absent.
+        # Existing-order readers and reduce-only preparation remain separate.
+        if self.dry_run or self.market_type != "swap":
+            return super()._acquire_open_intent(record, price, snapshot=snapshot, score_before=score_before)
+        from . import NativePreparation as Prepare
+        from . import NativePreparedIntent as Prepared
+        from . import NativeOrderBoundary as Boundary
+        from . import NativeOrderTransition as Transition
+        profile = self._native_entry_profile()
+        Prepare._selected_runtime(self, self.opening_inputs, self.safety_policy)
+        if self.exchange is None:
+            from .NativePreparedClient import initialize_native_prepared_client
+            initialize_native_prepared_client(self, record["id"],
+                instrument_max_age_ms=profile["instrument_max_age_ms"],
+                instrument_max_observation_span_ms=profile["instrument_max_observation_span_ms"])
+        chan, guard, client = self.chan_db, self.opening_inputs, self.exchange
+        database = Boundary._database(chan)
+        connection, table = database.conn, chan.table
+        def owners(*, owned=False):
+            Boundary._same_database(chan, database, connection, table, owned=owned)
+            if self.chan_db is not chan or self.opening_inputs is not guard or self.exchange is not client:
+                Prepared._fail()
+        owners()
+        amount = self.quota_gen.get_quota(record["stock_code"], price)
+        owners()
+        if not math.isfinite(amount) or amount <= 0:
+            raise CChanException("仓位计算必须为正有限币数量", ErrCode.QUOTA_NOT_ENOUGH)
+        client_id = self.make_client_order_id(record, "open")
+        owners()
+        if not Prepared.acquire_binance_standard_prepared_intent(self, record["id"], amount, price,
+                **{name: value for name, value in profile.items() if name != "schema"},
+                client_order_id=client_id, entry_assessment=snapshot.get("entry_assessment")):
+            raise CChanException("原金额意图已被其他进程获取", ErrCode.SIGNAL_TRADED)
+        owners()
+        with database.transaction():
+            owners(owned=True)
+            current = chan.get_record(record["id"])
+            owners(owned=True)
+            document = Transition._read(chan, current)
+            owners(owned=True)
+            binding = document["payload"]["root"]["preparation"]
+            contract = Prepared._contract(binding)
+            if (self.chan_db is not chan or self.opening_inputs is not guard or self.exchange is not client
+                    or document["payload"]["stage"] != "intent" or binding["schema"] != Prepared.MONETARY_BINDING_SCHEMA
+                    or current["open_client_order_id"] != client_id
+                    or current["open_order_contract"] != canonical_bytes(contract).decode()):
+                Prepared._fail()
+            owners(owned=True)
+        owners()
+        return (_float_exact(_quantity(contract["quantity"], positive=True)),
+                None if contract["price"] is None else _float_exact(_quantity(contract["price"], positive=True)), client_id)
+
     def _software_quote_bound(self, record):
         from Common.MarketQuote import SOFTWARE_SCHEMA
         try:
@@ -309,7 +409,7 @@ class CCCXTTradeEngine(CTradeEngine):
             raise CChanException("当前交易参数仅适配 Binance/OKX", ErrCode.PARA_ERROR)
         if reduce_only and record is not None:
             opened = self._read_order_contract(code, {"phase": "open", "record": record})
-            if opened["schema"] == "chan-ccxt-order-v3" or (self.market_type == "spot" and opened["schema"] == "chan-ccxt-order-v2"):
+            if opened["schema"] in {"chan-ccxt-order-v3", "chan-native-client-order-v1"} or (self.market_type == "spot" and opened["schema"] == "chan-ccxt-order-v2"):
                 return dict(opened["execution"])
             raise CChanException("旧契约只读恢复：自动操作前须显式补足原账户/执行设置证据", ErrCode.TRADE_UNLOCK_FAIL)
         if self.market_type == "spot":
@@ -345,7 +445,7 @@ class CCCXTTradeEngine(CTradeEngine):
         return self._execution_settings(record["stock_code"], record,
             reduce_only=record.get("status") != "signal")["position_side"]
 
-    def _observe_account(self, code, execution, *, reduce_only):
+    def _observe_account(self, code, execution, *, reduce_only, _assert_current=None):
         if self.market_type == "spot":
             return None
         import ccxt
@@ -353,7 +453,11 @@ class CCCXTTradeEngine(CTradeEngine):
         args = {"marginMode": execution["margin_mode"]} if execution["venue"] == "okx" else {}
         try:
             mode = exchange.fetch_position_mode(code)
+            if _assert_current is not None:
+                _assert_current()
             leverage = exchange.fetch_leverage(code, args)
+            if _assert_current is not None:
+                _assert_current()
         except ccxt.BaseError as error:
             raise CChanException("账户设置只读核验失败，未取得提交权", ErrCode.TRADE_UNLOCK_FAIL) from error
         if not isinstance(mode, dict) or not isinstance(leverage, dict):
@@ -459,7 +563,18 @@ class CCCXTTradeEngine(CTradeEngine):
                 "非 dry-run 下单必须提供客户端订单号",
                 ErrCode.TRADE_UNLOCK_FAIL,
             )
-        intent = self.chan_db.get_order_intent(client_order_id)
+        chan = self.chan_db
+        database = None
+        if getattr(chan, "db_type", None) == "sqlite":
+            from . import NativeOrderBoundary as Boundary
+            database = Boundary._database(chan)
+            connection, table, owned = database.conn, chan.table, database.conn.in_transaction
+            Boundary._same_database(chan, database, connection, table, owned=owned)
+        intent = chan.get_order_intent(client_order_id)
+        if self.chan_db is not chan:
+            raise CChanException("订单意图读取的原数据库owner已变", ErrCode.TRADE_UNLOCK_FAIL)
+        if database is not None:
+            Boundary._same_database(chan, database, connection, table, owned=owned)
         if intent is None:
             raise CChanException(
                 "客户端订单号没有唯一的持久化意图",
@@ -499,14 +614,20 @@ class CCCXTTradeEngine(CTradeEngine):
             )
         if phase == "open" and getattr(self.chan_db, "db_type", None) == "sqlite":
             history = self.chan_db.get_order_history(record["id"])
-            if any(a["identity"]["phase"] == "open" and a["identity"]["attempt"] == record["open_attempt"]
-                   and a["events"][0].get("native_boundary_sha256") is not None for a in history["attempts"]):
+            native = any(a["identity"]["phase"] == "open" and a["identity"]["attempt"] == record["open_attempt"]
+                         and a["events"][0].get("native_boundary_sha256") is not None for a in history["attempts"])
+            if native:
                 from .NativeOrderTransition import PREPARED_DOCUMENT_SCHEMA, read_native_order_transition
-                if read_native_order_transition(self.chan_db, record["id"])["schema"] == PREPARED_DOCUMENT_SCHEMA:
+                from .NativePreparedIntent import MONETARY_BINDING_SCHEMA
+                document = read_native_order_transition(self.chan_db, record["id"])
+                if (document["schema"] == PREPARED_DOCUMENT_SCHEMA
+                        and document["payload"]["stage"] == "intent"
+                        and document["payload"]["root"]["preparation"]["schema"] == MONETARY_BINDING_SCHEMA):
                     from .NativePreparedIntent import assert_native_prepared_intent_current
                     with self.chan_db.db.transaction():
                         assert_native_prepared_intent_current(self, record["id"])
-                raise CChanException("原生逐单引用仅证明一致性，资金能力及完整发送消费者尚未验收", ErrCode.TRADE_UNLOCK_FAIL)
+                else:
+                    raise CChanException("原生逐单引用仅证明一致性，资金能力及完整发送消费者尚未验收", ErrCode.TRADE_UNLOCK_FAIL)
         return intent
 
     def _market_contract(self, code):
@@ -605,12 +726,32 @@ class CCCXTTradeEngine(CTradeEngine):
             expected_keys = {"schema", "market", "quantity_unit", "exchange_amount_unit", "quantity", "exchange_amount",
                              "price", "reference_price", "notional", "reduce_only", "contract_id"}
             version = contract.get("schema")
-            execution_version = version in {"chan-ccxt-order-v2", "chan-ccxt-order-v3"}
+            owner = self._monetary_consumer_owner(contract)
+            monetary = version == "chan-native-client-order-v1"
+            execution_version = version in {"chan-ccxt-order-v2", "chan-ccxt-order-v3", "chan-native-client-order-v1"}
             if execution_version:
                 expected_keys |= {"execution", "account_observation", "post_only"}
-            if version == "chan-ccxt-order-v3":
+            if version in {"chan-ccxt-order-v3", "chan-native-client-order-v1"}:
                 expected_keys.add("account_context")
+            if monetary:
+                expected_keys.add("monetary_basis_sha256")
+                self._assert_persisted_monetary_contract(intent, contract, submitting=submitting)
+                owner()
+                if not submitting and self.exchange is None:
+                    from .NativePreparedClient import initialize_native_order_recovery_client
+                    initialize_native_order_recovery_client(self, record["id"])
+                    owner = self._monetary_consumer_owner(contract)
+            elif getattr(self.chan_db, "db_type", None) == "sqlite":
+                # The projection label cannot erase an original native CAS.
+                # Reuse the existing history reader, including its immutable
+                # identity-vs-current-projection check, before any native I/O.
+                history = self.chan_db.get_order_history(record["id"])
+                if any(attempt["identity"]["phase"] == phase
+                       and attempt["events"][0].get("native_boundary_sha256") is not None
+                       for attempt in history["attempts"]):
+                    raise ValueError("native order lineage cannot be downgraded")
             definition, market = self._market_contract(code)
+            owner()
             with localcontext() as context:
                 context.prec = 50
                 quantity, exchange_amount, reference = (_quantity(contract[k], positive=True)
@@ -621,7 +762,7 @@ class CCCXTTradeEngine(CTradeEngine):
                 same_units = all(frozen.get(key) == definition[key] for key in unit_keys)
                 requested = record["open_requested_qty" if phase == "open" else "cover_requested_qty"]
                 if (set(contract) != expected_keys or canonical_bytes(contract).decode() != raw
-                        or version not in {"chan-ccxt-order-v1", "chan-ccxt-order-v2", "chan-ccxt-order-v3"}
+                        or version not in {"chan-ccxt-order-v1", "chan-ccxt-order-v2", "chan-ccxt-order-v3", "chan-native-client-order-v1"}
                         or contract["contract_id"] != _contract_id(contract)
                         or not same_units or (submitting and (frozen != definition or
                             (phase == "open" and market.get("active") is not True)))
@@ -638,18 +779,76 @@ class CCCXTTradeEngine(CTradeEngine):
                 if execution_version:
                     self._check_execution_evidence(contract, record, phase)
                 self._assert_account_context(contract)
+                owner()
                 if submitting:
-                    if (not execution_version or (self.market_type == "swap" and version != "chan-ccxt-order-v3")
+                    # Monetary L1 was fully reconstructed above, not accepted
+                    # from the schema label alone. Old diagnostic v2/v3 cannot
+                    # enter this branch.
+                    if (not execution_version or (self.market_type == "swap" and version != "chan-ccxt-order-v3" and not monetary)
                             or contract["execution"] != self._execution_settings(code, record, reduce_only=phase == "close")):
                         raise ValueError("execution settings drift")
-                    self._observe_account(code, contract["execution"], reduce_only=phase == "close")
+                    self._observe_account(code, contract["execution"], reduce_only=phase == "close",
+                        **({"_assert_current": owner} if monetary else {}))
                     self._assert_account_context(contract)
                 return contract
         except (TypeError, ValueError, KeyError, AttributeError) as error:
             raise CChanException("缺少完整订单单位契约或 market 漂移，禁止猜测重下/记账", ErrCode.TRADE_UNLOCK_FAIL) from error
 
+    def _monetary_consumer_owner(self, contract):
+        """Pin the actual reader/SDK owner across lock-free native callbacks."""
+        if contract.get("schema") != "chan-native-client-order-v1":
+            return lambda: None  # Keep original legacy recovery contracts.
+        from . import NativeOrderBoundary as Boundary
+        from . import NativePreparation as Prepare
+        chan = self.chan_db
+        database = Boundary._database(chan)
+        connection, table, exchange, mode = database.conn, chan.table, self.exchange, self.mode
+        client_binding = None if exchange is None else Prepare._client_binding(exchange)
+        def check(*, owned=False):
+            Boundary._same_database(chan, database, connection, table, owned=owned)
+            if self.chan_db is not chan or self.exchange is not exchange or self.mode != mode:
+                raise CChanException("原生订单消费者的实际账户/DB/SDK owner已变", ErrCode.TRADE_UNLOCK_FAIL)
+            if exchange is not None and Prepare._client_binding(exchange) != client_binding:
+                raise CChanException("原生订单消费者的SDK/cache/凭据已变", ErrCode.TRADE_UNLOCK_FAIL)
+            if exchange is not None:
+                Prepare._assert_execution_sdk(exchange, mode)
+            from . import OrderAudit as audit
+            modules = {}
+            for name in ("_native_terminal_observation", "_sdk_submission_report", "_assert_sdk_submission",
+                         "_append", "_read_attempt", "read_history", "_history_header"):
+                Prepare._function_identity("Trade.OrderAudit", name, getattr(audit, name), modules)
+        check()
+        return check
+
+    def _assert_persisted_monetary_contract(self, intent, contract, *, submitting=False):
+        """Read original historical monetary facts, never trust a caller DTO.
+
+        Existing-risk recovery does not renew source windows or acquire send
+        permission. The original immutable L2 is required for that recovery.
+        """
+        from . import NativeOrderBoundary as Boundary
+        from . import NativeOrderTransition as Transition
+        from . import NativePreparedIntent as Prepared
+        chan = self.chan_db
+        database = Boundary._database(chan)
+        connection, table = database.conn, chan.table
+        with database.transaction():
+            Boundary._same_database(chan, database, connection, table, owned=True)
+            record = chan.get_record(intent["record"]["id"])
+            if (self.chan_db is not chan or intent["phase"] != "open"
+                    or canonical_bytes(record) != canonical_bytes(intent["record"])):
+                raise CChanException("金额契约缺少原始持久化订单身份", ErrCode.TRADE_UNLOCK_FAIL)
+            document = Transition._read(chan, record)
+            Boundary._same_database(chan, database, connection, table, owned=True)
+            binding = document["payload"]["root"]["preparation"]
+            if (self.chan_db is not chan or document["schema"] != Transition.PREPARED_DOCUMENT_SCHEMA
+                    or document["payload"]["stage"] != ("intent" if submitting else "claim")
+                    or binding["schema"] != Prepared.MONETARY_BINDING_SCHEMA
+                    or canonical_bytes(contract) != canonical_bytes(Prepared._contract(binding))):
+                raise CChanException("金额契约与原始同次准备/L1/L2不一致", ErrCode.TRADE_UNLOCK_FAIL)
+
     def _assert_account_context(self, contract):
-        if contract["schema"] != "chan-ccxt-order-v3":
+        if contract["schema"] not in {"chan-ccxt-order-v3", "chan-native-client-order-v1"}:
             return  # No fictional native identity is added to legacy contracts.
         frozen = contract["account_context"]
         verify_account_context(frozen)
@@ -695,6 +894,8 @@ class CCCXTTradeEngine(CTradeEngine):
                 post_only=post_only,
             )
         self.safety_policy.assert_order_allowed()
+        if not reduce_only and self.market_type == "swap" and getattr(self.chan_db, "db_type", None) != "sqlite":
+            raise CChanException("原生swap新风险仅允许原SQLite金额意图，未验证后端不能降级", ErrCode.TRADE_UNLOCK_FAIL)
         intent = self._validated_persisted_intent(
             code,
             is_buy,
@@ -703,14 +904,37 @@ class CCCXTTradeEngine(CTradeEngine):
             reduce_only,
             side,
         )
+        if not reduce_only and self.market_type == "swap":
+            # This is the native branch, not the shared paper validator. A
+            # later dry_run change cannot turn a started native call into paper.
+            record = intent["record"]
+            history = self.chan_db.get_order_history(record["id"])
+            if not any(a["identity"]["phase"] == "open" and a["identity"]["attempt"] == record["open_attempt"]
+                       and a["events"][0].get("native_boundary_sha256") is not None for a in history["attempts"]):
+                raise CChanException("原生swap新风险必须有同次金额CAS，旧契约仅可恢复管理", ErrCode.TRADE_UNLOCK_FAIL)
         import ccxt  # 懒加载
         exchange = self.get_exchange()
         contract = self._read_order_contract(code, intent, amount=amount, price=price, submitting=True)
+        owner = self._monetary_consumer_owner(contract)
         params = self._venue_params(contract, client_order_id, is_buy=is_buy, reduce_only=reduce_only, post_only=post_only, side=side)
+        owner()
         self.safety_policy.assert_order_allowed()
         if not reduce_only:
             self.check_open_inputs(intent["record"])
-        if not self.chan_db.claim_order_submission(intent["record"]["id"], intent["phase"]):
+        owner()
+        if contract.get("schema") == "chan-native-client-order-v1":
+            from .NativePreparedIntent import _capture_native_claim_context
+            chan = self.chan_db
+            with chan.db.transaction():
+                owner(owned=True)
+                context = _capture_native_claim_context(self, intent["record"]["id"])
+                owner(owned=True)
+                claimed = chan.claim_order_submission(intent["record"]["id"], intent["phase"], native_claim=context)
+                owner(owned=True)
+            owner()
+        else:
+            claimed = self.chan_db.claim_order_submission(intent["record"]["id"], intent["phase"])
+        if not claimed:
             raise CChanException("持久化意图已提交或被其他进程获取", ErrCode.TRADE_UNLOCK_FAIL)
         try:
             exchange_amount = _float_exact(_quantity(contract["exchange_amount"], positive=True))
@@ -720,29 +944,71 @@ class CCCXTTradeEngine(CTradeEngine):
                 self.chan_db.assert_account_new_risk_allowed(contract["account_context"])
             if not reduce_only:
                 self.check_open_inputs(intent["record"])
-            order = exchange.create_order(
-                code,
-                order_type,
-                "buy" if is_buy else "sell",
-                exchange_amount,
-                price,
-                params,
-            )
+            http_scope = nullcontext()
+            if contract.get("schema") == "chan-native-client-order-v1":
+                from .NativePreparation import _selected_runtime
+                from .NativePreparedIntent import _native_prepared_claim_http_use
+                _selected_runtime(self, self.opening_inputs, self.safety_policy)
+                http_scope = _native_prepared_claim_http_use(self, intent["record"]["id"])
+            with http_scope:
+                order = exchange.create_order(
+                    code,
+                    order_type,
+                    "buy" if is_buy else "sell",
+                    exchange_amount,
+                    price,
+                    params,
+                )
         except ccxt.BaseError as e:
+            if contract.get("schema") == "chan-native-client-order-v1":
+                raise CChanException("原生订单提交结果未知，保留原意图且禁止据此重下", ErrCode.PLACE_ORDER_FAIL) from None
             order_side = "buy" if is_buy else "sell"
             raise CChanException(
                 f"下单失败 {code} {order_side} {amount}: {e}",
                 ErrCode.PLACE_ORDER_FAIL,
             ) from e
+        owner()
         self._assert_account_context(contract)
+        owner()
         self._check_order_identity(order, code, intent, contract, partial=True)
+        owner()
         self.chan_db.record_order_ack(intent["record"]["id"], intent["phase"], str(order["id"]), client_order_id=client_order_id,
             expected_attempt=intent["record"]["open_attempt" if intent["phase"] == "open" else "cover_attempt"])
+        owner()
         if any(order.get(key) is None for key in ("symbol", "side", "type", "filled", "status")):
             return self.query_order(code, str(order["id"]), client_order_id=client_order_id)
-        return self._result_from_ccxt(
+        result = self._result_from_ccxt(
             order, code=code, intent=intent, contract=contract
         )
+        if contract.get("schema") == "chan-native-client-order-v1":
+            from . import OrderAudit as audit
+            import sqlite3
+            owner()
+            report = audit._sdk_submission_report({key: getattr(result, key) for key in
+                ("order_id", "client_order_id", "requested", "filled", "avg_price", "status")})
+            owner()
+            chan, database = self.chan_db, self.chan_db.db
+            prefix = "open" if intent["phase"] == "open" else "cover"
+            try:
+                with database.transaction():
+                    owner(owned=True)
+                    fresh = chan.get_record(intent["record"]["id"])
+                    owner(owned=True)
+                    audit.read_history(database, chan.table, fresh)
+                    owner(owned=True)
+                    row = audit._ensure(database, chan.table, fresh, prefix)
+                    owner(owned=True)
+                    audit._append(database, row, "sdk_submission_report", audit._state(fresh, prefix),
+                        submission_report=report, _assert_current=lambda: owner(owned=True))
+                    owner(owned=True)
+                    audit.read_history(database, chan.table, chan.get_record(fresh["id"]))
+                    owner(owned=True)
+            except sqlite3.DatabaseError:
+                raise CChanException("提交累计事实发布失败，保留原ACK及未知意图", ErrCode.LIST_ORDER_FAIL) from None
+            owner()
+            if result.status in {"closed", "canceled", "rejected"}:
+                return self.query_order(code, result.order_id, client_order_id=client_order_id)
+        return result
 
     @paper_state_operation
     def cancel_order(self, code: str, order_id: str) -> bool:
@@ -760,13 +1026,25 @@ class CCCXTTradeEngine(CTradeEngine):
         if intent is None:
             raise CChanException("撤单缺少唯一持久化意图", ErrCode.CANDEL_ORDER_FAIL)
         contract = self._read_order_contract(code, intent)
-        if self.market_type == "swap" and contract["schema"] != "chan-ccxt-order-v3":
+        owner = self._monetary_consumer_owner(contract)
+        owner()
+        if self.market_type == "swap" and contract["schema"] not in {"chan-ccxt-order-v3", "chan-native-client-order-v1"}:
             raise CChanException("旧永续契约撤单需先证明原账户归属", ErrCode.CANDEL_ORDER_FAIL)
         try:
-            self.get_exchange().cancel_order(order_id, code)
+            response = self.get_exchange().cancel_order(order_id, code)
+            owner()
             self._assert_account_context(contract)
+            owner()
+            if contract["schema"] == "chan-native-client-order-v1":
+                # Cancel responses need not carry a fill average. Validate
+                # identity/terms, but leave cumulative application to query.
+                self._check_order_identity(response, code, intent, contract, partial=True)
+                self._check_execution_report(response, contract)
+                owner()
             return True
         except ccxt.BaseError as e:
+            if contract.get("schema") == "chan-native-client-order-v1":
+                raise CChanException("原生撤单结果未知，保留原意图并按原订单查询核实", ErrCode.CANDEL_ORDER_FAIL) from None
             raise CChanException(f"撤单失败 {code} {order_id}: {e}", ErrCode.CANDEL_ORDER_FAIL) from e
 
     @paper_state_operation
@@ -809,14 +1087,23 @@ class CCCXTTradeEngine(CTradeEngine):
         known_id = known_id if known_id is not None else order_id
         client_order_id = record[f"{prefix}_client_order_id"]
         contract = self._read_order_contract(code, intent)
+        owner = self._monetary_consumer_owner(contract)
+        owner()
+        native_terminal = contract.get("schema") == "chan-native-client-order-v1"
+        query_started = utc_now_ms() if native_terminal else None
         try:
             order = self._fetch_persisted_order(code, known_id, client_order_id, record.get(f"{prefix}_intent_ms"))
+            owner()
         except ccxt.BaseError as e:
+            if native_terminal:
+                raise CChanException("原生查单来源不可用，保留原未知意图且禁止据此重下", ErrCode.LIST_ORDER_FAIL) from None
             identity = known_id or client_order_id
             raise CChanException(f"查单失败 {code} {identity}: {e}", ErrCode.LIST_ORDER_FAIL) from e
         self._assert_account_context(contract)
+        owner()
         try:
             result = self._result_from_ccxt(order, code=code, intent=intent, contract=contract)
+            owner()
         except CChanException as error:
             raise CChanException("查单回报尚不能安全记账", ErrCode.LIST_ORDER_FAIL) from error
         if known_id is not None and result.order_id != str(known_id):
@@ -829,8 +1116,55 @@ class CCCXTTradeEngine(CTradeEngine):
             if (type(since) is not int or type(at_ms) is not int or at_ms < since
                     or at_ms > utc_now_ms() or self._order_client_id(order) != client_order_id):
                 raise CChanException("客户端匹配缺少本意图 UTC/身份依据", ErrCode.LIST_ORDER_FAIL)
-        self.chan_db.record_order_ack(record["id"], intent["phase"], result.order_id, client_order_id=client_order_id,
-            expected_attempt=record.get(f"{prefix}_attempt"))
+        owner()
+        if native_terminal:
+            from . import OrderAudit as audit
+            history = audit.read_history(self.chan_db.db, self.chan_db.table, record)
+            owner()
+            attempts = [attempt for attempt in history["attempts"] if attempt["identity"]["phase"] == intent["phase"]
+                        and attempt["identity"]["attempt"] == record.get(f"{prefix}_attempt")]
+            if len(attempts) != 1:
+                raise CChanException("查单缺少唯一原尝试历史", ErrCode.LIST_ORDER_FAIL)
+            audit._assert_sdk_submission(attempts[0], {key: getattr(result, key) for key in
+                ("order_id", "client_order_id", "requested", "filled", "avg_price", "status")})
+            owner()
+        if native_terminal and result.status in {"closed", "canceled", "rejected"}:
+            from . import OrderAudit as audit
+            from .NativePendingOrders import _raw_order
+            chan, database = self.chan_db, self.chan_db.db
+            observation = audit._native_terminal_observation(audit._identity(chan.table, record, prefix),
+                _raw_order(order["info"], contract["account_context"]["venue"]), query_started, utc_now_ms())
+            observed = observation["payload"]
+            if (observed["native_order_id"] != result.order_id or observed["client_order_id"] != result.client_order_id
+                    or observed["status"] != result.status or _quantity(observed["requested_base_quantity"]) != _quantity(result.requested)
+                    or _quantity(observed["filled_base_quantity"]) != _quantity(result.filled)
+                    or (None if observed["average_price"] is None else _quantity(observed["average_price"])) !=
+                       (None if result.avg_price is None else _quantity(result.avg_price))):
+                raise CChanException("原生终态累计量与原SDK回报不一致", ErrCode.LIST_ORDER_FAIL)
+            owner()
+            import sqlite3
+            try:
+                with database.transaction():
+                    owner(owned=True)
+                    chan.record_order_ack(record["id"], intent["phase"], result.order_id, client_order_id=client_order_id,
+                        expected_attempt=record.get(f"{prefix}_attempt"))
+                    owner(owned=True)
+                    fresh = chan.get_record(record["id"])
+                    audit.read_history(database, chan.table, fresh)
+                    owner(owned=True)
+                    row = audit._ensure(database, chan.table, fresh, prefix)
+                    owner(owned=True)
+                    audit._append(database, row, "native_terminal_observation", audit._state(fresh, prefix),
+                                  native_order_observation=observation, _assert_current=lambda: owner(owned=True))
+                    owner(owned=True)
+                    audit.read_history(database, chan.table, chan.get_record(record["id"]))
+                    owner(owned=True)
+            except sqlite3.DatabaseError:
+                raise CChanException("原生终态来源发布失败，原ACK及来源写入整组回滚", ErrCode.LIST_ORDER_FAIL) from None
+            owner()
+        else:
+            self.chan_db.record_order_ack(record["id"], intent["phase"], result.order_id, client_order_id=client_order_id,
+                expected_attempt=record.get(f"{prefix}_attempt"))
         return result
 
     def _fetch_persisted_order(self, code, order_id, client_id, since):
@@ -1330,7 +1664,7 @@ class CCCXTTradeEngine(CTradeEngine):
 
     @staticmethod
     def _check_execution_report(order, contract):
-        if contract["schema"] not in {"chan-ccxt-order-v2", "chan-ccxt-order-v3"}:
+        if contract["schema"] not in {"chan-ccxt-order-v2", "chan-ccxt-order-v3", "chan-native-client-order-v1"}:
             return  # v1 remains read-only; it cannot authorize a new submission.
         execution, info = contract["execution"], order.get("info")
         if not isinstance(info, dict):
@@ -1349,7 +1683,7 @@ class CCCXTTradeEngine(CTradeEngine):
             post_only = info["ordType"] == "post_only"
         if post_only is not contract["post_only"]:
             raise CChanException("服务端 post-only 与冻结意图不一致", ErrCode.LIST_ORDER_FAIL)
-        if swap and execution["position_mode"] == "one_way":
+        if swap and (execution["position_mode"] == "one_way" or contract["schema"] == "chan-native-client-order-v1"):
             reduced = info.get("reduceOnly")
             if isinstance(reduced, str) and reduced in {"true", "false"}:
                 reduced = reduced == "true"

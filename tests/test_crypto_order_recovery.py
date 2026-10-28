@@ -1,4 +1,4 @@
-"""Real CCXT query builders/parsers, fake venue I/O, real intent SQLite. No network."""
+"""Real CCXT recovery of legacy fake histories; no native admission or network."""
 import copy
 
 import ccxt
@@ -7,7 +7,7 @@ import pytest
 from Common.ChanException import CChanException, ErrCode
 from Common.KLineTime import utc_now_ms
 from Trade.db_util import CChanDB
-from .test_crypto_order_contract import CODE, open_pre_journal_copy, order_db
+from .test_crypto_order_contract import CODE, open_legacy_history, open_pre_journal_copy, order_db
 from .test_crypto_venue_parameters import CVenueExchange, venue_engine
 from .test_m6_trade import make_signal
 
@@ -100,7 +100,7 @@ def lose_open(trade):
     trade.exchange.lost_response = True
     record_id = trade.chan_db.add_signal(make_signal(code=CODE))
     with pytest.raises(CChanException) as caught:
-        trade.add_trade(trade.chan_db.get_record(record_id), 100)
+        open_legacy_history(trade, trade.chan_db.get_record(record_id), 100)
     assert caught.value.errcode == ErrCode.PLACE_ORDER_FAIL
     return record_id
 
@@ -113,7 +113,7 @@ def test_ack_id_is_durable_before_followup_and_unknown_fill_never_becomes_zero(o
     record_id = order_db.add_signal(make_signal(code=CODE))
     if phase == "close":
         exchange.fill, exchange.status = 3, "closed"
-        trade.add_trade(order_db.get_record(record_id), 100)
+        open_legacy_history(trade, order_db.get_record(record_id), 100)
     prefix = "open" if phase == "open" else "cover"
     exchange.ack_only, exchange.lookup_error = True, ccxt.NetworkError("read offline")
     expected_id = str(len(exchange.created)+1)
@@ -125,7 +125,7 @@ def test_ack_id_is_durable_before_followup_and_unknown_fill_never_becomes_zero(o
     exchange.before_read = inspect_durable_ack
     with pytest.raises(CChanException) as caught:
         if phase == "open":
-            trade.add_trade(order_db.get_record(record_id), 100)
+            open_legacy_history(trade, order_db.get_record(record_id), 100)
         else:
             trade.cover_trade(order_db.get_record(record_id), 101, "ack close")
     assert caught.value.errcode == ErrCode.LIST_ORDER_FAIL
@@ -262,7 +262,7 @@ def test_wrong_ack_identity_never_gets_saved_or_used_for_followup(order_db, tmp_
     trade.exchange.create_order = lambda *args, **kwargs: {**create(*args, **kwargs), **mutation}
     record_id = order_db.add_signal(make_signal(code=CODE))
     with pytest.raises(CChanException):
-        trade.add_trade(order_db.get_record(record_id), 100)
+        open_legacy_history(trade, order_db.get_record(record_id), 100)
     stored = order_db.get_record(record_id)
     assert stored["open_order_id"] is None and stored["current_qty"] == 0
     assert stored["open_order_status"] == "submitting"
@@ -419,7 +419,7 @@ def test_ack_without_a_read_failure_applies_only_the_followup_fill(order_db, tmp
         assert pending["open_order_id"] == "1" and pending["open_order_status"] == "submitting"
         assert pending["open_filled_qty"] == 0 and pending["current_qty"] == 0
     trade.exchange.before_read = before_read
-    result = trade.add_trade(order_db.get_record(record_id), 100)
+    result = open_legacy_history(trade, order_db.get_record(record_id), 100)
     assert result.filled == 0.01 and order_db.get_record(record_id)["current_qty"] == 0.01
     assert len(trade.exchange.reads) == 1 and len(trade.exchange.created) == 1
 
@@ -430,7 +430,7 @@ def test_partial_close_cancel_race_uses_terminal_get_and_a_new_remaining_intent(
     exchange = trade.exchange
     exchange.fill, exchange.status = 3, "closed"
     record_id = order_db.add_signal(make_signal(code=CODE))
-    trade.add_trade(order_db.get_record(record_id), 100)
+    open_legacy_history(trade, order_db.get_record(record_id), 100)
     exchange.ack_only = True
     def race():
         exchange.orders["2"].update(filled=2, status="canceled")

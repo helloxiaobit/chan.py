@@ -20,6 +20,7 @@ from .NativeMarketEvidence import _markets
 
 SCHEMA = "chan-native-pending-ownership-v1"
 CLIENT_SCHEMA = "chan-native-pending-ownership-v2"
+TERMINAL_SCHEMA = "chan-native-pending-ownership-v3"
 _CLIENT_ORDER_SCHEMA = "chan-native-client-order-v1"
 _TERMINAL = {"closed", "canceled", "rejected"}
 
@@ -101,6 +102,30 @@ def _match(attempt, order, market, context, *, client_roots=()):
     return None
 
 
+def _terminal_reference(attempt, source):
+    """Latest original query + exact applied report, not local terminal alone."""
+    from .OrderAudit import _native_terminal_observation
+    candidates = [event for event in attempt["events"] if event["kind"] == "native_terminal_observation"]
+    if not candidates:
+        return None
+    evidence = candidates[-1]["native_order_observation"]
+    value, identity, state = evidence["payload"], attempt["identity"], attempt["events"][-1]["state"]
+    if canonical_bytes(evidence) != canonical_bytes(_native_terminal_observation(
+            identity, value["raw"], value["started_ms"], value["finished_ms"])):
+        _fail()
+    if (value["finished_ms"] >= source["started_ms"]
+            or canonical_bytes(value["account_context"]) != canonical_bytes(source["account_context"])
+            or state["order_status"] != value["status"] or _order_ids(attempt) != {value["native_order_id"]}
+            or _number(str(state["filled_qty"])) != _number(value["filled_base_quantity"])
+            or (value["average_price"] is not None and (state["avg_price"] is None
+                or _number(str(state["avg_price"])) != _number(value["average_price"])))
+            or any(order["instrument_id"] == identity["order_contract"]["market"]["id"]
+                   and (order["native_order_id"] == value["native_order_id"]
+                        or order["client_order_id"] == identity["client_order_id"]) for order in source["orders"])):
+        return None
+    return {"attempt": _reference(attempt), "observation_sha256": _digest(evidence)}
+
+
 def _build(source, ledger, *, client_roots=()):
     context = source["account_context"]
     markets = {market["id"]: market for market in source["markets"]}
@@ -132,7 +157,7 @@ def _build(source, ledger, *, client_roots=()):
                 issues.append({"reason": "historical_account_environment_drift", "attempt": _reference(attempt)})
             attempts.append(attempt)
     unsupported = {_native_key(row): row["reason"] for row in source["unsupported_orders"]}
-    records, owned = [], set()
+    records, owned, terminal_observations = [], set(), []
     for order in source["orders"]:
         candidates = [attempt for attempt in attempts if order["native_order_id"] in _order_ids(attempt)
                       and attempt["identity"]["order_contract"]["market"]["id"] == order["instrument_id"]]
@@ -155,6 +180,10 @@ def _build(source, ledger, *, client_roots=()):
             continue
         reference = _reference(attempt)
         if terminal and client:
+            observation = _terminal_reference(attempt, source)
+            if observation is not None:
+                terminal_observations.append(observation)
+                continue
             issues.append({"reason": "client_terminal_not_observed", "attempt": reference})
         requested, filled = _requested(identity), _number(str(state["filled_qty"]))
         if not 0 <= filled <= requested:
@@ -174,6 +203,9 @@ def _build(source, ledger, *, client_roots=()):
         "reservations": reservations, "issues": sorted(issues, key=canonical_bytes)}
     if references:
         payload["client_order_references"] = references
+    if terminal_observations:
+        payload["terminal_observations"] = terminal_observations
+        payload["coverage"] = "native_pending_and_original_query_terminal_observations"
     return payload
 
 
@@ -196,7 +228,7 @@ def observe_native_pending_ownership(chan, *, pending_orders):
             payload = _build(document["payload"], ledger, client_roots=roots)
         if canonical_bytes(pending_orders) != original:
             _fail()
-        return {"schema": CLIENT_SCHEMA if "client_order_references" in payload else SCHEMA,
+        return {"schema": TERMINAL_SCHEMA if "terminal_observations" in payload else CLIENT_SCHEMA if "client_order_references" in payload else SCHEMA,
                 "payload": payload, "payload_sha256": _digest(payload)}
     except Exception:
         _fail()

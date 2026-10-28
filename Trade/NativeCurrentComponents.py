@@ -59,12 +59,14 @@ def _sources_snapshot(chan, context, check_id, market):
     from .AccountStore import TABLE as ACCOUNT_EVIDENCE, read_evidence
     from .AccountSources import WALLET_SCHEMA
     from .ExecutionStore import SCANS, read_scan_with_account
-    from .NativeAccountCheck import SCHEMA as CHECK_SCHEMA
+    from .NativeAccountCheck import SCHEMA as CHECK_SCHEMA, CLIENT_SCHEMA, TERMINAL_SCHEMA
     from .NativeAccountStore import read_account_observations
     from .NativePendingOrders import SCHEMA as PENDING_SCHEMA
     with chan.db.transaction():
         check, executions = _current_interval_sources(chan, context, check_id, market)
-        if check["schema"] != CHECK_SCHEMA:
+        # _current_interval_sources has already called the original full
+        # read_check rebuild, including the versioned roots/journal prefix.
+        if check["schema"] not in {CHECK_SCHEMA, CLIENT_SCHEMA, TERMINAL_SCHEMA}:
             _fail_sources()
         saved, key = check["payload"]["inputs"], account_key(context)
         start, end = saved["before"]["payload"]["started_ms"], saved["after"]["payload"]["finished_ms"]+1

@@ -437,7 +437,7 @@ def test_full_paper_uses_quote_proof_without_turning_ticker_into_mark_or_reopeni
 
 @pytest.mark.parametrize("venue", ["binance", "okx"])
 @pytest.mark.parametrize("expire_after_claim", [False, True])
-def test_actual_native_parameter_builder_uses_quoted_intent_and_rechecks_before_fake_send(inputs, cycle, monkeypatch, tmp_path, venue, expire_after_claim):
+def test_quoted_legacy_intent_preserves_units_and_age_but_never_authorizes_native_send(inputs, cycle, monkeypatch, tmp_path, venue, expire_after_claim):
     import yaml
     from Config.EnvConfig import CEnv
     from Common.CEnum import KL_TYPE
@@ -446,6 +446,7 @@ def test_actual_native_parameter_builder_uses_quoted_intent_and_rechecks_before_
     from OfflineData.offline_data_util import CKLineDB
     from Trade.CCXTTradeEngine import CCCXTTradeEngine
     from Trade.OpenQuotaGen import CBenchPriceQuotaGen
+    from Trade.TradeEngine import CTradeEngine
     from Trade.Script.OpeningInputs import COpeningInputs
     from .test_crypto_venue_parameters import CVenueExchange
     from .test_crypto_order_contract import market
@@ -484,22 +485,34 @@ def test_actual_native_parameter_builder_uses_quoted_intent_and_rechecks_before_
     signal = CSignal(CODES[0], KL_TYPE.K_60M, True, "1", unit, 100, sl_thred=90, target_klu_time=unit.time)
     signal.freeze_decision()
     record = db.get_record(db.add_signal(signal))
+    # Construct only old v3 data with the original unit/CAS writers. Quotes
+    # are input observations, not the current native monetary admission chain.
+    quantity, price, client = CTradeEngine._acquire_open_intent(engine, record, 100.5,
+        snapshot={"price": 100.5, "entry_observed_ms": clock["now"]}, score_before=None)
+    current = db.get_record(record["id"])
+    history = db.get_order_history(record["id"])
+    proof = json.loads(current["snapshot_before"])["opening_inputs"]
+    assert proof["quote"]["batch"]["payload"]["source"] == source
+    assert proof["native_admission_verified"] is False
+    assert history["attempts"][0]["identity"]["opening_inputs"] == proof
+    contract = engine._read_order_contract(CODES[0], db.get_order_intent(client),
+        amount=quantity, price=price, submitting=True)
+    assert contract["schema"] == "chan-ccxt-order-v3" and quantity == 0.03 and price == 100.5
+    params = engine._venue_params(contract, client, is_buy=True, reduce_only=False, post_only=False, side="BOTH")
+    native = exchange.builder.create_order_request(CODES[0], "limit", "buy", 3, price, params)
+    assert str(native["quantity" if venue == "binance" else "sz"]) == "3"
+    assert str(native["price" if venue == "binance" else "px"]) == "100.5"
+    assert native["newClientOrderId" if venue == "binance" else "clOrdId"] == client
+    with pytest.raises(CChanException, match="原生swap新风险"):
+        engine.place_order(CODES[0], True, quantity, price, client_order_id=client)
+    assert db.get_record(record["id"]) == current and db.get_order_history(record["id"]) == history
+    assert exchange.created == [] and exchange.native_requests == []
+    assert db.claim_order_submission(record["id"], "open")
     if expire_after_claim:
-        original = db.claim_order_submission
-        def claim(*args, **kwargs):
-            result = original(*args, **kwargs)
-            clock["now"] += 1001
-            return result
-        monkeypatch.setattr(db, "claim_order_submission", claim)
-        with pytest.raises(CChanException):
-            engine.add_trade(record, 100.5)
-        assert exchange.created == [] and exchange.native_requests == []
-        assert db.get_record(record["id"])["open_order_status"] == "submitting"
+        clock["now"] += 1001
+        with pytest.raises(CChanException, match="开仓行情/模型/信号输入已失效"):
+            engine.check_open_inputs(db.get_record(record["id"]))
     else:
-        result = engine.add_trade(record, 100.5)
-        assert result.filled == 0.03 and len(exchange.native_requests) == 1
-        current = db.get_record(record["id"])
-        proof = json.loads(current["snapshot_before"])["opening_inputs"]
-        assert proof["quote"]["batch"]["payload"]["source"] == source
-        assert proof["native_admission_verified"] is False
-        assert db.get_order_history(record["id"])["attempts"][0]["identity"]["opening_inputs"] == proof
+        assert engine.check_open_inputs(db.get_record(record["id"])) == proof
+    assert db.get_record(record["id"])["open_order_status"] == "submitting"
+    assert exchange.created == [] and exchange.native_requests == []

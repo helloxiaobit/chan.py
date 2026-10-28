@@ -1,9 +1,9 @@
-"""Deterministic interleavings on two real SQLite connections; no network."""
+"""Real SQLite interleavings and legacy fake recovery, not native admission."""
 import pytest
 
 from Common.ChanException import CChanException, ErrCode
 from Trade.db_util import CChanDB
-from .test_crypto_order_contract import CODE
+from .test_crypto_order_contract import CODE, open_legacy_history
 from .test_crypto_order_recovery import lose_open, recovery_engine
 from .test_m6_trade import make_signal
 
@@ -133,7 +133,7 @@ def test_runtime_publishes_order_status_and_fill_in_one_atomic_update(databases,
     trade.exchange.fill, trade.exchange.status = 3, "closed"
     record_id = db.add_signal(make_signal(code=CODE))
     if phase == "close":
-        trade.add_trade(db.get_record(record_id), 100)
+        open_legacy_history(trade, db.get_record(record_id), 100)
     prefix = "open" if phase == "open" else "cover"
     snapshots = []
     execute = db.db.execute
@@ -144,7 +144,7 @@ def test_runtime_publishes_order_status_and_fill_in_one_atomic_update(databases,
         return result
     monkeypatch.setattr(db.db, "execute", observe_commit)
     if phase == "open":
-        trade.add_trade(db.get_record(record_id), 100)
+        open_legacy_history(trade, db.get_record(record_id), 100)
     else:
         trade.cover_trade(db.get_record(record_id), 101, "atomic close")
     snapshots.append(peer.get_record(record_id))  # Include the transaction's committed projection.
@@ -160,11 +160,11 @@ def test_new_contract_fill_cannot_be_applied_without_current_attempt_identity(da
     record_id = db.add_signal(make_signal(code=CODE))
     if phase == "close":
         trade.exchange.fill, trade.exchange.status = 3, "closed"
-        trade.add_trade(db.get_record(record_id), 100)
+        open_legacy_history(trade, db.get_record(record_id), 100)
         trade.exchange.fill, trade.exchange.status = 1, "open"
         trade.cover_trade(db.get_record(record_id), 101, "fixture")
     else:
-        trade.add_trade(db.get_record(record_id), 100)
+        open_legacy_history(trade, db.get_record(record_id), 100)
     apply = db.apply_open_fill if phase == "open" else db.apply_close_fill
     before = db.get_record(record_id)
     with pytest.raises(CChanException) as caught:
@@ -181,7 +181,7 @@ def test_ack_from_a_query_cannot_attach_to_the_next_close_attempt(databases, tmp
     exchange = trade.exchange
     exchange.fill, exchange.status = 3, "closed"
     record_id = db.add_signal(make_signal(code=CODE))
-    trade.add_trade(db.get_record(record_id), 100)
+    open_legacy_history(trade, db.get_record(record_id), 100)
     exchange.fill, exchange.status = 1, "open"
     old = trade.cover_trade(db.get_record(record_id), 101, "first close")
     old_client = db.get_record(record_id)["cover_client_order_id"]
@@ -217,11 +217,11 @@ def test_new_contract_identity_writes_also_require_the_original_client(databases
     record_id = db.add_signal(make_signal(code=CODE))
     if phase == "close":
         trade.exchange.fill, trade.exchange.status = 3, "closed"
-        trade.add_trade(db.get_record(record_id), 100)
+        open_legacy_history(trade, db.get_record(record_id), 100)
         trade.exchange.fill, trade.exchange.status = 1, "open"
         order = trade.cover_trade(db.get_record(record_id), 101, "fixture")
     else:
-        order = trade.add_trade(db.get_record(record_id), 100)
+        order = open_legacy_history(trade, db.get_record(record_id), 100)
     before = db.get_record(record_id)
     with pytest.raises(CChanException) as caught:
         if write == "ack":
@@ -241,7 +241,7 @@ def test_legacy_manual_helpers_cannot_mutate_a_new_contract(databases, tmp_path,
     trade.exchange.fill = 0 if action == "open" else 3
     trade.exchange.status = "open" if action == "open" else "closed"
     record_id = db.add_signal(make_signal(code=CODE))
-    trade.add_trade(db.get_record(record_id), 100)
+    open_legacy_history(trade, db.get_record(record_id), 100)
     before = db.get_record(record_id)
     with pytest.raises(CChanException):
         if action == "open":
@@ -256,7 +256,7 @@ def test_legacy_manual_helpers_cannot_mutate_a_new_contract(databases, tmp_path,
 def terminal_partial_close(trade):
     trade.exchange.fill, trade.exchange.status = 3, "closed"
     record_id = trade.chan_db.add_signal(make_signal(code=CODE))
-    trade.add_trade(trade.chan_db.get_record(record_id), 100)
+    open_legacy_history(trade, trade.chan_db.get_record(record_id), 100)
     trade.exchange.fill, trade.exchange.status = 1, "canceled"
     trade.cover_trade(trade.chan_db.get_record(record_id), 101, "first partial terminal")
     return record_id
@@ -322,7 +322,7 @@ def test_known_terminal_state_not_an_older_open_packet_controls_cancel_and_retry
     exchange = trade.exchange
     record_id = db.add_signal(make_signal(code=CODE))
     exchange.fill, exchange.status = (1, "open") if phase == "open" else (3, "closed")
-    trade.add_trade(db.get_record(record_id), 100)
+    open_legacy_history(trade, db.get_record(record_id), 100)
     if phase == "close":
         exchange.fill, exchange.status = 1, "open"
         trade.cover_trade(db.get_record(record_id), 101, "pending close")
@@ -360,11 +360,11 @@ def test_closed_status_with_less_than_requested_fill_cannot_authorize_a_retry(da
     record_id = db.add_signal(make_signal(code=CODE))
     if phase == "close":
         exchange.fill, exchange.status = 3, "closed"
-        trade.add_trade(db.get_record(record_id), 100)
+        open_legacy_history(trade, db.get_record(record_id), 100)
     exchange.fill, exchange.status = 1, "closed"
     with pytest.raises(CChanException) as caught:
         if phase == "open":
-            trade.add_trade(db.get_record(record_id), 100)
+            open_legacy_history(trade, db.get_record(record_id), 100)
         else:
             trade.cover_trade(db.get_record(record_id), 101, "contradictory closed")
     assert caught.value.errcode == ErrCode.LIST_ORDER_FAIL
@@ -397,11 +397,11 @@ def test_bound_database_contract_rejects_a_partial_fill_claiming_closed(database
     record_id = db.add_signal(make_signal(code=CODE))
     if phase == "close":
         trade.exchange.fill, trade.exchange.status = 3, "closed"
-        trade.add_trade(db.get_record(record_id), 100)
+        open_legacy_history(trade, db.get_record(record_id), 100)
         trade.exchange.fill, trade.exchange.status = 1, "open"
         trade.cover_trade(db.get_record(record_id), 101, "fixture")
     else:
-        trade.add_trade(db.get_record(record_id), 100)
+        open_legacy_history(trade, db.get_record(record_id), 100)
     before = db.get_record(record_id)
     prefix = "open" if phase == "open" else "cover"
     apply = db.apply_open_fill if phase == "open" else db.apply_close_fill

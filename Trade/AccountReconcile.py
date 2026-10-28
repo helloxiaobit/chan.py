@@ -178,11 +178,13 @@ def _build(before, after, wallets, executions, histories, projections, *, pendin
     def issue(reason, *, incomplete=False, **details):
         issues.append({"reason": reason, "severity": "incomplete" if incomplete else "mismatch", **details})
 
-    qualified = set()
+    qualified, terminal_qualified = set(), set()
     if pending_validation is not None:
         observed = pending_validation["payload"]
         qualified = {tuple(row["attempt"][key] for key in ("trade_table", "record_id", "phase", "attempt", "client_order_id"))
                      for row in observed["orders"] if row["status"] == "owned"}
+        terminal_qualified = {tuple(row["attempt"][key] for key in ("trade_table", "record_id", "phase", "attempt", "client_order_id"))
+                              for row in observed.get("terminal_observations", ())}
         for row in observed["issues"]:
             issue("native_pending_"+row["reason"], incomplete=True, observation=row)
 
@@ -237,8 +239,9 @@ def _build(before, after, wallets, executions, histories, projections, *, pendin
     positions_after = _native_positions(last, issue, "after")
     attempts, record_events, record_open, other_accounts = {}, {}, {}, set()
     references = []
+    from .OrderAudit import _history_header
     for history in histories:
-        if history["schema"] != "chan-order-history-v1" or history["economics_complete"] is not False:
+        if canonical_bytes({key: history[key] for key in ("schema", "coverage", "economics_complete")}) != canonical_bytes(_history_header(history["attempts"])):
             _fail()
         for attempt in history["attempts"]:
             identity, contract = attempt["identity"], attempt["identity"]["order_contract"]
@@ -266,7 +269,8 @@ def _build(before, after, wallets, executions, histories, projections, *, pendin
             attempts[ref] = attempt
             if attempt["events"][-1]["state"]["order_status"] not in {"closed", "canceled", "rejected"} and ref not in qualified:
                 issue("unresolved_attempt", identity=list(ref), incomplete=True)
-            if contract["schema"] == "chan-native-client-order-v1" and attempt["events"][-1]["state"]["order_status"] in {"closed", "canceled", "rejected"}:
+            if (contract["schema"] == "chan-native-client-order-v1" and ref not in terminal_qualified
+                    and attempt["events"][-1]["state"]["order_status"] in {"closed", "canceled", "rejected"}):
                 issue("client_terminal_not_observed", identity=list(ref), incomplete=True)
             clocks = [e["observed_ms"] for e in attempt["events"]]
             if clocks != sorted(clocks):
@@ -352,7 +356,7 @@ def _build(before, after, wallets, executions, histories, projections, *, pendin
 
     book = {k: {"q": _number(p["quantity"]), "entry": _number(p["entry_price"] or 0),
         "sign": -1 if p["direction"] == "short" else 1} for k, p in positions_before.items()}
-    totals = {}
+    totals, notionals = {}, {}
     ordered = sorted(all_facts, key=lambda r: (r["fact"]["timestamp_ms"], int(r["fact"]["trade_id"])))
     for row in ordered:
         fact, owner = row["fact"], row["owner"]
@@ -379,12 +383,19 @@ def _build(before, after, wallets, executions, histories, projections, *, pendin
         if realized != _number(fact["realized_pnl"]):
             issue("execution_realized_difference", source_id=fact["source_id"])
         totals[ref] = totals.get(ref, Fraction(0))+quantity
+        notionals[ref] = notionals.get(ref, Fraction(0))+quantity*price
     for ref, attempt in attempts.items():
         events = [{**e, "attempt_key": ref} for e in attempt["events"]]
         before_qty = _latest(events, start, "filled_qty", issue, list(ref))
         after_qty = _latest(events, last["finished_ms"], "filled_qty", issue, list(ref))
         if after_qty-before_qty != totals.get(ref, Fraction(0)):
             issue("attempt_fill_quantity_difference", identity=list(ref))
+        if ref in terminal_qualified:
+            terminal = next(event["native_order_observation"]["payload"] for event in reversed(attempt["events"])
+                            if event["kind"] == "native_terminal_observation")
+            if (totals.get(ref, Fraction(0)) == _number(terminal["filled_base_quantity"])
+                    and notionals.get(ref, Fraction(0)) != _number(terminal["raw"]["cumQuote"])):
+                issue("native_terminal_notional_difference", identity=list(ref))
 
     db_before, db_after = {}, {}
     projection_map = {(p["trade_table"], p["record_id"]): p for p in projections}
@@ -452,6 +463,8 @@ def _build(before, after, wallets, executions, histories, projections, *, pendin
     if references:
         payload["client_order_references"] = references
         schema = "chan-account-reconciliation-v2" if pending_validation is None else "chan-account-reconciliation-pending-v3"
+    if terminal_qualified:
+        schema = "chan-account-reconciliation-pending-v4"
     return {"schema": schema,
             "payload": payload, "payload_sha256": _sha(payload)}
 
@@ -471,7 +484,7 @@ def build_account_reconciliation_with_pending(*, before, after, wallets, executi
     There is no caller-supplied matched report or set of exempt attempts.
     """
     from .NativePendingOrders import verify_native_pending_orders
-    from .NativePendingOwnership import SCHEMA as PENDING_SCHEMA, CLIENT_SCHEMA, _build as pending_ownership
+    from .NativePendingOwnership import SCHEMA as PENDING_SCHEMA, CLIENT_SCHEMA, TERMINAL_SCHEMA, _build as pending_ownership
     from .ExecutionFacts import _MONEY, _market
     from decimal import localcontext
     try:
@@ -484,7 +497,7 @@ def build_account_reconciliation_with_pending(*, before, after, wallets, executi
             _fail()
         with localcontext(_MONEY):
             payload = pending_ownership(source, {"histories": histories, "projections": projections}, client_roots=client_roots)
-        pending = {"schema": CLIENT_SCHEMA if "client_order_references" in payload else PENDING_SCHEMA,
+        pending = {"schema": TERMINAL_SCHEMA if "terminal_observations" in payload else CLIENT_SCHEMA if "client_order_references" in payload else PENDING_SCHEMA,
                    "payload": payload, "payload_sha256": _sha(payload)}
         return _build(before, after, wallets, executions, histories, projections, pending_validation=pending, client_roots=client_roots)
     except (ValueError, TypeError, KeyError, AttributeError, DecimalException, ZeroDivisionError):

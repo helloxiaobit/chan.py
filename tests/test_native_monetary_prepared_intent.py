@@ -198,7 +198,7 @@ def test_monetary_intent_retains_original_atomic_cas_rollback(single_case, monke
             return writer(*args, **kwargs)
         monkeypatch.setattr(case["db"], "_order_write", forged)
     with pytest.raises(CChanException) as caught: acquire(case)
-    assert touched and "PRIVATE_" not in str(caught.value)
+    assert (not touched and not case["http_calls"] if stage == "forged_context" else touched) and "PRIVATE_" not in str(caught.value)
     assert case["db"].get_record(case["key"])["open_attempt"] == 0
     assert case["db"].get_order_history(case["key"])["attempts"] == []
     assert case["db"].db.query("SELECT * FROM chanpy_native_order_transitions") == []

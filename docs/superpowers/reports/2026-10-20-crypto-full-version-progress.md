@@ -36,8 +36,8 @@
 | C2 | 已完成离线实现与验收 | 父 K/原始关系发布边界、不可变决策、完整身份对账、真实三层策略 future/prefix 变异；非外部认证 |
 | C3 | 已完成离线实现与验收 | UTC purge/unknown、三模型身份、write-once 部署、三阶段评分与 SQLite 版本链；非实盘/外部认证 |
 | C4 | 已完成离线实现与验收 | 有界实际样本→三模型→搜索/独立验证→部署→全 trial 重放；93 项组合、608 项全仓离线通过，非经济采用 |
-| C5 | 进行中 | 单位/原生恢复/历史/来源、区间核对与持久冻结已离线验收；cross/lot paper 已接原状态机；原 L0 与诊断 CAS 引用已验，已批准 F/P 的条件金额已接原 check；完整金额 CAS、全部执行消费者/默认鲜活准入与外部认证仍待 |
-| C6 | 进行中（仍未完成） | 配置运行壳/失败传播/OS 锁、输入/报价、API、显式软件 paper 进程级路径、通知摘要/脱敏与 Windows 3.11/3.14 核心/完整安装已验；原生账户/mark/book 证明、信号显式换代、更广 E2E、迁移和外部通知送达仍待 |
+| C5 | 进行中 | 单位/原生恢复/历史/来源、区间核对与持久冻结、cross/lot paper 已验；Binance已批准F/P条件金额现已贯通原CAS/claim/L2、SDK/HTTP使用点、终态/账户与cold恢复fake联合验收；OKX同等级原生金额路径、其余支持范围与C7外部认证仍待 |
+| C6 | 进行中（仍未完成） | 配置运行壳/失败传播/OS锁、输入/报价、API、软件paper进程级路径、通知脱敏与双版安装已验；Binance显式profile的原生账户/mark/book/金额默认入口已接原执行链并fake联验；信号显式换代、更广E2E、迁移和外部通知送达仍待 |
 | C7 | 待前置验收 | 公共行情与有准入后的外部认证；代码发布按阶段进行 |
 
 基线：前一审计在完全相同 `22a5a56`、依赖和环境上执行的所选离线功能集合为 116 passed / 1 skipped / 1 deselected，带一个 XGBoost 弃用警告和 pytest 临时目录清理提示；该证据仅覆盖列明集合，不称全仓或真实交易所验收。行为修改后补跑对应回归。
@@ -1110,3 +1110,826 @@ C1 收尾清理计划：迁移校验由两份全表内存列表改为有序逐�
 | tests/test_native_monetary_consumers.py | f84f0ba0b930c39540fdfb9b63946b683c2fccd09e91143b45fe3fce27fefcc6 |
 | Trade/NativeOrderCost.py | 8b90e703c3d25a9c3f6e31f8c444c2ee13afff4349079a579d2cd2d508c059b1 |
 | Trade/NativeMarginEnvelope.py | 1f16b40bc2cc612a3216f38dc42b84fa15251e90316d169ac8c719f4fcbdf06e |
+
+### 2026-10-25 / 同一金额L1→原claim/L2内部子层（WIP，默认发送仍RED）
+
+基线HEAD为`436c011cda223da4f9970cbc1a6d5067dff0b646`，Goal工具已确认active；[执行/清理计划](../plans/2026-10-25-native-monetary-claim-execution.md)保留已批准A/P/F及账户串行协议。本段是未提交的实际工程进展，不是完整C5、第4.3或默认发送验收；没有push、规则/实际配置/权限/候选/研究/测试网/实盘门禁变更，没有真实端点、代理或新依赖。
+
+- 新增59项`test_native_monetary_claim.py`：从真实原SDK（仅底层fake）取得v4后，私有活上下文绑定实际Engine/guard/clock/同一owned DB/connection/table及原L1；原`claim_order_submission`/`_order_write`/NativeOrderTransition核全账本、原金额和同组源窗口，再发布唯一原claim及L2。L2根和monetary均沿用原L1，验证12种mode/side/order组合、双连接只赢一次、wrong record/table/phase与None/JSON/copy/blank/prepare句柄拒绝、过龄/冻结/配置/来源/SDK/own/other-row/monotonic尾漂移及整笔rollback。公开intent-only current API仍只接受L1，旧v2/v3不能借新入口升级。默认Engine仍未生成/消费该句柄，不是HTTP已接通。
+- 真实RED进一步发现并修复：最初claim前替换库仍先执行BEGIN/SELECT；stamp及来源回调之后，原manager还会向替换连接rollback并覆盖原domain错误。复用owner检查，在原writer入事务/回调后先核；`SqliteDB.transaction`只在进入时的实际connection上BEGIN/SAVEPOINT/COMMIT/ROLLBACK，退出前拒绝owner更换，不恢复或采纳外来连接。4项新原事务回归保留既有nested/outer rollback语义。
+- 相邻intent stamp的实际v4流水线也确证2项同类RED。原`_PREPARED`弱表附加原owners回调（未绑定/已绑定内部元组3/4→4/5），不新增registry、JSON字段、owner-only放行参数或另一套资金/订单状态机。原Last未绑定检查随私有布局调整，identity/binding wire不变，原完整consume/finish仍必需。旧历史不重封；Cost/Envelope未改。
+- 真正原L2后，经原ACK和真实SDK解析所观察到的native NEW，走原`apply_open_fill`的零量`report`，原pending reader才能给出owned。ACK单独仍`local_order_state_unresolved`，native margin amount仍None。初次正向夹具遗漏open report、后续native_order_id字段/事件名误写的失败均保留；它们不是金额漏洞或通过证据，没有放宽原消费者或把零量伪造成交。
+- 验证范围：修改private prepare注册表布局前的15模块中间版，3.11为1253 passed/2既有小样本AUC警告、0failure/error，终端2105.38s。**不是最终源码的15模块全绿**。最终小组合为claim59＋Last79＋原事务10＋旧prepare8/实际model2/capacity8，共166唯一ID；3.14一次166 passed/2警告（472.66s）。3.11首跑162 passed/4夹具失败（486.33s），其162个未改用例证据复用，夹具修正后4 passed（32.46s）；通过集合合并166，与3.14集合差异0、error/skip0。不是“两版各一次166全绿”，不外推全仓/完整默认链。
+- 当前真实完整默认Engine测试仍1 failed：`_validated_persisted_intent`在CCXTTradeEngine.py:509保留资金/发送消费者未验收阻断，尚无POST/ACK成功。`test_native_monetary_execution.py`显式保留该WIP RED，没有xfail/skip、caller permit、mock passed helper或手造成功L2。故完整acceptance与提交/push尚不能推进，Git diff保持WIP；不因本子层关闭/缩小Goal。
+- 3.11.15/3.14.2均实查并对Trade及4个改动测试compileall通过；diff check通过。所有pytest句柄已确认终态，CIM核pytest进程0后才写本段；没有等待超时重启或活pytest期间编辑。主线程按review清单复核，未调用代理。简化为共享原L1/L2 current体和原weak registry、CAS、ledger/数学/状态机，不另造allocator/账本/公式/表。
+- 下一步继续原Engine全契约/账户/参数/原生回报/查询/取消/恢复、完整加载实现闭包、锁外HTTP前原L2与金额尾复验、原生终态/完整已观察释放及默认新风险入口。完整fake E2E/适用全回归/Lore/正常push后才按原批准范围评估软件常量阻断；OKX金额、C5–C7与整个Goal仍未完成，不重问A/P/F、不拿永久拒绝代替功能，也不拿内部L2通过冒充默认链已通。
+
+以下原件均在`C:\Users\yangj\AppData\Local\Temp`，保留原名；文件名含green/fixed不代表该次通过，以实际结果为准：
+
+| JUnit文件 | 该次结果 | SHA256 |
+| --- | --- | --- |
+| chanpy-money-claim-red-719b772bfc3647c284305d985fa051f4.xml | 缺claim context，4 failed | eab48a2ef1e30a392d76daf3b9ea6ddee8069d6a3419cc6ebd2ba6d4a68709c0 |
+| chanpy-money-claim-owner-red-adf524afcf88412687ed04e2e82a4b0d.xml | foreign SQL，2 failed | 34960a3bb9bf6a9d185c0d0e6484c283789d004f4944c1e5abb52c112de77cc1 |
+| chanpy-money-claim-owner-green-944e06ec6f1344e88fbb1561e0f9dddd.xml | 修补误命中同名owners，TypeError，2 failed，非GREEN | 13f18fb28bff0beb38c3c46283727694562a36542ef43d9b415016aa86bedde2 |
+| chanpy-money-claim-late-owner-red-e3b6c8cdaf3b41edbcaaa2a84a4f105a.xml | stamp/来源回调后foreign SQL或rollback，2 failed | 5cc3d62f4df089b12398ac5d4bb0f740c9051dfd085e8b7738b0602e3658f55d |
+| chanpy-money-claim-txn-red-2317bf2fdca44bfcb2151c3229564c53.xml | 原事务未pin connection，4 failed | e973d05e16224ee3020b607f67f285a15351221987623c0f4e24a88382dd8087 |
+| chanpy-money-claim-regression-py311-996e87a1a227418ab4927753f4279182.xml | 中间版15模块1253 passed/2 warnings | 8b2762ca031c01e6bbc45d0a94f7c9827ac9c1c12eb40dca5b7fe4a4736ebc30 |
+| chanpy-money-intent-owner-red-2855ab5108ec44bc83ce54f45c7d08bb.xml | intent stamp foreign SQL，2 failed | 751e5e5d6f908dce3dc576abc3c958b164abc12fc1dbefc380092cd28533b725 |
+| chanpy-money-claim-current-py311-30a40073a9d346fbab6af7dc3918f6db.xml | 162 passed/4漏report夹具failed/2 warnings | f45ae1bd8947d560fbcc76621e020e4a93028ed1281473da2b18fe348873efc1 |
+| chanpy-money-claim-pending-fixture-616cfe4bb5db4b0581928d29aa5c2f5f.xml | native_order_id误写，4 failed | 054edc1b08e66c96cb7dfbdd2129507a3af250561981e6111241fef1bc95e30e |
+| chanpy-money-claim-pending-fixed-40be9d0d543140ca984275d25c23e8f4.xml | 原零量事件实际为report，4 failed | 0320202be2989dd597d979dd65026e1b3aa2cec54c98f6ee0308a56a7cd94cb6 |
+| chanpy-money-claim-pending-report-c0bba26d152347bfb49682ad0e16c80e.xml | 修正夹具补验4 passed | 2c65fba697735451b0a830eae8f4a334d077f1025e5af6ad2592a43776359b9a |
+| chanpy-money-claim-current-py314-2dc9bb7a36e141d6a7aa3e3af62c9854.xml | 166 passed/2 warnings | 90437e08fb183a49afdfe28e23d100ace59741d4e69c390bbbb83e63691deaee |
+| chanpy-money-execution-current-red-8d5ef4ffec8743cd988a2448aab40dd9.xml | 完整默认发送仍1 failed，未验收 | ead83cb8651372ca6617cf15941c42e9dd4c4331f295ecb2e9610832e3da64c5 |
+
+其余阶段性GREEN原件（均未删/未改名）：claim-green-946f97e4c9944000b104b6bc7b59818d（4 passed）、claim-owner-fixed-f915a3311009477882233b6118687e33（2 passed）、claim-cases-ca6065c74add48c0a00550540df9637f（39 passed）、claim-txn-fixed-a8bd6b0aa2104fccbd772eea27ffdb8c（16 passed）、claim-late-matrix-d0c2e6c005154325b8199ba7c8a425a0（12 passed）、intent-owner-green-6f118acabdbf4788b6b667ce0e98098b（2 passed），以上统一前缀`chanpy-money-`与后缀`.xml`；只证明各自当时范围，不充作最终全回归。
+
+2026-10-25阶段源码/测试SHA256（历史WIP身份；不是新commit；当前身份见后续日期，末两项为未改公式基线）：
+
+| 文件 | SHA256 |
+| --- | --- |
+| Trade/NativePreparedIntent.py | e77de06060c1f1836786ed5056775f9ecf4f619ba78262958c6c66a659e4bc5c |
+| Trade/NativePreparation.py | dbe37013a25a0d44f219980447ea6d0bd57bd8f7d3058bec65ae611a62ee48c3 |
+| Trade/NativeOrderTransition.py | 8057549dc0976c101362996a9111095fadf413823f7ccc6147fc2dee6eccf424 |
+| Trade/SqliteDB.py | 953dba10a0e1d88403a6777a0f59a045ce1facc335ffd1b0fe3fd76ddeaf1bee |
+| Trade/db_util.py | 006c8d137ce2a777fed5191b6ca7f3837cf822f7479dad15c00754cad3449cd6 |
+| tests/test_native_monetary_claim.py | 05e8ffdb3e40849ae9ea6f4a75b401dd990afca0062b4f7a75cdde7ddb4d6806 |
+| tests/test_native_monetary_execution.py | 24918bac12110883c7e7950798363103a99566dbb01f3a8d9b9a1340f91b59ec |
+| tests/test_trade_sqlite_transaction.py | 44a0bad21833ad2d07517d7bf3b7eebcc0bdd7cf8e6bf5c18f962c3be8850bd4 |
+| tests/test_native_prepared_last.py | 4d66cef9bc05255309ff56865501e8db4ce751aed51b878a0a1695ffd22d112b |
+| Trade/NativeOrderCost.py | 8b90e703c3d25a9c3f6e31f8c444c2ee13afff4349079a579d2cd2d508c059b1 |
+| Trade/NativeMarginEnvelope.py | 1f16b40bc2cc612a3216f38dc42b84fa15251e90316d169ac8c719f4fcbdf06e |
+
+### 2026-10-26 / 金额L2的原Engine管理消费者（WIP，默认发送仍RED）
+
+原Goal工具实查为active，HEAD仍为`436c011cda223da4f9970cbc1a6d5067dff0b646`。继续[同一claim/执行计划](../plans/2026-10-25-native-monetary-claim-execution.md)，本轮不重问A/P/F，不改实际配置、权限或任何candidate/研究/testnet/live门禁，不用代理/OMX/新依赖，不调用真实端点；仅真实原SDK最底层Session为fake。本节覆盖已有订单管理子链，不代表C5–C7或默认新风险发送通过。
+
+- 本轮重点文件为`Trade/CCXTTradeEngine.py`、`Trade/NativePreparation.py`、`Trade/NativePreparedClient.py`、`Trade/db_util.py`及新`tests/test_native_monetary_engine.py`。与上一节claim WIP合计7个生产文件、5个测试和2份文档，均未提交。原Cost/Envelope公式、历史契约字节、表/schema不改。
+- 原Engine reader核实际DB当前行、原immutable transition/preparation-v4和完整monetary_basis，而非加schema白名单或接caller DTO；已有风险恢复必须是真正原L2。查询、撤单、原累计report、降风险条款和账户/leg/单位沿原状态机。取消只核原生身份/条款，不从DELETE推断本地terminal或累计均价；后续原query/report才更新累计量。接口字段核对[Binance官方USDT-M交易文档](https://developers.binance.com/en/docs/catalog/core-trading-derivatives-trading-usd-s-m-futures/api/rest-api/trade)，没有真实交易API请求。
+- 查询/撤单前后固定实际chan/backend/connection/table、SDK对象及同对象凭据/options/cache摘要。原ACK stamp后和原writer入事务/回调后再核owner，替换库零SQL；复用原事务/CAS/journal，不另造writer或回报许可。投影改标签/重算hash不能将原native历史降级成v3来绕过；坏JSON/shape保持domain拒绝。
+- 默认冷管理仅对原L2且exchange=None，自取原scope的公共instrument、用原pure parser/set_markets建新SDK并核同一原生账户；全部来源后原记录/transition/config/owner保持相等。不会走sapi/currency loader，不刷新已有SDK缓存，不调用新风险模型/Last/input guard、不给年龄默认值，也不续期L1/L2。kill/冻结/旧资金点过龄不剥夺已有风险管理权，但不授予新提交权。
+- 原prepare的已加载实现检查扩实际Engine消费者、原DB claim/ACK/writer、cold initializer和factory。装饰器同时核实际wrapper code/globals/defaults与真实closure body；伪造functools元数据不能通过。此处仍标为selected_prepare_callables，不冒称完整SDK执行闭包或HTTP前全部验收。
+- 76项新增管理用例含12种mode/side/limit/market/GTX查询、4种撤单→原query/report和降风险条款、实际未知L2/假hash/替换行拒绝、TTL/kill/freeze管理、原生回报/归属/DB/SDK漂移、default cold和caller/implementation变异。review的最后真实RED证明hedged的reduceOnly=true也能与冻结false矛盾；仅新client契约扩原report检查，旧v1/v2/v3行为不改，新增4种leg组合。
+- 最终冻结源码：同7模块（新管理76＋原order recovery/contract/venue parameters/transaction/audit/state machine共204）双版各280 passed，0failure/error/skip/deselection/warning。CPython3.11.15句柄88232 exit0，579.64s；3.14.2句柄52221 exit0，574.52s。各280唯一case，集合差异0；排序classname::name以LF连接/UTF8摘要均`568bdc6aceb802f1938ac37d55c6c54e31c2422af1ef3895c6d8b52940177817`。源/测试及未改公式14个摘要在最终两版之间/之后一致；未重启超时/截断句柄。
+- 中间271/276通过只属于当时身份，不充作最终280证据；read-green和manage-green文件名含green但实际失败，UTC/min-notional夹具均修正后再验，原件不删。上节166/1253及已提交基线4246范围没有在本轮最终源码整组复跑，不能改写为当前全回归通过；当前7模块也不等于全仓或完整C5。
+- 当前完整默认`test_native_monetary_execution.py`再跑仍1 failed/8.58s，停在原Engine.py:509资金/发送消费者未验收门槛；未到POST/ACK，没有xfail/skip、手写成功L2、caller许可或放宽常量。原Engine尚未消费活claim上下文；完整SDK加载闭包、锁外HTTP前L2/金额/鲜活性尾复验、原生完整终态持久证据/观察后释放及默认新风险入口仍待。不能以本地terminal、空pending或TTL释放未知意图，不能以永久拒绝替代最终功能。
+- 所有pytest原句柄终态后，CIM复核pytest进程0，才进行双版Trade/5个改动测试compileall与文档编辑；compileall/diff通过。主线程review，无代理。简化为复用原reader、SDK binding/native instrument collector、CAS/历史账本和金额函数，不加第二订单/资金引擎。未满足整链acceptance，故本轮保持WIP、不commit/push，Goal active；下一步按计划继续剩余执行与观察子链及完整联合回归，不重问已批准方向。
+
+本轮代表JUnit原件（同Temp目录；阶段名称不是结果；均保留）：
+
+| JUnit文件 | 实际范围/结果 | SHA256 |
+| --- | --- | --- |
+| chanpy-money-engine-read-red-2b375643fe684655b00cdc168da5fa1b.xml | 原reader尚不消费金额契约，12 failed | fd1bcbca0c715e315d6fb7308a38327fa0ec4b624fd97f72734abbbb6101bdfb |
+| chanpy-money-engine-read-green-d9d9ec0dc3cb40089086cab5c3d39865.xml | 固定UTC夹具未同步原Engine时钟，12 failed，非GREEN | d508fc3f2125cfa1338b574c8058ae9b90050df3f7b6555df978f98d8ece6369 |
+| chanpy-money-engine-manage-red-f5437be6634b4e9d904f9d616f1972fe.xml | 原撤单/降风险消费者仍限v3，8 failed | 295b4484b6298e5f67577216ac912051795ff7d1b193069fa27d787d543efb8a |
+| chanpy-money-engine-manage-green-416199bfa6684ca8b7e763f8b608c908.xml | 16 passed/4真实min-notional夹具failed，非全GREEN | 5b83851a63ab02b98b219d8f6b7391159f8cdf3cc3584246b28c368c936bc57f |
+| chanpy-money-engine-cancel-report-red-4f3289c43b0a4203b885cceb52f1869c.xml | 变异撤单回报仍成功，5 failed | dfd7da3d331ccb0429d6a15ebbeb4a1b53d13f524d5517579b8c2521997e9b08 |
+| chanpy-money-engine-owner-red-fbc96056f3344704a4205ab6c1db00e5.xml | HTTP响应后换owner仍向外库ACK，3 failed | 8acd55bd283b8c6937da2ad634b3da06cc4ade9abe21b0ea651d2df31159f9bd |
+| chanpy-money-engine-runtime-red-27052999157a434387c8a2b68b38a346.xml | 9实际callable替换＋3坏JSON/domain泄漏，12 failed | 474f62f670d5caf01ef99c646a8689848437b1c3e760c8e6cd9a0ca110b90a9f |
+| chanpy-money-engine-ack-stamp-red-db3e71ea70aa498e8a3e71682c7fb28a.xml | ACK stamp后换库，2 failed | 93eacd7f4d6be623c9ff54d5cea90f32d353ab98540194f31b753c38aee6edfb |
+| chanpy-money-engine-cold-red-11fd9f643f014b1fbf28d5c05fbe7ee3.xml | 默认冷管理误用通用currency/market，4 failed | 6a2cd96722cf03cbbdd2c35ad262abbc3c182cbdb6d07b9c3f642b36f0987a0e |
+| chanpy-money-engine-dependency-red-0e08b2d74ecc496db3040f02dc336214.xml | 冷初始化/factory/原writer替换，5 failed | 89d4d0ddb77f96c6616de1be4e34ff43c7374e2de7ca03722e860ba42fcbf658 |
+| chanpy-money-engine-lineage-sdk-red-6ce172e6122b420c95ec7673ae33f36e.xml | 投影降级/同SDK状态漂移，5 failed | 7fcdc51d66c0f34b1620ed26a90b4ee6f76c38cb4be225c480fb0f4d505b7a45 |
+| chanpy-money-engine-hedged-report-red-c3a62df73d4a43368b317b1a3bf4c238.xml | one_way 2 passed/hedged 2 failed | 7a3ba8a1a32f8119a01c4acb5991b9f843882b24e2bd167919a5d85dc43a547a |
+| chanpy-money-engine-verified-py311-17578218e4ab487781871f0478a007a5.xml | hedged旗标修补之前的中间版276 passed，非最终身份 | 5879b7407aa59e9f1c9f0f610ef5088f0aa590b1df825b11020517b52a49af53 |
+| chanpy-money-engine-verified-py314-d5d9f11c4e33480fb252c26ec118ac3b.xml | hedged旗标修补之前的中间版276 passed，非最终身份 | 67f086d990ba688d8406d2f233e7ecf35ead526867b391556f62c936326234da |
+| chanpy-money-engine-acceptance-py311-97a499f9628f46d39874a82342fdd96f.xml | 最终7模块280 passed/0failure/error/skip/warning | b700eaa78d54cf1f7911a79ae2f105c2b8c3f1d0d206dcad67ad1dc3d3ad4de5 |
+| chanpy-money-engine-acceptance-py314-02c7303c8c1f4f52a784bbb7832ba8b6.xml | 最终7模块280 passed/0failure/error/skip/warning | be26200c37255f0f3e938ada235409e2a651e4c465bb48ca19968e6f3cd8e9b6 |
+| chanpy-money-execution-oct26-current-red-7716f99a6d6d4b7ebbc77107b45424e6.xml | 当前完整默认发送仍1 failed；未到POST | 0be7b6497835bd6a33f937ec9b67023d499024d026d8378e07cbe4c334452fe8 |
+
+2026-10-26管理阶段源码/测试摘要（历史WIP身份，不是新commit；当前身份见后续SDK节，末两项为未改公式基线）：
+
+| 文件 | SHA256 |
+| --- | --- |
+| Trade/CCXTTradeEngine.py | 97b7c64661ad6febc37f534c2d2fc72a3b0f43229195f304a4f64019a441b966 |
+| Trade/NativePreparation.py | 25e618787e32e8734b1406b25ce0a2305359e345a05aa9f79c3ed4aeba0481a3 |
+| Trade/NativePreparedClient.py | 27ef6c1a2d642291dccff5ed935bd485b92b85e7e426cc3cd8059f0a4673bd26 |
+| Trade/NativePreparedIntent.py | e77de06060c1f1836786ed5056775f9ecf4f619ba78262958c6c66a659e4bc5c |
+| Trade/NativeOrderTransition.py | 8057549dc0976c101362996a9111095fadf413823f7ccc6147fc2dee6eccf424 |
+| Trade/SqliteDB.py | 953dba10a0e1d88403a6777a0f59a045ce1facc335ffd1b0fe3fd76ddeaf1bee |
+| Trade/db_util.py | ad743f9985379483cadb061f94d87d66bd72859d646bad6aad4e609d9b8ad237 |
+| tests/test_native_monetary_engine.py | a0026fcc45ceff4e1c3403aa0ea5fa9385ed4036b6e526a419050bc1a3c54f4e |
+| tests/test_native_monetary_claim.py | 05e8ffdb3e40849ae9ea6f4a75b401dd990afca0062b4f7a75cdde7ddb4d6806 |
+| tests/test_native_monetary_execution.py | 24918bac12110883c7e7950798363103a99566dbb01f3a8d9b9a1340f91b59ec |
+| tests/test_native_prepared_last.py | 4d66cef9bc05255309ff56865501e8db4ce751aed51b878a0a1695ffd22d112b |
+| tests/test_trade_sqlite_transaction.py | 44a0bad21833ad2d07517d7bf3b7eebcc0bdd7cf8e6bf5c18f962c3be8850bd4 |
+| Trade/NativeOrderCost.py | 8b90e703c3d25a9c3f6e31f8c444c2ee13afff4349079a579d2cd2d508c059b1 |
+| Trade/NativeMarginEnvelope.py | 1f16b40bc2cc612a3216f38dc42b84fa15251e90316d169ac8c719f4fcbdf06e |
+
+### 2026-10-26 / SDK声明执行路径与真实方法名（WIP，完整发送仍RED）
+
+继续原C0–C7 Goal和[同一claim/执行计划](../plans/2026-10-25-native-monetary-claim-execution.md)，本轮是实质实现＋验证进展，不是纯状态重述。HEAD仍为`436c011cda223da4f9970cbc1a6d5067dff0b646`，保留整个既有WIP；没有新commit/push。主线程串行、无代理/OMX/新依赖/实际配置或权限改动、无真实端点/正式绩效/研究产物读取，candidate/testnet/live门禁及已批准A/P/F协议不变。
+
+- 直接改动：`Trade/NativePreparation.py`、`Trade/NativePreparedIntent.py`、`Trade/NativePreparedClient.py`、`Trade/CCXTTradeEngine.py`、新`tests/test_native_monetary_sdk.py`、原`tests/native_capacity_preparation_case.py`和`tests/test_native_capacity_prepared_intent.py`，以及计划/本台账。连同之前WIP，共7个生产文件、8个测试文件/夹具和2份文档；不是已发布身份。原Cost/Envelope公式、旧契约/账本字节、表/schema保持。
+- 清理遵循先行计划：提取并共享原fresh-compile/AST/defaults校验体`_function_identity`，不exec第二份SDK/交易代码，不引入新资金/订单引擎或可转移许可。准备夹具删除高层create_order替身，保留原SDK、实际SQLite与仅最底层Session fake。最后删除不再使用的inspect导入。
+- 新`_assert_execution_sdk`检查明确声明的28个SDK方法：下单/构造、查撤/历史、order/trade解析、market/precision、margin/post-only、account settings及request/fetch/sign/error路径。实际绑定必须是真正MethodType、同一个实例/安装MRO方法；函数code/globals/defaults和安装源码匹配，方法名由安装owner与固定name决定，不能借同库另一个真函数自报qualname过关。5个原生order GET/POST/DELETE/历史路由Entry还核安装AST的path/api/method/config、Entry代码及实际closure。
+- v4金额路径在首次来源I/O前核该SDK，原intent/claim current、活prepare消费和已有风险管理/cold owner尾部再核；只返回None，不生成许可或资金PASS。旧v2/v3诊断不因此升级，也不增加新资金来源GET。SDK源码和加载声明路径相符不是服务器认证，更不是所有动态依赖/整个Python进程的可信执行证明；完整HTTP前执行闭包仍须按计划验收。
+- 36项新SDK专项均使用真实原SDK/原CAS和底层fake。首次17 RED包括变异下单/解析被接受及sign/request先被执行；cold两个RED定位首instrument源前缺检查。review又确证5项元数据DTO可冒充bound method，及3项共享SDK类被另一原函数替换仍被接受，分别最小修补。首次DTO夹具把__func__放类属性导致Python自动绑定，5 passed不是有效RED；修正到实例后才真实5 failed，原件保留。
+- 扩大中间回归的3.11原句柄97334后来missing：没有重启；CIM核pytest进程0并读完整JUnit，186 cases/185 passed/1 failed（JUnit1804.287s）。唯一失败是旧v3 forged_context夹具要求替换writer必须先调用；现有原runtime已在I/O前拒绝它，故修为touched=[]且http_calls=[]，不放宽生产门槛，补验1 passed。3.14同中间身份186 passed/8 deselected，句柄15677 exit0、1516.26s。3.11通过集合合并186与3.14差异0，不冒称两版各一次186全绿。
+- 更早的两版各68 passed/611 deselected仅属MethodType/name修补前身份；186也在最后name修补之前。上节280及旧基线4246不能改称本轮最终全回归。完整适用联合范围与默认发送仍待，不以缩小范围替代C5–C7。
+- 最终name修补后，两个解释器各56 passed/219 deselected、0failure/error/skip/warning：SDK36＋原金额prepare12＋原default cold4＋旧v2诊断4。3.11句柄2005 exit0、362.60s；3.14句柄1474 exit0、330.63s。各56唯一case，差异0；Sort-Object classname::name、LF/UTF8摘要均`bfe26f5555a2e3390ba80aabaacf5b6624755c832c23d456dedb8b9167bcbab3`。18个源码/测试/未改基线摘要在两版运行间和测试终态复核时一致；之后仅两份旧WIP测试做下述EOF格式清理。
+- 最终完整默认`test_native_monetary_execution.py`再验1 failed/11.58s，停在原Engine.py:509资金/发送消费者未验收门槛，未到POST。没有xfail/skip、手写L2、caller PASS或许可开关。主线程按review清单结论：SDK声明路径子层有当前证据，完整执行链尚不可提交；Goal active，HTTP前完整L2/金额/来源尾复核、原生完整终态观察持久证据/释放和默认新风险入口继续按原计划实施，之后还须OKX/C5–C7及授权发布。
+- 所有活pytest期间均未编辑文件；原句柄超时/观察丢失先查权威进程/JUnit，不凭超时重启。最终pytest进程0后双CPython3.11.15/3.14.2对Trade及8个改动测试/夹具compileall通过，diff通过；未改依赖/实际SDK安装/行尾配置。保持WIP，不提交或推送未完成整链。
+
+JUnit原件仍在`C:\Users\yangj\AppData\Local\Temp`，名称含red/green/final不是通过证明：
+
+| JUnit文件 | 实际结果/身份 | SHA256 |
+| --- | --- | --- |
+| chanpy-money-sdk-red-45b1559c5a4b48c0ad8c34b2b103cbf1.xml | 首次SDK变异17 failed | 31bdee5882ec2cc0eb90ebdb83cc16fbfbded91b774cbd168f140c76a919a2f1 |
+| chanpy-money-sdk-green-2c52f73abf29431a843701cd32877048.xml | 首批SDK修补17 passed，中间身份 | 2af43aa01e90c25a3b7eeabfcc4dd60b042ffc62b9ef8e424ad557013a1ca639 |
+| chanpy-money-sdk-positive-37bcfb6d86014d0bb5c7d7d4abb017ea.xml | 同次金额准备12 passed，中间身份 | 43f6f931e66fed3b014bd914dfe413fbcff057a84b6631ec4f5d1c8da143cb16 |
+| chanpy-money-sdk-cold-red-66773c46f9f94b2ba5dac3b51f019ee4.xml | cold首请求前缺加载检查，2 failed | 175d23b4e2c6bb2d8335fa3b94c50a5beb5da860a092fb679b19d65ab67d3250 |
+| chanpy-money-sdk-matrix-py311-2dc47a92ea1b469084bda0234dc39c74.xml | MethodType/name修补前68 passed，中间身份 | d3562c6a2e056d3953961baa1b90984abe8e374afb358854f8d0f9b8da6acc44 |
+| chanpy-money-sdk-matrix-py314-a7c4e3f828164bb18ac246219ae91c30.xml | MethodType/name修补前68 passed，中间身份 | 7332f1a3c038a62966954556917d2ad09ef702b0e271701d6fe090fa34a4d391 |
+| chanpy-money-sdk-method-dto-red-f9d70f20746e4164b101e5b109ad60e7.xml | DTO类属性误绑定夹具5 passed；不是有效RED | a31614752b15b654118537a28bd7ed1bd0c29c8e49d0dbada1b3d267b9d74d02 |
+| chanpy-money-sdk-method-instance-red-ddf03819245c46fbb0c12eacea2f4d24.xml | 修正实例元数据后5 failed | 2b6b0de47f66d16d03f534729f1577f813fed87c3bb7b8a8557dfca599f4dc03 |
+| chanpy-money-sdk-final-py311-3e6d30eed5d24fc0986d392052309cf2.xml | 中间186范围185 passed/1过时touched夹具failed | 2b9299404fec3fa03bcedf38ec0488e02b17db1cfd9c550e0d41aef134159a94 |
+| chanpy-money-sdk-forged-fixture-408a5cc6f4804611b49dbd822f4c8226.xml | 只修夹具预期后补验1 passed | 285478d91d9e306cb637748a8da945b173ff12f476e04e70c8f9baf0fb82fead |
+| chanpy-money-sdk-final-py314-e6bd145a53a44024ac334c46c817d9ac.xml | name绑定修补前186 passed/8 deselected | 5f1bb078e6f4675a1f71f04aedd8fa0d570d7c292a7d68ee0cd9d705cfe22800 |
+| chanpy-money-sdk-name-red-52b1e18cb70e40b595e0928ddb8084a5.xml | 共享SDK同名替换3 failed | 4f24a0605a574546311a2f82be0910b067bc24ee1772bb902d8096be98d3c897 |
+| chanpy-money-sdk-default-red-a0d30159fd8d4757bd4b4882903884c2.xml | 最终完整默认发送仍1 failed/11.58s；未到POST | cf9e96a3eca8796caa02c961783a0d26099d0483920f904fb55a6ec6eb77e42a |
+| chanpy-money-sdk-named-final-py311-ae266fe4483c4dc0bf9f93fe372d1d93.xml | 最终56 passed/219 deselected；0failure/error/skip/warning | 4f555a69f54f19f710bd2ee826a668e7dd03094d8dde88dde5effaf5f4569730 |
+| chanpy-money-sdk-named-final-py314-319a3047706b4685b10e31f80b8ccfdb.xml | 最终56 passed/219 deselected；0failure/error/skip/warning | 6211971fdec723b09900cf9602acb97e9d13dd0079ae4fdb727c032c5b801bb6 |
+
+本SDK阶段最终源码/测试SHA256（不是commit；两测试已做测试后EOF格式清理，原运行字节见下；前面同日管理阶段表为历史身份；DataAPI/ccxt、Cost/Envelope为未改基线）：
+
+| 文件 | SHA256 |
+| --- | --- |
+| Trade/CCXTTradeEngine.py | 6fde88fc27199442f8a0e1fbe60c2297fc6d2adce0dea1625a7bdb9d8d1aeded |
+| Trade/NativePreparation.py | 3337c300cfaa862d8b0f8985667a6a9815cbf9f59ecdf5ee4a7d4c6a366a7bc2 |
+| Trade/NativePreparedClient.py | 302acc57f5c9004fe433538c4b0c420b322653a3ef58766b46b1a007acbbc686 |
+| Trade/NativePreparedIntent.py | 7c32a77203ebff28aad02b9f46578dd1e7153d574fa7c984c47cb739d9fdfbae |
+| Trade/NativeOrderTransition.py | 8057549dc0976c101362996a9111095fadf413823f7ccc6147fc2dee6eccf424 |
+| Trade/SqliteDB.py | 953dba10a0e1d88403a6777a0f59a045ce1facc335ffd1b0fe3fd76ddeaf1bee |
+| Trade/db_util.py | ad743f9985379483cadb061f94d87d66bd72859d646bad6aad4e609d9b8ad237 |
+| DataAPI/ccxt.py | 03178d879a69f1dac696d9060fcf43182878168f28928c7054e22ddc18edf94f |
+| tests/native_capacity_preparation_case.py | e8316691d5e1e4eb3a78e830ea948d7c3ac6c55fd9af8d5f1e820047ce7e3b41 |
+| tests/test_native_monetary_sdk.py | 716b3ef2f26f2e97d27536a6fac70f1eb5043e75162202b61696b22099ea157c |
+| tests/test_native_capacity_prepared_intent.py | f29c156b15e0fa9b9d42d50de07224390919388b5bdb0619c04cd900fb1244e7 |
+| tests/test_native_monetary_engine.py | 87f0f09d6c09c422563c1bbb36e15d41103190d7322755e879df09c585af958b |
+| tests/test_native_monetary_claim.py | 749a53496505e4ea8b5749ae2d20daa19ad24ed148a445a5c96901697436d0e5 |
+| tests/test_native_monetary_execution.py | 24918bac12110883c7e7950798363103a99566dbb01f3a8d9b9a1340f91b59ec |
+| tests/test_native_prepared_last.py | 4d66cef9bc05255309ff56865501e8db4ce751aed51b878a0a1695ffd22d112b |
+| tests/test_trade_sqlite_transaction.py | 44a0bad21833ad2d07517d7bf3b7eebcc0bdd7cf8e6bf5c18f962c3be8850bd4 |
+| Trade/NativeOrderCost.py | 8b90e703c3d25a9c3f6e31f8c444c2ee13afff4349079a579d2cd2d508c059b1 |
+| Trade/NativeMarginEnvelope.py | 1f16b40bc2cc612a3216f38dc42b84fa15251e90316d169ac8c719f4fcbdf06e |
+
+测试后格式清理：仅删除上述claim/engine两个既有WIP测试各一个EOF空行。实际运行时文件SHA分别为`05e8ffdb3e40849ae9ea6f4a75b401dd990afca0062b4f7a75cdde7ddb4d6806`、`a0026fcc45ceff4e1c3403aa0ea5fa9385ed4036b6e526a419050bc1a3c54f4e`；最终格式字节列于本节表。双版前后完整marshal(compile(..., dont_inherit=True))摘要各自相等，不改测试逻辑，不重标JUnit为新运行：
+
+| Runtime | claim编译代码SHA256（前=后） | engine编译代码SHA256（前=后） |
+| --- | --- | --- |
+| CPython3.11.15 | 82c7697aebece3402bafb69f3a7bf7c20dd40f969f38c8f09089188f81c0cf5b | 4bd114147540c0c429cb03ab899f48ef97fed70a3c6b056978fbe50ac4105fb1 |
+| CPython3.14.2 | b0aa9d346b64efcdb9c4b8d2325e1d9d003ea2b07772a826ca9c098ae0276c0f | e4e0c4712782296c2b6fa7fbf151a4e4a7d9b38a78a293f6314a03eba05ee17a |
+
+### 2026-10-26 / 原L2的HTTP前完整复验（WIP，默认发送仍RED）
+
+继续[原claim/执行计划](../plans/2026-10-25-native-monetary-claim-execution.md)第4步，主线程串行TDD及review。Goal已是active，HEAD仍`436c011cda223da4f9970cbc1a6d5067dff0b646`；没有新commit/push、代理、OMX、新依赖、真实端点、真实配置/权限或交易门禁变化。A/P/F既定范围不重问，正式研究数据/绩效/receipts不读取或改动。
+
+- 本子步骤直接改`Trade/NativePreparedIntent.py`、`Trade/NativePreparation.py`、`Trade/CCXTTradeEngine.py`、新`tests/test_native_monetary_http_boundary.py`及本计划/台账；保留之前所有WIP。累计18个未提交文件＝7生产＋9测试/夹具＋2文档，不能称已发布身份。
+- 复用与简化：原current读取共享体保留本次纯window数据，原接口仍返回原document；新`_check_window_tail`复用原Capacity/AccountLimits窗口，包含最后本地校验、SDK检查与原连接事务退出耗时。不新建金额算法、订单/资金引擎、表、schema或caller permit；Cost/Envelope公式及旧wire语义未变。
+- 新`assert_native_prepared_claim_before_http`仅收实际Engine/record_id：先核真实owner/runtime/SDK，再原owned事务读L2；锁外通过原balance账户身份与mode/leverage核同一profile；随后原事务重读精确L2、全部records/history/source IDs及完整原金额，原连接退出后核同一SDK/owner及typed monotonic尾窗口。只返回None，不claim/写订单/重采资金/续期来源/恢复created/释放unknown。原Engine.create_order前已接调用点，完整默认发送仍先被原资金门槛拒绝。
+- 失败沿原sticky语义：已开始原生profile且原DB安全可证时发布原unavailable；SDK失效不妨碍在同一原库冻结。DB/connection替换则拒绝且外库SQL为零，不声称已冻结。该点时检查不是服务器锁额，也不封锁外部机器人。
+- 真实RED→GREEN：首次缺consumer为1 failed；balance后的凭据/SDK/Engine变更3 failed，mode到leverage之间3 failed，原_observe_account仅增加内部附加失败回调（默认None不改变原校验）；最后guard时钟回调改本单/其他记录2 failed，修为本地读取后再原Transition全量重读，原事务回滚；入口两个current consumer被替换后仍先执行2 failed，改为首次调用之前即核实际声明runtime/SDK。无审计忽略字段、caller expected包或成功L2替身。
+- 新31项专项使用真实原monetary acquire→原弱活上下文→原CAS唯一claim/L2，底层Session fake：4正向mode/side、3尾耗时/type/reverse、4换DB/连接零外SQL、2profile失败sticky、5caller额外参数拒绝、2禁止继承环境事务、1未claim拒绝、2入口实现替换、6profile晚漂移、2末次账本变更。显式60000ms合成预算不改生产默认，也不是实际时延/负载可用性验收。
+- 最终3.11为31 passed/0failure/error/skip/warning（JUnit620.269s，原句柄53759 exit0）；3.14为69 passed/142 deselected/0failure/error/skip/warning（JUnit928.262s，原句柄75952 exit0）。69＝31 HTTP＋38原writer/claim/current/v2/v3共享回归。两版HTTP的31唯一ID完全相同，排序classname::name、LF/UTF8 SHA均`f2527f0962f31a59b2891555c3a99f268aca569d60178f62c9ee0e20fc88ce1d`。3.11共享38是最后入口检查修补前的427.185s运行，不能说两版最终各69全绿；较早29、SDK56/管理280/基线4246也不是当前完整回归。
+- 最终默认发送1 failed（JUnit12.453s，原句柄63650 exit1），仍在CCXTTradeEngine.py:513原资金消费者阻断，未到POST；仅新增检查使原509行移动，没有移除门槛、xfail/skip、测试许可或隐藏RED。C5完整默认claim/send/完整观察释放、新风险默认来源、SDK动态依赖完整执行闭包/联合矩阵及适用全回归仍待；之后还须OKX/C6/C7及原授权发布，Goal不关闭。
+- 主线程review检查原owner、事务、失败路径、完整ledger、尾窗口与加载实现，保留上述未验证范围；不把声明的SDK路径当整个Python进程可信证明。最后两个原pytest句柄终态确认后，CIM查pytest进程0，再双CPython3.11.15/3.14.2对Trade及9测试/夹具compileall通过，git diff --check通过。Git仍提示既有LF/CRLF转换warning，未改行尾配置。19个源码/测试/未改基线摘要与最终两版运行期间记录一致；仅之后更新文档，无测试期间编辑。
+
+JUnit原件在`C:\Users\yangj\AppData\Local\Temp`，均保留；文件名不是结果证明，秒数为JUnit suite.time：
+
+| JUnit文件 | 实际结果/身份 | SHA256 |
+| --- | --- | --- |
+| chanpy-money-http-red-43cbe7b7b1304deeb5a0295361b8bad0.xml | 缺原HTTP consumer，1 failed | cdcc7b378a29e3c8a7953158b0676c15ebe378cf8b05620dfb23f696980366f6 |
+| chanpy-money-http-green-9bf3eb941b4b48038f2c82d4825f1a3c.xml | 初始正向1 passed，中间身份 | d1224b88c210c331ab797ae8e1803bf9d1fd199a5ad26caaddde2389960f5ece |
+| chanpy-money-http-profile-red-e341cf96522846d89711c73180639120.xml | balance后漂移3 failed | d6d5c989cd4607b04dc54d3dc77173689b3a5fd831e8bfc43d8c491c9242ccb3 |
+| chanpy-money-http-mode-red-a5d3a475435d442894cebc1572e70240.xml | mode后漂移3 failed | 33ead0c114dd80dc39217788cd2e4431fadd78765d1b0c8653e3b6ae58acb98a |
+| chanpy-money-http-profile-green-990e9864500d4d89ac82a9150695b88e.xml | profile修补7 passed，中间身份 | cb4ce5209c624d3c5fb03b5f7f81bc97ad6b6c69160257f6b9ec2eacd0bd99f5 |
+| chanpy-money-http-local-tail-red-21b1ee1037b346648bf7610a42bb0b7d.xml | 末次读取后账本变更2 failed | a5a347d182adcae785163940c6aef1e6f4d96cbbae46ebe5a989b8d9b134b4f2 |
+| chanpy-money-http-local-tail-green-49218b765a3c446d8fe4fd7c8cedfc69.xml | ledger修补2 passed/7 deselected，中间身份 | 2fd6cc4564dd32b684fef3185510dc13060d3fcff368f9eb450b3615502d32c4 |
+| chanpy-money-http-matrix-py311-bf98440e735d4e319e6bc0e1b38230b3.xml | 入口实现检查修补前29 passed | ce7a190a140d31e94e517e14e8b63c84ce36419ec1b70c90869c18979ffd5875 |
+| chanpy-money-http-shared-py311-1250e5eccdb9498bbb55b5a10236c484.xml | 入口实现检查修补前共享38 passed/142 deselected | 99660c093d812de26d5370c1b6fdbba62b2dc0f528e9cc3427c1b207a6cb4030 |
+| chanpy-money-http-entry-runtime-red-7aebd5a48f7a4d14b776c28e8512190c.xml | 首次current调用前未核实际实现，2 failed | 1f3ba84ae54da178943c18e305cef9955be5b9e3b3a4842a10f61f347c99f382 |
+| chanpy-money-http-final-py311-f93863a38182427e9b21833f5eee40ab.xml | 最终31 passed，0failure/error/skip/warning | 388b461aedbb53d619acd64b6ed0b52b4a4e1074101e6d9c45267aac87b0d36f |
+| chanpy-money-http-final-py314-cca6a2d6c1114426835d56d11f7374b8.xml | 最终69 passed/142 deselected，0failure/error/skip/warning | 71a3b92115771c55f3da215004666a4f483015382b8277ca414b29b53e31d326 |
+| chanpy-money-http-default-red-1e6da1d8647a4025a2d95a4c3686668b.xml | 最终默认发送仍1 failed，未到POST | aefa1af91e37037a32c9bf6c4660c399c3da12519c320b153efcef38490a0050 |
+
+本HTTP子步骤最终源码/测试SHA256（不是commit；早前各节均为对应历史身份；DataAPI/ccxt、Cost/Envelope为未改基线）：
+
+| 文件 | SHA256 |
+| --- | --- |
+| Trade/CCXTTradeEngine.py | 9d2f657340a71fbed3909cb722a414ad131c39ba2adf0427f7ba698bc7d6b45d |
+| Trade/NativePreparation.py | b5dd807894a41b0de1ec77bb7bed3d40881058907634aa9c65b9eef216df2aaf |
+| Trade/NativePreparedClient.py | 302acc57f5c9004fe433538c4b0c420b322653a3ef58766b46b1a007acbbc686 |
+| Trade/NativePreparedIntent.py | f768c1dc1398eb1824620320a7af1b93141ff8957a61c67ae206ab60323af3a9 |
+| Trade/NativeOrderTransition.py | 8057549dc0976c101362996a9111095fadf413823f7ccc6147fc2dee6eccf424 |
+| Trade/SqliteDB.py | 953dba10a0e1d88403a6777a0f59a045ce1facc335ffd1b0fe3fd76ddeaf1bee |
+| Trade/db_util.py | ad743f9985379483cadb061f94d87d66bd72859d646bad6aad4e609d9b8ad237 |
+| DataAPI/ccxt.py | 03178d879a69f1dac696d9060fcf43182878168f28928c7054e22ddc18edf94f |
+| tests/native_capacity_preparation_case.py | e8316691d5e1e4eb3a78e830ea948d7c3ac6c55fd9af8d5f1e820047ce7e3b41 |
+| tests/test_native_monetary_http_boundary.py | 122011206f7b445ab555541b6f4d2780dc6c9f18c808d6cfa9c10e1d5831a5b6 |
+| tests/test_native_monetary_sdk.py | 716b3ef2f26f2e97d27536a6fac70f1eb5043e75162202b61696b22099ea157c |
+| tests/test_native_capacity_prepared_intent.py | f29c156b15e0fa9b9d42d50de07224390919388b5bdb0619c04cd900fb1244e7 |
+| tests/test_native_monetary_engine.py | 87f0f09d6c09c422563c1bbb36e15d41103190d7322755e879df09c585af958b |
+| tests/test_native_monetary_claim.py | 749a53496505e4ea8b5749ae2d20daa19ad24ed148a445a5c96901697436d0e5 |
+| tests/test_native_monetary_execution.py | 24918bac12110883c7e7950798363103a99566dbb01f3a8d9b9a1340f91b59ec |
+| tests/test_native_prepared_last.py | 4d66cef9bc05255309ff56865501e8db4ce751aed51b878a0a1695ffd22d112b |
+| tests/test_trade_sqlite_transaction.py | 44a0bad21833ad2d07517d7bf3b7eebcc0bdd7cf8e6bf5c18f962c3be8850bd4 |
+| Trade/NativeOrderCost.py | 8b90e703c3d25a9c3f6e31f8c444c2ee13afff4349079a579d2cd2d508c059b1 |
+| Trade/NativeMarginEnvelope.py | 1f16b40bc2cc612a3216f38dc42b84fa15251e90316d169ac8c719f4fcbdf06e |
+
+### 2026-10-26 / 原生终态持久观察与原账户联合复核（WIP，默认发送仍RED）
+
+继续原claim/执行计划第4步；本节仅记录新终态子边界，不把C5、默认新风险、OKX、C6/C7或Goal标成完成。HEAD仍为`436c011cda223da4f9970cbc1a6d5067dff0b646`，Goal active；本轮没有commit/push、代理、OMX、新依赖、真实HTTP、真实配置/权限/资金门禁变化，也不读取或修改研究数据/绩效/receipts。
+
+- 修改范围：累计27个未提交文件＝15生产＋10测试/夹具＋2文档。相对上节新增生产范围为OrderAudit、AccountReconcile、AccountRiskStore、ExecutionReconcile、NativePendingOwnership、NativeAccountReconcile、NativeAccountCheck、NativeCurrentComponents，另扩展既有Engine/NativePreparation并新增`tests/test_native_monetary_terminal_observation.py`；其余原WIP保留。
+- 复用与简化：实际原SDK GET/recovery query、原ACK、原append-only journal、原execution与账户Fraction账本均沿用，不增加表/第二资金账本/金额模型/caller permit。按实际events选择history header的纯函数替换多处手工header；旧事件、L1/L2切片和旧check不回写、不升级重签，Cost/Envelope公式不变。
+- 只有原monetary开仓契约的实际终态查询可写`native_terminal_observation`。原生白名单字段独立重建同账户/contract/client/order ID、订单条款、base/contracts累计量/均价、typed请求窗口；只保留白名单，不存私有字段。SDK原生失败不泄露服务端正文。DELETE、ACK、本地terminal或空pending不生成此来源。
+- 原ACK＋来源追加共用实际owned事务，HTTP仍锁外；stamp及SQL边界复核捕获的原owner/连接。stamp必须是真int且非倒退/未来，原事务退出前再按原journal reader完整冷重建；失败共同回滚，不向更换的DB/连接执行来源INSERT。事件data hash覆盖完整state＋observation，不能因本地state没变而丢掉新的原生累计汇总；reader逐项重建派生字段/来源hash及原claim关系。
+- 新来源才发布history-v2；完全合格的终态引用发布pending-ownership-v3、account interval pending-v4、components/check-v3。原current消费者沿原source/前缀/roots/原账本完整重建，不以允许schema集合代替核算。原生终态必须早于本次pending源开始，与最新应用report的status/两单位累计量/均价精确相符且没有同native ID/client冲突；否则仍未观察预留。仅持久化查询并不apply fill、释放unknown、清sticky或授权新风险。
+- 原execution覆盖、逐笔成交、现金/手续费/资金费、前后原生账户与仓位仍全部必过。原生`cumQuote == executedQty * avgPrice`精确校验不加舍入容差；当本区间逐笔量覆盖该单全部原生累计量时，原Fraction账本同时复算名义额，矛盾产生`native_terminal_notional_difference`及原冻结。这里不声称补齐较早的区间外成交价格史，也不是交易所端锁额或实际Binance精度适用认证。
+- 新26项测试使用真实原monetary acquire→实际owned上下文→原CAS claim/L2及原SDK查询，只替换底层Session。包括四组mode/side×部分成交取消/全成的非空双币账户（原有平仓、费用、资金费、挂单）、零成交、missing execution/wallet＋sticky、current冷重建、8种重哈希来源变异、同state不同原生汇总、来源写失败/换DB连接原子回滚、公开入口额外证明/clock参数拒绝、私有SDK异常、4种非法stamp与3种数量/均价交叉矛盾。60000ms仅是显式合成预算，不能作生产默认/实际延迟证明。
+
+最终验收（两次完整运行之间及收尾共36个源码/测试摘要无漂移；449个唯一case ID逐项相等）：
+
+| Runtime/范围 | 本次实际结果 | JUnit秒数 | 原件（位于C:\Users\yangj\AppData\Local\Temp） |
+| --- | --- | --- | --- |
+| CPython3.11.15，新增终态＋8个原联合/兼容模块 | 448 passed / 1 skipped / 0 failure、error；原句柄76816 exit0 | 1182.250 | chanpy-money-native-terminal-verified-py311-cbb722ffeb6a48a3aa942ba1b81a6a78.xml |
+| CPython3.14.2，同9模块/449例 | 448 passed / 1 skipped / 0 failure、error；原句柄54996 exit0 | 1055.427 | chanpy-money-native-terminal-verified-py314-fe8898b839fb4892ac590e239a008372.xml |
+| CPython3.11.15，原默认发送单项 | 1真实failed，Engine.py:513原阻断/POST前；句柄71452 exit1 | 12.666 | chanpy-money-native-terminal-default-red-55dfdf23afd64c41b77f0c807b62aeb0.xml |
+
+9模块为新增终态、order_audit_history、native_monetary_consumers、native_account_components、native_account_component_checks、native_current_components、execution_ownership、account_reconciliation、crypto_order_contract。唯一skip是原Binance isolated cash channel fixture：`test_cashflow_timing_ownership_and_channels_are_not_guessed[isolated_channel-position_cash_channel_unallocated-binance]`，原因`Binance income has no isolated position cash channel`，不是通过、不是新增绕过。无新xfail/skip；两次通过运行CLI均无warning。449个排序`classname::name`以LF＋末行换行的UTF8 SHA256为`d346b2ae3f375343a66e8053d4bbfe5c29a822bcee0b0ff7ebb3acc6d0acf807`；两版分别JUnit SHA256为`6980a54c97f4b8adab46495005e27861d7d60254513bbc41056449bf06ec8385`、`7356485f5387b5229d89cbbe5914054d4881824b1527d0f02732c4d769aba7f0`。默认RED JUnit SHA256为`e76c67b33854ddd1e36ea95c567581a001f19ae3563033b8da62b54f1c754edd`。
+
+真实RED原件均保留在同一Temp目录，文件名均以`chanpy-money-native-terminal-`开头：
+
+| RED边界 | 原件后缀 | 分类 |
+| --- | --- | --- |
+| 实际query未持久来源 | red-8bf3c290b2a1416fa71b663220b806ce.xml | 1 failed；修正测试预期为原白名单后whitelist-red-aa506a9cfafc473d970996574c68cdf6.xml仍为同一真实RED |
+| 原账户仍3类未观察原因 | account-red-95d0ac6b1b844ba0a9ce456f9ff01895.xml | 1 failed |
+| current新check/来源SQL私有异常/冷读shape | boundaries-red-b4e43b47d7824242aaa95795b16a0677.xml | 3 failed中2项是真缺口，1项为夹具误用context manager，不计有效RED |
+| 修正冷读夹具后raw list | reader-shape-red-6f42e36f7c7343df8fa974ffdc5bd03d.xml | 1真实failed，TypeError未转换为拒绝域错误 |
+| 新来源仍标旧history coverage | history-version-red-f88c6a834b744885b714357323eeae2e.xml | 1 failed |
+| stamp回调替换DB/连接 | stamp-red-ba0a0648b02a4925a46d586ed4e3dc7b.xml | 2 failed，stamp后INSERT/外连接SQL |
+| 原生SDK失败正文泄露 | private-red-fc04fabfed6d4145b4f4b5168f5b2755.xml | 1 failed |
+| bool/float/倒退/未来stamp提交 | time-red-4b02027d43864a99a199b14097a9aa1f.xml | 4 failed |
+| 原生均价/累计名义额内部矛盾或与完整tape矛盾 | notional-red-8789246286a642999c4c0a13518ea835.xml | 3 failed |
+
+中间440 passed/1 skipped（final-py311-44fa443280594ab5a846635ba55007e6.xml）和445 passed/1 skipped（acceptance-py311-53fa85187c7742a7b0b12011804a4567.xml）分别早于后续隐私/stamp/均价修补，不重标最终。默认单项首次启动因PowerShell把拼接的JUnit路径当作位置参数而exit4、0 tests，候选185ede442ad9412896812b26122e599b.xml未生成；该命令错误不计代码RED，确认进程0后用预先赋值且引号完整的参数重跑得到上表真实RED。观察输出截断不曾被当作进程终止或重启依据。
+
+全部pytest终止并确认进程0后，双版`compileall -q Trade`＋10个WIP测试/夹具通过，`git diff --check`通过（Git原LF→CRLF提示未通过改配置消除）。文档收尾后再核摘要/EOF/状态；旧HTTP69、SDK56、management280、baseline4246不是本次完整回归，不移用为当前全部验收。原默认活claim/发送完整fake矩阵、默认新风险来源/显式鲜活性配置、SDK传递闭包与适用广回归仍未完成；不移除原常量阻断以凑绿，不commit/push整组WIP，Goal继续active。
+
+当前36个验收源码/测试SHA256（含28个WIP/未改基线及8个原验收测试；文档不冒称测试运行时源码）：
+
+| 文件 | SHA256 |
+| --- | --- |
+| DataAPI/ccxt.py | 03178d879a69f1dac696d9060fcf43182878168f28928c7054e22ddc18edf94f |
+| tests/native_capacity_preparation_case.py | e8316691d5e1e4eb3a78e830ea948d7c3ac6c55fd9af8d5f1e820047ce7e3b41 |
+| tests/test_native_capacity_prepared_intent.py | f29c156b15e0fa9b9d42d50de07224390919388b5bdb0619c04cd900fb1244e7 |
+| tests/test_native_monetary_claim.py | 749a53496505e4ea8b5749ae2d20daa19ad24ed148a445a5c96901697436d0e5 |
+| tests/test_native_monetary_engine.py | 87f0f09d6c09c422563c1bbb36e15d41103190d7322755e879df09c585af958b |
+| tests/test_native_monetary_execution.py | 24918bac12110883c7e7950798363103a99566dbb01f3a8d9b9a1340f91b59ec |
+| tests/test_native_monetary_http_boundary.py | 122011206f7b445ab555541b6f4d2780dc6c9f18c808d6cfa9c10e1d5831a5b6 |
+| tests/test_native_monetary_sdk.py | 716b3ef2f26f2e97d27536a6fac70f1eb5043e75162202b61696b22099ea157c |
+| tests/test_native_monetary_terminal_observation.py | 97335f2ae9492834a3cb75bc39caf0366c46db943a4c0dd10b788ec7ce1ee522 |
+| tests/test_native_prepared_last.py | 4d66cef9bc05255309ff56865501e8db4ce751aed51b878a0a1695ffd22d112b |
+| tests/test_trade_sqlite_transaction.py | 44a0bad21833ad2d07517d7bf3b7eebcc0bdd7cf8e6bf5c18f962c3be8850bd4 |
+| Trade/AccountReconcile.py | 40e188486fce79dfa8a074deac3277f88567b58cabab39b9b35c4ba5e4033568 |
+| Trade/AccountRiskStore.py | aa79ed362b393a761f863ae6eb4ff8833a77c4d531417528c9169cc7aeadcb68 |
+| Trade/CCXTTradeEngine.py | ca85385100721c5e87b307a83d6d14d59c5df6011a490c170fdfaa4b89e5a8af |
+| Trade/db_util.py | ad743f9985379483cadb061f94d87d66bd72859d646bad6aad4e609d9b8ad237 |
+| Trade/ExecutionReconcile.py | e4445ca84f6e2206d4b93c8dad9c44c9f2d06344cf3e708a8707c5e836d3e5ca |
+| Trade/NativeAccountCheck.py | 42a15a16baf3029184f671d5f6c9ea33fdac0e8ea87ad14bc11a0054ed22ac8f |
+| Trade/NativeAccountReconcile.py | 9b8d27db050137622a50180bfd4e1629304d1de5c32d91700a07cb7ae040251e |
+| Trade/NativeCurrentComponents.py | 6f11552e1c422cf29d920350a0730dae7b8570f4af5395c007546eb803bdf34d |
+| Trade/NativeMarginEnvelope.py | 1f16b40bc2cc612a3216f38dc42b84fa15251e90316d169ac8c719f4fcbdf06e |
+| Trade/NativeOrderCost.py | 8b90e703c3d25a9c3f6e31f8c444c2ee13afff4349079a579d2cd2d508c059b1 |
+| Trade/NativeOrderTransition.py | 9ab50315f0fe8e95b8529e394ef76bc22bda1a29f66afd6ac0217624e5bb92f0 |
+| Trade/NativePendingOwnership.py | a5a043d37b1c6795eab9f87391d1be8cfbfe69392da3d886126a47fcfb3224d3 |
+| Trade/NativePreparation.py | 0b3aa23f5278b69959b98f6d2ed125951d5bf4ea0f56ea01be920d702ea73f63 |
+| Trade/NativePreparedClient.py | 302acc57f5c9004fe433538c4b0c420b322653a3ef58766b46b1a007acbbc686 |
+| Trade/NativePreparedIntent.py | f768c1dc1398eb1824620320a7af1b93141ff8957a61c67ae206ab60323af3a9 |
+| Trade/OrderAudit.py | 88e195437be8cd99b258fcdc5da814a3b81c53b85a7830810994ea2ec203e2cf |
+| Trade/SqliteDB.py | 953dba10a0e1d88403a6777a0f59a045ce1facc335ffd1b0fe3fd76ddeaf1bee |
+| tests/test_order_audit_history.py | 3d9ff1a61511f1dfa7e370a6e060c796cbc770a349bba49760459fabc4087079 |
+| tests/test_native_monetary_consumers.py | f84f0ba0b930c39540fdfb9b63946b683c2fccd09e91143b45fe3fce27fefcc6 |
+| tests/test_native_account_components.py | e20de6d91e27b6aa9a2673809a489abc9d0338e8d32c0098f5104a3ba9561876 |
+| tests/test_native_account_component_checks.py | 46ccb299807de14ec0dd35b012b91e7205cac156731424f0dbe093a5fd420f87 |
+| tests/test_native_current_components.py | 54c14fc15c9fad9119492c473e8da200dc986479784621d59d9feb7480a731be |
+| tests/test_execution_ownership.py | 8e1cd363e89142e95a176bc8086ca09ec3634b51f7705c64de460d7e13ec9e18 |
+| tests/test_account_reconciliation.py | 9cfa89cbbe266c28e252ce5d29ce60869ab731faa64de013ad41062482bdc3fe |
+| tests/test_crypto_order_contract.py | c8fc38c9c5bef7b8e016d5219e924f1087e2b69cf41563143f9d413fac9aeb8c |
+
+### 2026-10-26 / 带guard默认入口的同次金额CAS（WIP，完整发送仍RED）
+
+上一轮终态子边界属于实际进展。本轮继续已批准C0–C7及原claim/执行计划，Goal active；HEAD仍`436c011cda223da4f9970cbc1a6d5067dff0b646`。本节不把“已带原COpeningInputs的默认入口”冒称所有直接入口：无guard的旧v3路径仍待统一拒绝和历史fixture迁移，原发送常量继续保留。没有commit/push、代理/OMX、新依赖、实际端点/配置/权限/资金/研究门禁变化，不读取或改动研究绩效与既有accepted receipts。
+
+- 修改文件：本轮生产为`Trade/TradeEngine.py`、`Trade/CCXTTradeEngine.py`、`Trade/NativePreparation.py`、`Trade/NativePreparedIntent.py`；新增`tests/test_native_monetary_default_entry.py`，修正原`tests/test_native_monetary_prepared_intent.py`的一条旧注入断言，另更新计划/本台账。累计30个WIP＝16生产＋12测试/夹具＋2文档，保留此前改动。
+- 简化/复用：原add_trade的quota/prepare/原intent CAS提为小方法，rate-limit/place/report/通知继续原链，不复制第二套Engine、资金模型、writer或表。已有原guard的非dry-run swap分支读取guard原配置中`trade.native_admission`，只用其完整profile-v1数据；实际原acquire自采全部来源并发布原v4/client-order-v1/L1，再从该原L1恢复真实精度化数量/价格/client ID，不额外做一次legacy prepare/CAS。
+- profile是数据而非许可：仅schema/before_id/account_scope/policy及instrument、capacity、last各自显式age/span；不提供enable/send/PASS或年龄默认。原库before的schema/账户模式/venue/原冻结在cold GET前校验；warm不刷新缓存，cold复用原L0 initializer。缺profile/预算类型/政策字段、额外PASS、虚假before及caller trade_info提供的profile均拒绝且不降级。
+- 实际quota回调、client ID边界、L1后读取/原transition重建前后均pin原DB/connection/table/Engine/guard/client。foreign已处于合法事务也不能被借用：原L1仍保留，外库SQL=0，不把失败退回created以重发，也不声称有权在未知owner上冻结。实际initializer与public/private金额acquire函数加入原selected runtime/fresh-compile校验，首次调用前拒绝替换实现；不是整个Python/SDK传递闭包认证。
+- 复核发现原金额acquire会把原记录risk_multiplier覆盖为1。新金额版本沿原记录冻结该元数据，原CAS同步精确比对原before值；原score保持原COALESCE/已验证entry assessment语义。旧v2/v3诊断仍保持原常量，不重封旧wire/history；实际订单quantity、V1 Cost/Envelope和费用/价格假设不变，风险元数据不是新增金额系数。
+- 60项新测试：4种mode/side×cold/warm默认LIMIT完整同次自采/L1但POST=0；缺profile；cold/warm虚假before；quota换DB/连接；36个预算类型变异；4种profile形状/政策；caller来源替代；风险/分数元数据；3项加载依赖替换；2项原L1读取后换至已在事务的外库。只替换Session底层，原SQLite/SDK/prepare/CAS保持真实执行，未手写成功L2。60000ms仅为显式合成预算，不是生产默认或时延/可用性证明；默认MARKET/GTX及完整真实POST矩阵仍另验。
+
+最终本次范围为6模块254个唯一用例：
+
+| 模块 | 用例数 |
+| --- | --- |
+| tests/test_crypto_order_contract.py | 36 |
+| tests/test_native_monetary_default_entry.py | 60 |
+| tests/test_native_monetary_http_boundary.py | 31 |
+| tests/test_native_monetary_prepared_intent.py | 78 |
+| tests/test_native_monetary_sdk.py | 36 |
+| tests/test_trade_state_machine.py | 13 |
+
+| Runtime/步骤 | 实际结果 | JUnit秒数 | 原件（C:\Users\yangj\AppData\Local\Temp） |
+| --- | --- | --- | --- |
+| CPython3.11.15，六模块首次完整运行 | 253 passed / 1 failed；原句柄66529 exit1；0 error/skip/warning | 1453.207 | chanpy-native-default-entry-acceptance-py311-ce314bb302cf48b3b832119d116fce69.xml |
+| 3.11，仅旧故障注入函数4个参数补验 | 4 passed / 74 deselected；句柄7959 exit0；0 error/skip/warning | 19.872 | chanpy-native-default-entry-writer-fixture-green-3cfcb0b225d249d6b90078c44fa889c2.xml |
+| CPython3.14.2，最终六模块完整运行 | 254 passed；原句柄62090 exit0；0 failure/error/skip/warning | 1288.052 | chanpy-native-default-entry-acceptance-py314-e66139ae39cf4c54b39fbbf9dea198ae.xml |
+| 3.11，完整原默认发送单项 | 1真实failed，原Engine.py:612阻断/POST前；原句柄53902 exit1 | 13.707 | chanpy-native-default-entry-send-still-red-a0b9ee2522f04459ae43b33f1f22c76a.xml |
+
+3.11唯一失败是旧`test_monetary_intent_retains_original_atomic_cas_rollback[forged_context]`要求被替换writer实际执行（touched非空），但原fresh runtime已在首次调用前拒绝。只改一条测试断言为“forged分支touched=0且无原生I/O”；另三种SQL/reference/过期后reference仍须真正触及故障点且共同回滚。没有放松生产校验、删参数、xfail/skip或改成成功替身。原失败原件保留，其余250个用例复用未变函数/生产字节，变更函数4例全部重新运行；3.11累计254个通过ID与3.14完整254个ID逐项相等、差集0。**不是两版在最终同一测试文件身份下各一次完整全绿。**
+
+该一行修正前测试文件SHA为`21ebacb424f96edbc6df8fa9e71f1dd621b1be669dcdd8ae8aea6f76299a1927`，后为`61abe7c7b46e408020ce8183bf28fbb72c66745e605904d65a98bfefa653c3cb`；40处跟踪源码中只有它改变。双版compile(dont_inherit=True)后完整marshal代码对象仅该函数改变，其余3.11的36个、3.14的35个对象不变。此为源码级raw compile核对，不冒称pytest重写字节或整进程证明：
+
+| Runtime | 变更函数code SHA（前） | code SHA（后） |
+| --- | --- | --- |
+| 3.11.15 | 00df61983c418326ef8315e4047e78553225145beca6b35d3162bb038b104a5f | 6ce3742b6e1c954db180f57a7a43f4d38565a1eaee585ade50c33796b9465875 |
+| 3.14.2 | 40b752735cffda7d55e5044ac14ed346f8cd479029640be595e9cbee5af98783 | 9b388be0e49681e211f587369a262ae06d16ac6ed5777fa11449a65ce8c5094a |
+
+排序classname::name的LF＋末行换行UTF8 SHA为`714e02d7acbac436288b063b32cdea92055c37d5e41d31336f14abfe37823513`。以上四份JUnit SHA依次为`8315ba4366622c168a95029684ea3b6f175e8bc1fd45289f63ce10b6330c2721`、`0b11162cdc890d73b54476235805cdca484542a16bf0f1faca3db89352986446`、`97049a75e6d8fa2b31096df43c0ac378232f34bed3b87bd43c43d08baf8243c2`、`b573536846be046b282edefa02ad5d613ef016387031d7d2cc3a0753d99813bd`。
+
+本轮TDD失败原件全部保留；下表均位于同一Temp目录，前缀`chanpy-native-default-entry-`：
+
+| 原件后缀 | 实际失败/后续验证 |
+| --- | --- |
+| red-f8b5158f60ac416b8e45252cb6828f9d.xml | 2 failed：默认未选择金额acquire，缺profile仍走旧fake POST；后green-893f443ff07b48ca8ee8f1ad031898b9.xml为2 passed |
+| owners-red-86ee7a95a5b84adf8e6afafb321c944e.xml | 3 failed/1 passed：cold错误before已先GET，quota换DB/连接有外SQL；owner2例及anchor6例分别补验通过 |
+| cold-runtime-red-f0e63226478c491cbe1608e4f7308d40.xml | 1 failed：替换initializer被执行 |
+| late-read-red-75cb6c4423ae4e4abafe2ac37de49569.xml | 1 failed/3 passed：public acquire替换被执行；不在事务的外库已由原_owned拒绝，未虚报为缺口 |
+| owned-late-red-796dce4b8e6c48628d4558a85c5efc77.xml | 2 failed：外库本身已有事务时L1后读取仍触及外SQL；增加原owner检查，随后共同5例通过 |
+| acquire-body-red-f3cf027989074e8e9ddfc0bc5cf763e7.xml | 1 failed：private acquire body替换被执行；随后共同5例通过 |
+| metadata-red-482c78e40135447e8d229253fa201fb7.xml | 1 failed：实际risk .5被覆盖成1 |
+| metadata-green-9994d2d926514457b1a7ff914d83b2b7.xml | 名为green但实际1 failed：writer改值后原consumer仍硬核1；同步核原before后metadata-bound-green-8c3a7786034b436c893ddaa28650ecb4.xml为1 passed |
+
+中间55 passed并不代替最终60项新测试或六模块回归。进程全部终止且CIM确认0后，CPython3.11.15/3.14.2（均CCXT4.5.89）Trade＋12个WIP测试/夹具compileall通过，diff检查通过；Git原LF→CRLF提示不靠改配置消除。所有长测试严格串行、活pytest时不编辑；一次只读JUnit清单命令的语法错误已修正，未启动/重启任何测试。主线程按review清单复核；没有用代理或把旧448/4246等范围重标成当前全仓库通过。
+
+剩余：先收口无guard/旧v3的直接新风险入口并迁移历史fixture语义，再接原Engine活claim与真正原SDK POST/ACK/完整终态/冷恢复联合矩阵，以及完整SDK依赖闭包/适用全回归；未完成这些不能移除原常量或声称C5完整。OKX、C6/C7、真实认证与整个Goal仍待。当前WIP不commit/push，Goal active；股票仍延期，真实配置/资金/交易门禁不变。
+
+最终40处跟踪源码/测试与未改基线SHA（修正唯一旧测试断言后至3.14及收尾无漂移；文档不充作测试运行源码）：
+
+| 文件 | SHA256 |
+| --- | --- |
+| DataAPI/ccxt.py | 03178d879a69f1dac696d9060fcf43182878168f28928c7054e22ddc18edf94f |
+| tests/native_capacity_preparation_case.py | e8316691d5e1e4eb3a78e830ea948d7c3ac6c55fd9af8d5f1e820047ce7e3b41 |
+| tests/test_native_capacity_prepared_intent.py | f29c156b15e0fa9b9d42d50de07224390919388b5bdb0619c04cd900fb1244e7 |
+| tests/test_native_monetary_claim.py | 749a53496505e4ea8b5749ae2d20daa19ad24ed148a445a5c96901697436d0e5 |
+| tests/test_native_monetary_engine.py | 87f0f09d6c09c422563c1bbb36e15d41103190d7322755e879df09c585af958b |
+| tests/test_native_monetary_execution.py | 24918bac12110883c7e7950798363103a99566dbb01f3a8d9b9a1340f91b59ec |
+| tests/test_native_monetary_http_boundary.py | 122011206f7b445ab555541b6f4d2780dc6c9f18c808d6cfa9c10e1d5831a5b6 |
+| tests/test_native_monetary_sdk.py | 716b3ef2f26f2e97d27536a6fac70f1eb5043e75162202b61696b22099ea157c |
+| tests/test_native_monetary_terminal_observation.py | 97335f2ae9492834a3cb75bc39caf0366c46db943a4c0dd10b788ec7ce1ee522 |
+| tests/test_native_prepared_last.py | 4d66cef9bc05255309ff56865501e8db4ce751aed51b878a0a1695ffd22d112b |
+| tests/test_trade_sqlite_transaction.py | 44a0bad21833ad2d07517d7bf3b7eebcc0bdd7cf8e6bf5c18f962c3be8850bd4 |
+| Trade/AccountReconcile.py | 40e188486fce79dfa8a074deac3277f88567b58cabab39b9b35c4ba5e4033568 |
+| Trade/AccountRiskStore.py | aa79ed362b393a761f863ae6eb4ff8833a77c4d531417528c9169cc7aeadcb68 |
+| Trade/CCXTTradeEngine.py | cd749bab319a6a107d985d562d714c4c124985de4d9457df1c1ba36593353682 |
+| Trade/db_util.py | ad743f9985379483cadb061f94d87d66bd72859d646bad6aad4e609d9b8ad237 |
+| Trade/ExecutionReconcile.py | e4445ca84f6e2206d4b93c8dad9c44c9f2d06344cf3e708a8707c5e836d3e5ca |
+| Trade/NativeAccountCheck.py | 42a15a16baf3029184f671d5f6c9ea33fdac0e8ea87ad14bc11a0054ed22ac8f |
+| Trade/NativeAccountReconcile.py | 9b8d27db050137622a50180bfd4e1629304d1de5c32d91700a07cb7ae040251e |
+| Trade/NativeCurrentComponents.py | 6f11552e1c422cf29d920350a0730dae7b8570f4af5395c007546eb803bdf34d |
+| Trade/NativeMarginEnvelope.py | 1f16b40bc2cc612a3216f38dc42b84fa15251e90316d169ac8c719f4fcbdf06e |
+| Trade/NativeOrderCost.py | 8b90e703c3d25a9c3f6e31f8c444c2ee13afff4349079a579d2cd2d508c059b1 |
+| Trade/NativeOrderTransition.py | 9ab50315f0fe8e95b8529e394ef76bc22bda1a29f66afd6ac0217624e5bb92f0 |
+| Trade/NativePendingOwnership.py | a5a043d37b1c6795eab9f87391d1be8cfbfe69392da3d886126a47fcfb3224d3 |
+| Trade/NativePreparation.py | 85a10fbdc9333ecd67d3b30eb9d2ab9a28d8b5e50d23a066412a32b8675846ee |
+| Trade/NativePreparedClient.py | 302acc57f5c9004fe433538c4b0c420b322653a3ef58766b46b1a007acbbc686 |
+| Trade/NativePreparedIntent.py | 832fbf9567c98b6b3dfa0f6ac8ac339290545c5f6081348eba24978ee7cd671e |
+| Trade/OrderAudit.py | 88e195437be8cd99b258fcdc5da814a3b81c53b85a7830810994ea2ec203e2cf |
+| Trade/SqliteDB.py | 953dba10a0e1d88403a6777a0f59a045ce1facc335ffd1b0fe3fd76ddeaf1bee |
+| tests/test_order_audit_history.py | 3d9ff1a61511f1dfa7e370a6e060c796cbc770a349bba49760459fabc4087079 |
+| tests/test_native_monetary_consumers.py | f84f0ba0b930c39540fdfb9b63946b683c2fccd09e91143b45fe3fce27fefcc6 |
+| tests/test_native_account_components.py | e20de6d91e27b6aa9a2673809a489abc9d0338e8d32c0098f5104a3ba9561876 |
+| tests/test_native_account_component_checks.py | 46ccb299807de14ec0dd35b012b91e7205cac156731424f0dbe093a5fd420f87 |
+| tests/test_native_current_components.py | 54c14fc15c9fad9119492c473e8da200dc986479784621d59d9feb7480a731be |
+| tests/test_execution_ownership.py | 8e1cd363e89142e95a176bc8086ca09ec3634b51f7705c64de460d7e13ec9e18 |
+| tests/test_account_reconciliation.py | 9cfa89cbbe266c28e252ce5d29ce60869ab731faa64de013ad41062482bdc3fe |
+| tests/test_crypto_order_contract.py | c8fc38c9c5bef7b8e016d5219e924f1087e2b69cf41563143f9d413fac9aeb8c |
+| Trade/TradeEngine.py | 87bd115534febcf2e1cdc4f4d35958a88e257719512fb9acd7a8797f357f62f7 |
+| tests/test_native_monetary_default_entry.py | 53b597c452d3dfcc0484c50db4328003b2371dfc90f4f129617f1e8d9374ecad |
+| tests/test_trade_state_machine.py | 402f36bdb2494b1f184713834fb4c034f4996a980914851216182284e531889f |
+| tests/test_native_monetary_prepared_intent.py | 61abe7c7b46e408020ce8183bf28fbb72c66745e605904d65a98bfefa653c3cb |
+
+### 2026-10-26 / 无guard及旧v3新风险收口、历史夹具与paper回归（WIP）
+
+本轮实际推进原执行计划，不缩减C0–C7目标。原HEAD仍`436c011cda223da4f9970cbc1a6d5067dff0b646`，Goal active，全部WIP尚未stage/commit/push。只有fake/synthetic开发，不改实际配置、权限或candidate/testnet/live门禁，不将历史v3或quote检查升级成资金准入。
+
+- 生产修改限定原`Trade/CCXTTradeEngine.py`：无guard的非dry-run swap默认入口不再回落旧prepare/CAS；真实原生`place_order`在非paper分支拒绝未验证后端和无原金额lineage的open意图。原新金额完整发送阻断仍保留。旧v3读取、查询、取消、原账户减仓和spot/dry-run继续原链，无新表、模型、writer或放行参数。
+- 原public旧v3在修改前固定时钟采得Binance/OKX × one_way/hedged × cross/isolated × buy/sell共16份完整record/history/result/server/native request SHA。fake-only历史构造器与这些独立常量逐字节对照，不从helper自证expected；仅接受实际旧fake、无guard、schema-v3历史，不接受新金额或成功L2。迁移原单位/venue、账户/恢复、CAS/历史、account/execution及native准备夹具的初始化，原查撤/减仓/记账断言继续调用生产链。
+- 迁移时真实失败分别发现历史helper遗漏读取后/claim后撤权检查、claim后账户freeze检查，以及丢响应/identity-only ACK的原恢复语义。仅复用原安全调用、原sticky检查、原ack/query/report writers和fake服务器修复历史构造；不放宽生产准入。8模块中间307 passed，不冒称最终当前全范围结果。
+- 顶层回归另发现原paper生命周期真实RED：新增native限制误放在paper共用validator。只移到原`place_order`已经分离的真实native分支；新增调用中途翻转dry_run仍拒绝，既有paper恢复不变。专项41 passed，且新收口40项覆盖16份golden、16种无guard组合、2venue×2backend标签×中途flag变异。MySQL标签只作拒绝测试，不是MySQL连接认证。
+- 最终3.11顶层运行的4失败均为`test_opening_quotes`仍将旧报价guard当普通v3发送授权。只改该四参数测试：原base prepare/SQLite CAS构造明确历史数据、原reader冻结完整quote/provenance、真实CCXT纯builder核两单位与价格；public发送必须拒绝且无claim/POST，原writer构造历史claim后再直接核原quote reader fresh/expired。不扩大无guard历史helper、不给caller证明、新L2或生产绕行；该文件其余AST与HEAD完全相等。整模块补验54 passed。
+
+有效顶层命令显式枚举`tests/`直属108个`test_*.py`，排除唯一尚RED的`test_native_monetary_execution.py`，使用`-m 'not network' --maxfail=5 -q --tb=short -rN`，GUID basetemp/JUnit。**不递归`tests/research`**。较早一次目录级命令误选该隔离目录，已主动中止、核原进程退出后才编辑；没有完整JUnit，不计通过或验收，也不以此声称未读取任何研究资源。未修改研究代码/冻结资产或将任何误选结果作策略采用依据。
+
+全部下列JUnit位于`C:/Users/yangj/AppData/Local/Temp/`，失败原件保留：
+
+| 原件 | 观察结果 | JUnit SHA256 |
+| --- | --- | --- |
+| chanpy-native-entry-closure-final-top-py311-0d00b20265494f1fa027eeff4164f310.xml | 完整7131项：7125 passed / 4 failed / 2 skipped；9896.206s。最后poll句柄已失效，终态由完整XML及无pytest进程确认，不虚构已观察退出码或完整warning数 | 774c2fedd4426c15e47bd2270b405cf688931d658e8d5489fd37e807bc9a5ff9 |
+| chanpy-native-entry-closure-quote-fixture-py311-ded0a75902e04783bb9bb5f3e0093d74.xml | 仅修改上述四参数测试后整个报价模块54 passed，实际exit0，XML 12.151s | f1fc616ef0cff61acad538969c49605b361a75184d23c4c71969e46cbffe205e |
+| chanpy-native-entry-closure-final-top-py314-9cae8ff2fa684d60806a4dad5320c2e1.xml | 最终同一源码一次7129 passed / 2 skipped / 1 network deselected，实际exit0，XML 8340.370s（CLI 8341.37s） | 6b85e7114ac57c794bda1defd97d649d1c58c39aeec4959fc44e718a2a884fa1 |
+| chanpy-native-entry-closure-full-send-red-7faea5283e3f4b3c9f79fcb488dbe6ef.xml | 原完整默认发送仍1 failed，实际exit1，XML 15.026s，停在Engine.py:613原资金/完整消费者阻断；无xfail/skip或成功L2替身 | d7b581ebf5533aa22f221ec89f9cd77a5a27a8e2da05eb3cc467c6db2fe86bb5 |
+
+3.11通过集合去重并集为**7129 passed / 2 skipped**，不是最终测试字节一次全绿。四个重命名用例有显式一一对应，预期与实际最终7131个ID集合差异0，排序ID/LF/UTF-8摘要`662150701ea5cff99ad6285c0f4fe88070d2db22cb411d17686065e75e9a7c3d`。两项跳过为Binance income不提供isolated position cash channel，以及缺PyQt6的股票GUI，不是原生新风险正向验收。
+
+报价补验前后157个`Trade/*.py`与顶层`tests/*.py`源码对照仅该报价测试文件变化；其当前SHA为`d138cbacefc0149871d9f620420df52b834b10584aab78a6f56544e34cad7bef`，该报价文件除四参数测试外的AST与HEAD相等，并非全部WIP与HEAD相等。当前157个源码的`相对路径 SHA256`逐行、区分大小写排序、LF连接、UTF-8汇总SHA为`d3e41bded42739d20e490e3f80140a5cfa70ba6239cee8e49385048d2834bc59`。早先内存快照已不可读，未将重新创建快照伪称旧快照比对；测试运行中多次记录的源码不漂移检查与最新pre-edit→post-edit对照分别适用。
+
+3.14.2/CCXT4.5.89的相同顶层范围已自然exit0，其7131个case及逐项pass/skip与3.11适用通过并集完全相等（差异0），ID摘要与上列相同；157个源码汇总SHA在结束后仍不变。24条warning为小样本单类AUC、MLP 60轮未收敛及旧libsvm文本输入弃用，不宣称模型质量或原生认证。双版compileall、diff检查及22个文档本地链接已核通过；最后检查后无活pytest才修改本台账。上述只完成无guard/旧v3收口及适用回归，不能以拒绝子边界代替C5。
+
+下一步按TDD继续原Engine活claim与完整实际SDK发送矩阵/传递闭包；不重复未变的全范围长验收冒充进展。C5/C6/C7、OKX金额链与正式外部认证仍未完成，整组WIP不提交/推送，Goal active。
+
+### 2026-10-27 / 原Engine活claim与实际SDK发送开始贯通（WIP，未提交）
+
+上述7131用例的大范围证据属于接线前的源码`d3e41bde…`，**不是本节新代码的全范围验收**。本节仍按已批准原执行计划推进，不改真实配置、资金、权限、研究资产或candidate/testnet/live门禁；HEAD与分支未变，Goal active，整组diff未stage/commit/push。
+
+- 生产仅在`Trade/CCXTTradeEngine.py`和`Trade/NativePreparation.py`接原路径：原L1必须是完整binding-v4且通过原full-current，才可进入提交期金额单位检查；沿用原`_assert_persisted_monetary_contract`按L1/L2重建，而非只加schema白名单。原Engine在原owned事务中构造原活claim上下文，传原`CChanDB.claim_order_submission`产生唯一claim/L2，再锁外调用原HTTP前完整尾复验、实际SDK POST和原ACK。没有第二writer、表、资金模型或可转移许可。
+- 新实际调用的capture/owner/live/consume/finish五个函数进入原fresh runtime检查；SDK覆盖仍是明确声明的路径，不宣称整个Python进程或所有动态依赖受信。原v2/v3诊断、旧v3、无guard和未验证后端继续拒绝，缺数据/过龄/冻结/撤权门禁未删。
+- 原公开`place_order`的12项正向矩阵（one_way/hedged × long/short × LIMIT/MARKET/GTX）已由原门禁实际RED转为12 passed；检查同一root/binding、唯一claim增量、锁外真实SDK签名参数、正确side/leg/quantity/TIF、一次POST及原ACK。60000ms仅为显式fake预算，不是生产默认、延时证明或服务器锁额。
+- POST后响应丢失与换库两项通过：交易所fake已收到请求，但本地继续保留submitting/unknown；不能再次POST，原客户端号查询可恢复ACK。换库后不执行外库SQL/ACK。完整来源/观察后释放、冷恢复与其他消费者仍须适用联合验收，不能仅凭NEW/ACK释放风险。
+- 默认入口旧正向断言仍要求抛原软件门禁，实际返回成功，已保留该1项真实失败。只将正向断言改为同次自采一次、原L2/ACK/零量report；原风险/分数元数据保持；warm/cold与旧契约拒绝组合中间100 passed。没有为通过测试扩大profile政策或增设放行开关。
+- 新意图读取变异真实证实：`get_order_intent`返回后替换Engine DB/connection，旧路径会先向外库BEGIN/读取/ROLLBACK才拒绝。仅复用原`_database/_same_database`pin原SQLite对象、connection/table/事务状态，返回后先核owner再继续；2项RED后包含原单位/venue/报告CAS/paper生命周期与4项新故障的141项联合通过，无外库SQL。
+- 新pre-claim profile变异真实证实：mode GET后改fake凭据，旧路径还会发symbolConfig/balance。仅金额提交分支把已有owner传给原`_observe_account`逐GET失败检查；专项RED→GREEN，旧v3/paper调用形状不变。
+
+原件都位于`C:/Users/yangj/AppData/Local/Temp/`，失败不删除；以下均实际观察退出码（RED exit1，GREEN exit0）：
+
+| 原件 | 结果 / XML秒数 | JUnit SHA256 |
+| --- | --- | --- |
+| chanpy-native-engine-send-matrix-red-2c57a18c78ac4bd097a99e82e0e2db28.xml | 1 failed，14.023 | ecd1fa3e66436bb6e9b7ba00863176e383de7927a4098ee862e98420ed4f854a |
+| chanpy-native-engine-send-matrix-green-d70533ab24b04fe987bdafebfeb0b282.xml | 12 passed，545.074；随后仅测试内抽取同一准备helper | b3dec8c12e483aaeddeb9a2d758c9b28a3601867e47c4eb0704746093de8e719 |
+| chanpy-native-default-entry-send-regression-ff3ff654c2a747208683e698c84fb195.xml | 1 failed（旧raise断言），45.739 | b5873a48df0199a3e94073a01900f857d1158cde680a311e4650a4bf114dd010 |
+| chanpy-native-engine-post-faults-e08a87c0194347698b39f34b4e72d144.xml | 2 passed，92.195 | 441744a62a3a5b0ba6cb75b0f4d42fd97bc259545bf17d3547551acd88dd547d |
+| chanpy-native-engine-default-and-closure-bf528c6097444d229bd266c57de223ad.xml | 中间100 passed，555.055；早于下列两owner修补 | 01480893abf461b5ced226151664d660cfb16ff5d1ba31b9642d79be58708038 |
+| chanpy-native-engine-intent-owner-red-fe083c1d16e546fd9307921cf2d7ea01.xml | 2 failed（有外库SQL），19.837 | 8b8df2d9f0d9440877aa57938ee5f8f5ac46288848d8a090e83a02eb1c05c46e |
+| chanpy-native-engine-intent-owner-green-d9e8e7576f264e4da9d44311599fc5df.xml | 141 passed，126.416；早于下一profile修补 | 664da04a4565bc9598c9ca3b92f8cf2ec86e56900151fdc614f3cbf1922d1b4b |
+| chanpy-native-engine-profile-owner-red-b655f21dee1b46aca7c20caf34153e00.xml | 1 failed（两次后续GET），18.529 | b8882dc52cffb8bbc4943408c5581773f0fe753def3a4f52227b66b96b91bf9b |
+| chanpy-native-engine-profile-owner-green-01e862f2c1c64a91be77dce0e910ced4.xml | 1 passed，15.323 | e33f34611828ddb01e1df41f6b54723caf7103e0ad6641d1a4efe0c576bc7c97 |
+
+当前测试为`test_native_monetary_execution`17项、`test_native_monetary_default_entry`65项（含新增五依赖首次调用变异）、`test_native_monetary_entry_closure`40项，共122项待冻结双版联合复验。还须原claim/current/SDK/HTTP/终态及其他适用回归和主线程review；上述中间通过不冒称最终全绿，完整C5/C6/C7与Goal仍未完成，不提交/推送。
+
+后续122项3.14联合已实际exit0：`chanpy-native-engine-connected-py314-7c1f0343b7bb4594ae1d5ff47b0c84ba.xml`，122 passed / 0failure/error/skip，XML 1083.054s（CLI 1083.14s），JUnit SHA `6ba752e5cd02a9a8087f8731fc7f3106fff924a1898b0b79a14cce27bc41b42d`。结束后157个源码的汇总SHA仍为启动时的`5192c0d3c3443e685c51e0a669e1eb63cada5f9adbfa73adb3ab2405d82bbc97`，未在运行期间编辑；此时仅3.14完整联合，不虚称双版当前源码均验收。
+
+原生提交错误专项随后实际RED：真实SDK把底层fake HTTP400的敏感占位msg传入通用`place_order`异常，外部异常可见原正文。仅新金额契约提交异常改为同PLACE_ORDER_FAIL码的固定消息并`from None`；不改其他路径、订单状态或释放规则。专项GREEN证明消息与格式化traceback无原文、claim仍submitting且无重发。两份保留原件为`chanpy-native-engine-post-redaction-red-a9011a848e5a479c91dd7e56f9c47ac5.xml`及`chanpy-native-engine-post-redaction-green-5942ae80d7614fbd811e669ea862479e.xml`，各1项，实际exit1→exit0。此后execution模块为18项、组合123项；将按最新冻结源码补双版组合，原122项证据只属于错误分支修补前的身份，不冒充最新全部验收。
+
+后续123项3.11联合已由原句柄29364正常exit0，1313.49s（XML1313.424s），0failure/error/skip：`chanpy-native-engine-connected-final-py311-70cc37223b96430c8b54b3d397f1e41c.xml`，SHA `d4b66db4acb5c09ef79a1dc71225fb4fb1531f31e58f82e91336201bf71d9e43`。157文件按Sort-Object -CaseSensitive的相对路径与SHA、LF/UTF8无末行换行汇总，启动/结束均为`5bc906b26d0b097ee0cf8ef929004aebdaf3adfe2d6e5cd85ed10c80f9f77a93`。之前Ordinal排序的另一个摘要只是排序算法不同，不是源码漂移；不将本次3.11与旧122项3.14说成双版当前源码全绿。无活pytest后才开始下一订单路由重试RED；原失败原件、C5–C7未完成及未commit/push状态均保持。
+
+### 2026-10-27 / 原SDK的订单POST自动重试边界（WIP，未提交）
+
+实际RED不是Engine第二次place_order：给同一隔离SDK在prepare之前声明`options.order.maxRetriesOnFailure=1`，原完整source/L1/L2均形成后，真实SDK在第一次已接单但底层fake响应丢失时，在同一次调用中POST两次。原来源GET对自身路径检查零重试，不能替代`order`的选项；默认零的既有断线用例也不能证明此非默认路径安全。另7项RED覆盖正式别名、负数/bool，以及三个实际option helper在校验前已被调用。
+
+最小修补只在原新金额自采入口、来源I/O/intent之前调用原SDK option reader并要求type=int且值为0；不自造SDK选项算法、不改实际配置、不增加sender/表/许可。原SDK声明检查由28增至31方法（新增handle_option_integer_and_params、handle_option_and_params、check_option_integer），5个原order Entry不变；完整options摘要仍保护后续L1/L2漂移。8项GREEN及另1项已有订单query回归通过，后者即使当前order重试设置非零也可沿原L2管理，不因新风险政策丢失已有单。未知claim不释放，旧schema不升级。
+
+| Temp JUnit原件 | 实际结果 / XML秒 | SHA256 |
+| --- | --- | --- |
+| chanpy-native-engine-order-retry-red-e014298e787b4fcfa79436db2fe36396.xml | 1 failed，2 POST，46.226；原句柄80220 exit1 | d5136dfc4cf40ffbb17c79f5ddcfe080178879df35d52350dd504c2e3724276a |
+| chanpy-native-sdk-order-options-red-b564fa18a3574bfe96e6ba233cc9018b.xml | 7 failed / 36 deselected，38.844；34631 exit1 | be696b2f3d4f0078e06f716ad3eab41bf93374aceef205c00c5ce0cc4cafdbe0 |
+| chanpy-native-sdk-order-retry-green-3b7b078aa1b543188ad81c961d8639fe.xml | 8 passed / 54 deselected，8.281；10904 exit0 | 54731dc29f308216a766f0010fbb65f8b781dfb6ccb135824a8204fba17f8f31 |
+| chanpy-native-sdk-order-retry-management-02e95db619c14c00941cf53cb387bd8c.xml | 1 passed，24.978；43555 exit0 | 6eec8913ec4e875480e4afdabb93a411ee38c5d56b5288847306859b44e595d4 |
+
+全部error/skip为0。157源码最终冻结摘要`f08b5758dabd774dd5594cde9a4a8b75a999955bcbe5065beb32f0ca0b8a8068`，双版compileall与diff检查通过。当前完整入口/发送/旧wire拒绝/SDK为168项（19＋65＋40＋44）待双版同源联合；不把上述专项或之前123/122当作新源码完整通过。主线程review仍保留SDK内部限流/签名到真正请求之间的时点与动态依赖边界，尚未证明就不宣称关闭；C5–C7、OKX和Goal继续未完成，整组WIP不commit/push，无真实端点或配置/门禁改动。
+
+#### 同源双版168项结果更新
+
+| 运行 / 原句柄终态 | 唯一case / 结果 | XML秒 / CLI秒 | Temp JUnit / SHA256 |
+| --- | --- | --- | --- |
+| CPython3.11.15，32280 exit0 | 168 passed，0failure/error/skip | 1535.080 / 1535.16 | chanpy-native-engine-sdk-final-py311-c4eb4393f0c04c47ace6073e4aede316.xml / e1cffa6b9dedbb8ecb0c4db1933b3c0e559ab70c7b136efc918d1335515cdd30 |
+| CPython3.14.2，18265 exit0 | 168 passed，0failure/error/skip | 1324.910 / 1325.00 | chanpy-native-engine-sdk-final-py314-528aa45530e34d7bbd80b79051f21221.xml / 70d55ba4907e97ed27f08de61bb03d4bc2df5bdee5d3cd8cc6514be62c7f886c |
+
+均为CCXT4.5.89，CLI无warning。每版execution19/default-entry65/entry-closure40/SDK44，逐项ID＋pass状态差异0，不只是总数相同；Sort-Object -CaseSensitive后的classname::name、LF/UTF8无末行换行SHA均`1b1d9848634301babef0b2cc167dff1304affea3a05ad5f81913fe3e313091bf`。157源码摘要在两版启动、运行中及结束后均为`f08b5758dabd774dd5594cde9a4a8b75a999955bcbe5065beb32f0ca0b8a8068`；原句柄自然退出，未在活pytest期间修改任何文件、编译或另启测试。两版结束后再次compileall全部Trade及顶层测试、diff检查通过；两文档22个本地链接此前结构检查无缺失，之后未新增本地链接。
+
+本轮实际改动为NativePreparation的3个原SDK option helper声明、NativePreparedIntent的自采前零重试检查、SDK/execution测试与本计划/台账；没有另建sender、交易/资金表、金融算法或隐含配置。NativeOrderCost、NativeAccountLimits、NativeLeverageLimits、NativeLastPrice与HEAD仍无diff。SDK真实请求构造/解析、唯一原claim/L2、warm/cold默认入口、未知响应不重下、旧wire拒绝、已有单query仍在本矩阵中通过；显式60000ms只属合成正向fixture，不是生产默认、实际时延或服务器锁额证明。
+
+主线程review结论仍为**整链暂不可提交/推送或宣称C5完成**：当前时点检查在SDK.create_order之前，原SDK.fetch2随后还可能限流/签名；实际传输前年龄预算是否仍满足须单独用原SDK等待故障注入验证，不把静态分析或本矩阵冒充证明。之后还要补真正POST→非零部分成交→取消/终态原生GET→原execution/pending/account联合观察→冷恢复的连贯矩阵，以及原claim/current/HTTP/终态与paper/旧状态机的适用回归。较早7129、448等结果不重标为当前完整新发送源码通过。C5/C6/C7、OKX及原Goal继续未完成、active；没有真实端点、实际配置/资金/候选/研究/测试网/实盘门禁改动。
+
+### 2026-10-27 / SDK等待后的使用时点真实RED
+
+新增`test_original_sdk_wait_cannot_send_after_the_original_source_window_expires`，原SDK执行、原L1/L2与金额consumer均未替换；只注入底层sleep/transport与typed时钟，在原POST throttle模拟61000ms等待。已冻结的60000ms来源窗口未续期，但仍实际1 POST。原句柄86153 exit1，1 failed/0error，49.475s XML（49.52s CLI）；`chanpy-native-sdk-wait-use-point-red-9094d7afab6245cba966fea0bed47323.xml` SHA `39dff9041d866c05ab7a79b1ad4433ab930e7fca7b13a2d432ef93d7e37c5866`。这是当前真实RED，不xfail/skip；旧168通过不被撤销或重标为覆盖本缺口。
+
+按brainstorming先冻结新的逐调用传输尾守卫方案，详见[待确认设计](../specs/2026-10-27-native-sdk-transport-use-point.md)。方案仍用原Engine/SDK sender，只在本调用原Session交接前复用原L2与旧窗口，不重采/重签/扩大预算；但它新增临时运行时拦截的生命周期/线程/恢复行为，尚未经用户确认，所以依赖实现不落地。已批准A/P/F、账户协议和Goal续行不重问。继续可独立的实际POST→非零成交/终态/联合观察/冷恢复矩阵，Goal active，不因单个待批设计停止所有开发。
+
+### 2026-10-27 / 真实POST起点的非零成交与冷恢复、原生撤单脱敏
+
+新增连贯测试从原公开place_order实际SDK POST及原响应开始，原Engine自己形成唯一claim/L2/ACK，不使用claimed_order或手写L2。随后0.02部分成交原GET/apply→原DELETE→再GET取得真实终态来源→原report→完整execution/pending/wallet/account对账，确认该具体订单不再为未观察预留；重开同一SQLite、exchange=None、窗口过期一小时且kill=YES，实际原factory冷SDK查单、重复累计回报不改变记录，再采完整原来源对账仍matched，kill不被重置，POST始终一次。初步LIMIT路径，不冒称MARKET/GTX或默认add_trade同一整链均已完成。
+
+测试数据只将原terminal fixture的raw非空账户/逐笔/佣金/funding更新段提为set_native_filled_account，旧apply_observed_native_fill复用同一段；又将已通过的真实POST/原响应捕获段提为submit_for_recovery供撤单故障复用。仅测试辅助，不新增生产sender/ledger/金融规则，原金额模型和真实配置均未修改。
+
+| Temp JUnit | 实际结果 / 原句柄 / XML秒 | SHA256 |
+| --- | --- | --- |
+| chanpy-native-real-post-full-chain-de72bfacd64b4747888c944d38abebe1.xml | 单case 1 passed，2663 exit0，101.556 | 87201c71551419dae8f52465ebec03924377626b2d3e3e08d7e39d2bd05958c7 |
+| chanpy-native-real-post-chain-matrix-py311-3cc9cd3c494f465aafacd1ea57afabce.xml | 四方向整链＋原非空账户8项＝12 passed / 38 deselected，60151 exit0，661.296 | 542d830e002a7ca978bd8663689ef4ae8938133d2d28b254b1f701546afcb3f7 |
+| chanpy-native-cancel-private-body-red-ae3886fdaeac44008a0a4c4af3801b43.xml | 原SDK DELETE敏感正文泄露，1 failed，7841 exit1，53.041 | a2f82d3844c190558cba6eee8f80372fa8258aa9fc6a890d6eb222c64c5114fd |
+| chanpy-native-cancel-private-body-green-6825e612551741f99d73638e50afd598.xml | 1 passed，9547 exit0，64.943 | 5bacab56d6539dfc7fd04bae80d2e19a8f4341e9d232f991d6d235308438e2ec |
+
+全部error/skip为0。12项为撤单修补前源码b346dc5881a2ef13c437963d95a227f60ade2eb4d17f36328864e541916bf278；新测试抽取及生产异常修补后不能冒称该12项属于最终新源码。撤单实际RED后只给client-order-v1的原except分支增加同CANDEL_ORDER_FAIL码固定消息＋from None，旧契约错误路径不变。GREEN同时验证不发布终态/不释放/不重下，服务端即使已取消也只由后续GET确认。不是对所有旧契约/所有日志或C6的完整脱敏验收。
+
+接下来完整terminal26＋四方向整链4＋新撤单1＝31项冻结双版验证，另补原管理/旧契约适用回归。当前另有SDK等待1项真实RED及待确认设计；所有范围必须分列，不能用31项预计结果或旧168全绿掩盖它。C5/C6/C7/OKX与整个Goal仍未完成、active，整组不commit/push，无真实I/O或门禁/配置修改。
+
+### 2026-10-27 / 方案A批准后的实施与证据纠正（仍为WIP）
+
+用户已明确批准方案A；以上“待确认/实现不落地”是批准前的历史状态，不是当前阻塞。原公开assert仍返回None，私有共享reader及逐调用context factory已进入实际runtime检查，原Engine仅在原SDK.create_order期间包住同一Session.request，在实际POST委托前重读原L2/完整current并沿旧window核尾预算；不重采、重签、另造sender或续预算。实现尚待全部生命周期/联合验收，不因此宣称C5完成或允许发布。
+
+此前terminal26＋真实POST四方向4＋撤单脱敏1的3.14运行已自然结束：原69035 exit0，31 passed/0failure/error/skip，XML1075.156s（CLI1075.24s），原件`chanpy-native-chain-terminal-final-py314-c2866d4fb66c4c57bba6ebe1d97c3c61.xml`，SHA `dc5ffb7a9876b3fb03a6d18b854b91dea87b316935a966d999b55c5a0b13a1f2`。该运行身份为157文件`40b3407412e041b2c12970f98991bea026e91c72ec166ad514ac10d5be7b4cd3`，发生在新传输守卫之前，不能重标为新守卫或双版最终通过。
+
+生命周期首轮原件`chanpy-native-http-use-lifecycle-16372cdd194a456ea27820862ffe0991.xml`（SHA `8353f31cf34bc4dcd9fa54865eb1b22891d495bd2eca51fadcc314ef46125d15`）在-x下为1 passed/1 failed/0error，XML98.559s；工具输出截断后只读进程确认无活pytest并读取原件，没有重启同一次运行。UTC前进case通过，UTC不前进case出现POST。根因追溯发现新测试在prepare之前注入monotonic，但prepare_for_engine内部install_last随后把Prepared._monotonic_ns固定为0，注入被测试setup覆盖；此失败不能标作生产旧窗口失效的证明。
+
+最小测试纠正只把单调时钟注入移至准备完成之后，并在真实SDK throttle注入点断言实际读取的单调时钟至少推进61000ms，保留0 POST、原唯一claim/L2/未知状态断言及原60000ms预算。未修改生产守卫。下一次独立GUID运行验证纠正后的原case和原生命周期矩阵；旧失败原件保留，不以未跑项作通过。
+
+纠正后的9项已实际通过：原98740 exit0，CPython3.11.15，9 passed/0failure/error/skip，XML350.124s（CLI350.16s），`chanpy-native-http-use-lifecycle-corrected-858b56bb3d7249b8943c6706c774b006.xml` SHA `81e35404fbcd4172702845b1dac713459f9bdcb0c3593988f7b49b18e7878d28`。157源码启动/结束摘要均`c154306ff47d0cc0b74ac08cca2ff1cf54fcd42e3a3f8d39fcfcd41d8bf2a87a`。覆盖UTC推进/不推进两种旧窗口等待、四种request有无override与正常/丢响应恢复、外来request替换不被cleanup覆盖、两个新实际依赖首次调用前变异拒绝；不是双版全范围或整个方案A验收。
+
+较早首轮4项原75094 exit0、XML211.314s、`chanpy-native-sdk-use-point-initial-green-cc6a992772444f2aae1de08b23be666a.xml` SHA `9f5fe9dc19b759eef07a075d6fdca337e42dbe56afbedb0b924026602647a511`；profile返回换Session的2项原85812 exit1、XML67.841s、`chanpy-native-http-session-owner-red-31213d9414d04bd5a2f4b37c32b3c7e7.xml` SHA `afe143b184899aa735b66bb5e59aa39f1aafbff98084b6cb521013fb5e53bede`。这些原件与后续GREEN分开保留，不重标为当前源码同一次运行。
+
+下一步只新增真实SDK等待点换Session/request的拒绝测试与同一活上下文重复/重入/错线程的生命周期测试，先读实际结果，不预判安全。没有生产修补、配置改动或新增许可；若发现A本身不能覆盖必要边界，先明确设计差异而不是偷偷加第二运行时hook或缩窄验收。
+
+该5项运行原89632自然exit1：2 failed（SDK等待期间换Session/request各1）、3 passed（同上下文重复/重入/错线程），0error/skip，XML248.496s（CLI248.53s）。`chanpy-native-http-use-ownership-e55b0f20e6184b5fa8d8ee810a724f67.xml` SHA `4c279cce619f178393b1950acb6146b8a8ad55b847a58b36c1158015d7ac0884`；当前157源码SHA `bff27df2ef0683eeb56a396d5ac3b2765f4d45f6d5a8235645203583a89134a4`。两个失败均已实际进入外来fake request，事后domain错误不能当“发送前拒绝”。没有xfail/skip/改断言或删除RED。
+
+根因是CCXT原fetch2在等待/签名后由原fetch重新读取self.session.request，A只包装捕获的原对象，换走后不经过A。当前新增[设计§6的方案B](../specs/2026-10-27-native-sdk-transport-use-point.md)：同一调用临时增加原SDK fetch入口owner复核，保留A末尾原L2/旧预算；这是第二处hook，须专门确认，当前未实现。原A及既有A/P/F批准不重问，实际配置/资金/门禁不变；继续独立回归/结构检查，整组与C5–C7仍未验收、不commit/push，Goal active。
+
+待B确认期间完成不依赖B的原HTTP专项11项：CPython3.14.2，原3276自然exit0，11 passed/0failure/error/skip，XML277.910s（CLI277.97s），`chanpy-native-http-use-original-regression-py314-af6687bccf7c4431b53fa8e29c1e7a03.xml` SHA `3a090f96e387dbd6d2d0da7797c4b1144c0535181c2a152f925af42b4c12cbaa`。覆盖四方向公开assert仅返回None/锁外profile且不写原记录、原事务退出的elapsed/bool/reverse尾预算、两个profile返回换Session拒绝、两个实际current依赖首次执行前校验。当前源码SHA仍`bff27df2ef0683eeb56a396d5ac3b2765f4d45f6d5a8235645203583a89134a4`；这些11项不是整模块或双版全部通过，不能覆盖另2项真实RED。
+
+同一源码下双版compileall全部Trade与顶层测试通过，git diff --check exit0；Git给出既有LF→CRLF提示，未修改任何换行配置。三文档25个本地链接、10个untracked文件的尾空白/额外EOF空行检查通过。原HEAD仍`436c011cda223da4f9970cbc1a6d5067dff0b646`，无commit/push。最后只读进程检查无活pytest，所有编辑均在原句柄终态之后。
+
+独立只读审查还确认本机Requests的request/send默认allow_redirects=True，resolve_redirects可经send继续发送；HTTPAdapter另有自己的max_retries。原client_binding未覆盖Session.adapters，所以A的单次委托与SDK order零重试不能推导“底层绝无重发/重定向”。此处尚未进行行为故障注入，不把源码观察伪称已复现实际第二POST；保持为方案§6已要求的独立传递依赖/传输核验，而不是偷偷修改配置或宣称完整传输安全。
+
+本轮生产代码未再变；只纠正测试的时钟setup顺序并新增真实SDK边界测试，更新计划/设计/本台账，没有新sender/账本/金额公式/依赖或真实端点。已发出B的非阻塞确认问题，未收到批准前不实现第二hook；原Goal已核实active且范围仍C0–C7，C5/C6/C7、OKX及正式外部认证仍未完成。
+
+### 2026-10-27 / Requests真正send链的POST重定向（WIP，不实施待批B）
+
+上一续行是实际进展，B仍待明确人类确认，自动Goal消息不视作批准。继续原设计已列明的独立底层传输审查：原SDK/原SQLite/CAS/L2全部保留，隔离Session绑定fixture生效前捕获的真正Requests.request，原prepare/send/resolve_redirects均实际执行；仅把该Session已有HTTPAdapter.send下沉为fake，所有GET仍返回原raw fixture。其他Session的全局no_http不解除，trust_env=False只用于这个fake，避免用户netrc/proxy读取；没有真实网络、实际配置或依赖改动。
+
+首轮测试错误地删除instance override，落到共享fixture的class-level no_http，3项均在POST前拒绝；另1项诊断定位到该问题。保留失败原件，但它们不是重定向RED。纠正只在隔离Session绑定导入时捕获的原method，同时断言全局no_http仍在；无redirect正向控制随后实际1 passed/1 adapter POST，才继续行为RED。
+
+| Temp JUnit | 实际结果 / 原句柄 / XML秒 | SHA256 |
+| --- | --- | --- |
+| chanpy-native-requests-post-redirect-red-8930b7e11b4949f480e3e3a5352c085e.xml | 3 setup失败，0 POST，不计生产RED；82675 exit1，38.489 | a4ab71c683177524de6c833b799425c2e6f376bb66ca29ab925fd2ec25c85b54 |
+| chanpy-native-requests-adapter-diagnose-947f0c4010f448b2a40a05454cc84d70.xml | 1 setup诊断失败；24385 exit1，14.707 | 1bc2645d749cd389b28914e11e2cd1612443e8edf4388b4da029fe7da41eaecf |
+| chanpy-native-requests-adapter-control-de2d4daedb974140b14e0050a1b3e9a8.xml | 1 passed，99505 exit0，52.812 | 2c19ff7e94b0af2da21f0b26c5c6cc8f39592ba806cd4b57d83fa03ac8acbe58 |
+| chanpy-native-requests-redirect-behavior-red-ee84b2af2cd749f2b349601ad246c51d.xml | 2真实failed，同源307/跨host308各2 POST；8755 exit1，102.690 | 2b01315f3894e6c2b82d26d536346b65a025179988cb0bde23d541d8f4d4fde2 |
+| chanpy-native-requests-redirect-green-py311-911edf46e7074cf9bd51d7f1c8227498.xml | 3 passed，44947 exit0，154.908 | 6423cb592d72a05b40721afa75cfa91a8a15131d14b8ea81d59a8e8302f1e25f |
+
+全部error/skip为0；控制CLI52.85s、有效RED CLI102.73s、GREEN CLI154.94s。有效RED前157文件SHA `a75292374db310218014dbe6e8cac8caf41e8487182dc032450d0e183af2f2ff`；仅A原guard新增一行本单kwargs[allow_redirects]=False后为`7955570748a6a01c7c194d9928b7d091e7c1ce973f392baa9cf81951cb37fdf8`。该参数设置在原owner/L2/current/旧尾预算之前，不新增hook、不重签/改body/换sender/写配置；GET/DELETE/旧契约分支不变。原NativeOrderCost/NativeAccountLimits/NativeLeverageLimits/NativeLastPrice与HEAD无diff。
+
+GREEN证明无redirect仍真正1 POST并ACK；307/308只1 POST、拒绝响应且原claim/submitting/无ACK/原唯一attempt保留，history仅intent与claim，不以redirect产生新订单或自动重发。环境只读确认两版Requests2.34.2、urllib3 2.8.0，CCXT4.5.89未变；没有安装依赖。
+
+下一步冻结该源码，3.14复验9项相邻生命周期＋3项真实Requests，并重验B对应的2项owner RED；它是预期混合状态，不把排除已知失败后的subset说成全绿。B仍未收到批准/未实现，adapter本身retry及完整执行/旧状态机联合验收仍待；Goal active，C5–C7/OKX未完成，整组不commit/push。
+
+该混合复验已由原26138自然exit1，3.14的14项为12 passed/2 failed/0error/skip，XML504.020s（CLI504.08s），无CLI warning；`chanpy-native-requests-lifecycle-current-py314-d0842aa276264692be40ee9857f99ed6.xml` SHA `80f37282c28343085c7af624c9df7d1f67cf8f7863b4988d806d8bf8a413fc88`。通过为9项相邻生命周期/实际依赖及3项Requests；失败精确为SDK等待点换Session/request各1，外来fake request各实际执行1次。不是“仅预计失败”、不是14项全绿，也未用xfail/skip。
+
+Requests的三个classname::case在3.11原44947与3.14原26138中逐项通过且ID集合差异0；没有将3.14额外9项冒称3.11也在最新源码重跑。157源码在3.11 GREEN运行中、3.14启动/结束后均保持`7955570748a6a01c7c194d9928b7d091e7c1ce973f392baa9cf81951cb37fdf8`。两版全部Trade/顶层测试compileall、diff及untracked尾空白检查已在3.14启动前通过；Git仅既有CRLF提示，不改配置。最终HEAD仍436c011cda223da4f9970cbc1a6d5067dff0b646，进程检查无活pytest，收尾仅更新文档。
+
+本轮实际简化为现有A守卫的一行每次请求参数，不加sender、表、金融模型、依赖或第二hook；测试只是把fake下沉到Adapter.send并保留原Requests实现，初始setup失败单列。方案B原确认问题仍待明确答复，未由自动Goal续行代批；两个当前RED、adapter retry及完整C5/C6/C7/OKX/外部认证风险保留，Goal active，不commit/push或宣称完成。
+
+### 2026-10-27 / 实际HTTPAdapter的自动POST重试必要条件（WIP，无第二hook）
+
+上一续行为真实进展，本轮仍未收到方案B人类批准，不将自动Goal指令当新机制授权。继续独立的adapter验证：原SDK、原Requests.request/send、原HTTPAdapter.send、urllib3.urlopen/Retry均实际运行，仅把pool._make_request作为最底层fake，另设实际socket创建失败哨兵；其他Session的全局no_http保留。SDK order已明确零重试、A已禁止POST重定向，仍不能约束adapter自身的read retry。
+
+两个total=0的成功/丢响应控制通过；隔离fake Session在原L1形成后配置Retry(total=1, read=1, allowed_methods=None)，第一次底层fake接单后抛ReadTimeoutError，原urllib3自行重进同一次SDK调用的POST发送边界，共2 POST。不是Engine第二次place_order、不是SDK option retry，也不是Requests重定向。此前只读推断现在有有效行为RED，但不是实际外部网络发送/服务器认证。
+
+前置资格另补6项配置RED（非零、None、负数、bool、裸0、未知adapter）、2项selector实际代码/owner变异RED、1项实际依赖首次调用前RED；无关route非零adapter及已有L2查询两个控制通过。未为凑数改变断言、xfail、skip或重置配置。
+
+最小实现新增NativePreparedIntent._assert_native_adapter_retry_policy，复用原NativePreparation._function_identity。先核标准Session、原OrderedDict键、get_adapter descriptor与实际bound method，再fresh-compile核原Requests selector之后调用；不复制其prefix选择算法。只核实际fapiPrivate/order选中的标准HTTPAdapter与真实Retry.total整数0，无关mount不误伤。reader仅None/失败，不授予来源/资金/发送权；在金额自采首次调用前核自身实际身份，并进入原selected runtime，在原HTTP owner检查中持续复用、覆盖SDK等待后的使用点。没有新hook/sender/表/schema/资金/默认预算，不改实际Session/adapter配置或候选/研究/测试网/实盘门禁，已有L2管理不被新风险资格阻断。
+
+| Temp JUnit原件 | 实际结果 / 原句柄 / XML秒 | SHA256 |
+| --- | --- | --- |
+| chanpy-native-http-adapter-retry-red-ea5ae2f6ce1e49bd9635d68be5736502.xml | 1 failed/2 passed，24521 exit1，152.108 | 1f312efac29145a2c58cf0567b04ff87972879fe6ebe867b956337099da57b95 |
+| chanpy-native-adapter-policy-red-5b1d434185b74c76a38d43bc3f6d3ff3.xml | 9 failed/2 passed，50411 exit1，100.817 | 0aaa79599cc6cc012f2a20fe31d61ac57df1ba388f39555c30f2907d99569303 |
+| chanpy-native-adapter-policy-green-py311-9fb1a3d83f93420da555188dacfd5c07.xml | 中间16 passed，44787 exit0，169.639 | d7ad71fdf2917f1dd770e2302b4e86e557251a12bab8f9400f86dafa47ac961c |
+| chanpy-native-adapter-policy-final-py311-74126b3cbf454b0198635a3d347fcad6.xml | 最终20 passed，87368 exit0，368.659（CLI368.71） | 85b604ffa1795070a0a4607245375fa4ccb3a4da9d824c252d1b46f9c1d476f8 |
+| chanpy-native-adapter-policy-final-py314-ecdec9496d464bcc89d8fc13c2d73a81.xml | 最终20 passed，62490 exit0，322.259（CLI322.31） | 6870a9952b4796aa0b5d361a6658846ad8eda7734f9afe5cdbc9be1ba2431c58 |
+
+均0error/skip，最终CLI无warning；原RED的urllib3 retry warning log是保留的真实行为证据。中间16项源码d1665ef989e91783fea481d400f03431cbdb015123fd5ec1789a487237210288，随后按计划只给已保护的pool测试增加during_wait参数，原三case保持False；新增case在原SDK真实POST throttle处晚改adapter，需要0 POST。60000ms SDK rateLimit只为确保这一fake回调到达，不实际sleep，不改变原source预算/时钟/签名，也不是生产默认。
+
+最终20项＝4 pool发送（zero成功/丢响应、预先非零、SDK等待期间晚改）＋3 redirect＋6配置＋2 selector变异＋2兼容＋3实际依赖。两版逐项classname::name|passed用例状态差异0；Sort-Object -CaseSensitive、LF/UTF8无末行换行的case/status SHA `0a7f6a46314b2e8aeea708be2922faa613070cd8f7248cc48b791c59ffdf54fc`。157个Trade/顶层tests源码在最终3.11启动前、结束后、3.14启动/结束后保持`bffb43f47f4a7c0864e918257b6e530c2e76068fbf2e7a17a9408b7ccf0d2dbe`；源码/用例没有在活pytest期间编辑。双版compileall全部Trade与顶层测试在最终启动前通过；依赖仍CCXT4.5.89、Requests2.34.2、urllib3 2.8.0，无安装或更新。
+
+主线程有限review：只读资格、原selector及fresh-compile复用，没有手写新路由器或第二sender；库文件本地读取不含HTTP，网络仍在原writer锁外。标准HTTPAdapter/明确total=0是正常配置必要条件，不证明任意被改写的send/poolmanager/连接实现或整个Python进程受信，更不证明服务器原子接收/锁额。NativeOrderCost、NativeAccountLimits、NativeLeverageLimits、NativeLastPrice与HEAD仍无diff，原A/P/F与旧schema不重封。
+
+同源重验B的原件`chanpy-native-adapter-owner-open-py314-75b00dd0d5bf4c8c93b3d4208091df28.xml`，原49240 exit1，2 failed/0error/skip，XML73.649s（CLI73.70），SHA `cd55bacb992e5197bcf905f308c15e1a3cdedc1388a3f4fc66f2c2c6350a2066`。Session/request两个变异仍各进入外来fake request一次后才报错，未被提前拒绝掩盖，也未skip/xfail；新必要条件不能替代待批B。当前没有活测试，HEAD仍436c011cda223da4f9970cbc1a6d5067dff0b646，整组不commit/push。
+
+本轮改动范围为NativePreparedIntent、NativePreparation、两测试及计划/设计/本台账。完整SDK/claim/current/HTTP/终态/旧状态机适用回归尚非本20项全部覆盖，C5/C6/C7、OKX及正式外部认证仍未完成；原Goal active且C0–C7范围未缩小。方案B确认问题仍待人类明确答复，未据自动续行实施第二hook。
+
+### 2026-10-27 / 当前源码完整SDK、HTTP与claim模块扩展回归
+
+此前是实际进展及已确认原进程的连续等待，不是无进展重述。B未获人类批准，不实施其第二hook；继续原计划所需且不依赖B的现有实现回归。本轮无生产/测试源码修改，明确枚举三个顶层完整模块，不递归research、不排除或放宽其中失败，不伪造收据或启动实际端点。
+
+原42843自然exit0，CPython3.11.15：SDK模块57、HTTP boundary模块33、claim模块59，共149 passed/0failure/error/skip，CLI无warning，XML1775.028s（CLI1775.12s）。原件`chanpy-native-sdk-http-claim-current-py311-9e69ebe8b1904318a5cf88faf62bd31e.xml` SHA `d107596203d2c4637cd870d98b163df99b487afd2c49227358f400786b640aae`。按Sort-Object -CaseSensitive排序classname::name|passed、LF/UTF8无末行换行的149项case/status SHA `f6425510cb4b4100c091a32d6d0fe34727cd1ac16643b929410d0f921f2a4d96`。
+
+157文件源码在启动、中途只读进程检查、原句柄终态后均为`bffb43f47f4a7c0864e918257b6e530c2e76068fbf2e7a17a9408b7ccf0d2dbe`。Windows venv launcher及其实际CPython子进程均是同一pytest任务，不是另起并发；进度/观察等待未导致重启或源码/文档编辑。最后确认无活pytest后才写本记录，HEAD仍436c011cda223da4f9970cbc1a6d5067dff0b646，无commit/push。
+
+该149项补强实际SDK完整声明检查、HTTP原L2/owner/尾预算及原claim/CAS边界的3.11证据，不是双版149项，也不替代terminal/account/默认发送/旧状态机及整个C5–C7/OKX验收；既有B两项owner RED独立保留。下一步同源码、同模块3.14串行复验；仍只fake、配置/金融模型/门禁不变，Goal active。
+
+后续3.14原17339自然exit0，149 passed/0failure/error/skip、CLI无warning，XML1599.564s（CLI1599.65s）。原件`chanpy-native-sdk-http-claim-current-py314-dcb4fa13cc844ad79316b3ea8abdd180.xml` SHA `f96198d9e9244f3c8391f73e0d5f7f80e0d1e864fdd93fc8496c63b4556f8d7e`；与3.11逐项classname::name|passed的149个唯一case精确相等，SHA同为`f6425510cb4b4100c091a32d6d0fe34727cd1ac16643b929410d0f921f2a4d96`。两版均SDK57＋HTTP33＋claim59，不只比较总数。
+
+源码157文件在3.14启动、中途实际进程检查、终态后仍`bffb43f47f4a7c0864e918257b6e530c2e76068fbf2e7a17a9408b7ccf0d2dbe`；当前无活pytest、HEAD仍436c011cda223da4f9970cbc1a6d5067dff0b646。原句柄观察等待不重启，全部结束后才更新本记录；没有代码、配置、依赖或门禁修改，只有计划/台账进度记录，无commit/push。
+
+当前验证增量只覆盖所列完整SDK/HTTP/claim模块。下一步相同源码继续execution＋terminal_observation两个顶层完整模块，验证真实POST到非零成交、撤单/终态GET、原execution/pending/wallet/account联合观察与cold恢复；其中已知B两项owner RED照常运行，不能排除/xfail/skip或用-x隐藏后续用例。B仍未获人类批准/未实施，终态、其他默认入口/旧状态机、C5–C7/OKX与正式外部认证不能被149项冒称完成，Goal active。
+
+### 2026-10-27 / 同源完整execution与terminal模块3.11回归（两项仍失败）
+
+本轮先找回输出截断前的原会话79299及其实际launcher/CPython子进程，确认是同一个pytest任务而非并发；持续轮询原句柄，未因观察超时或输出截断重启。上一Goal turn为verified wait，本轮继续该原任务至自然exit1；未在任何活pytest期间编辑文件、编译或启动另一批测试。
+
+CPython3.11.15原JUnit实际收集69项：`test_native_monetary_execution.py`为43项、41 passed/2 failed；`test_native_monetary_terminal_observation.py`为26项、全部passed。总67 passed/2 failed/0error/skip，CLI无warning，XML2965.985s（CLI2966.06s）。69个classname::name唯一，无重复身份；以当次JUnit及原进程终态为准，不把累积缓存的旧node IDs当实际收集数。原件`chanpy-native-execution-terminal-current-py311-13748911cefc4c43963149150c02f3c0.xml` SHA `8d2e4d587358538532aa1f4fd92572e18defdc705f91f7034a1896c4351e1a08`；按Sort-Object -CaseSensitive排序classname::name|status、LF/UTF8无末行换行的case/status SHA `0d224e9e23111bfecd70b04e30990fedcc715ad6c1808547f94e25ab3eaaba0f`。
+
+两项失败分别为`test_sdk_wait_transport_replacement_is_rejected_before_foreign_request[session]`与`test_sdk_wait_transport_replacement_is_rejected_before_foreign_request[request]`：原SDK真实throttle点分别替换Session/request，两项foreign_calls实际均为[True]，在外来fake request执行一次后才域错误。不是新失败类别，也不能因事后报错或其余67项通过而记为已拒绝；原断言、失败原件和整个批次均保留，无skip/xfail/-x。B第二hook仍无明确人类批准，未实施；A未整体验收，整组WIP不commit/push。
+
+新增当前源码范围证据包括：四组模式/方向各一条真实POST→0.02非零部分成交→DELETE→终态GET→原execution/pending/wallet/account联合观察→原SQLite冷重启/重复回报；冷管理在旧新风险窗口过期且kill-switch仍YES时继续查询，不续期、不重下、不改变kill-switch。发送矩阵还覆盖LIMIT/MARKET/GTX、响应丢失、旧窗口过龄、生命周期恢复、原Requests重定向和实际pool重试。26项终态专项全部通过，但其中从真实原claim/CAS开始的夹具不能混称也经过POST；完整发送的证据来自上述独立整链用例。
+
+157个Trade/顶层tests源码在启动、中途和终态后均为`bffb43f47f4a7c0864e918257b6e530c2e76068fbf2e7a17a9408b7ccf0d2dbe`；HEAD仍436c011cda223da4f9970cbc1a6d5067dff0b646，暂存区为空，四个原金额/额度/杠杆/Last模块相对HEAD无diff。有限主线程只读复核确认复用原writer/CAS/history header及发送/报告段，没有第二资金账本或sender；不据此声称全Python/SDK传递依赖受信或C5完整review完成。终态且确认无任何活pytest后仅更新本计划/台账，没有新增代码简化、依赖、真实交易所I/O、实际配置、权限、资金或交易门禁变化。
+
+下一步同一冻结源码、两个相同完整模块在3.14串行复验，保留两个已知失败并逐项比较case/status；本次仅是3.11完整模块证据，不预称双版69项。其他默认入口/旧状态机、更广C5/C6、OKX及C7外部认证仍未完成，Goal active，C0–C7完整目标不缩小。
+
+后续3.14原75229自然exit1：69项同为67 passed/2 failed/0error/skip、CLI无warning，execution 43项中41 passed/2 failed，terminal 26项全部passed；XML2510.802s（CLI2510.87s）。原件`chanpy-native-execution-terminal-current-py314-506ce605353d45cabfea02b85e8939f4.xml` SHA `d90dee154aad259608a9668840185452939a98a366d90fb45b6d370beb411b49`。两版69个唯一case及状态精确相等，case/status SHA同为`0d224e9e23111bfecd70b04e30990fedcc715ad6c1808547f94e25ab3eaaba0f`；两个SDK等待换Session/request用例仍各进入一次外来fake request后才失败，不是提前拒绝，B未实施。
+
+157源码在3.14启动、中途只读核查、原句柄终态后仍为`bffb43f47f4a7c0864e918257b6e530c2e76068fbf2e7a17a9408b7ccf0d2dbe`；确认无任何活pytest后才写本记录。没有重启原测试、编译或活测试期间文件编辑；此双版结果不能记作A整体验收或全部C5–C7完成，无commit/push。
+
+主线程继续逐条核原消费者计划第4步，确认还有完整矩阵缺口：四条真实POST到cold链当前只固定LIMIT，MARKET/GTX发送与claim起点管理不能拼成十二条完整链。原fill夹具还固定maker=False，GTX不能只改订单标签。已在执行计划先写修改前复用/清理方案：仅扩既有两测试helper与三种订单类型整链参数，复用原native fee夹具的maker/taker值并同步raw成交、现金与账户；生产路径、公式、实际配置与所有门禁不动。14项双版目标尚未运行，不预称通过；旧69项身份保留，B待批且WIP不发布，完整Goal active。
+
+### 2026-10-27 / 完整订单类型整链测试补充（新结果待验证）
+
+按先落盘的测试复用/清理计划，仅修改两个测试文件：`submit_for_recovery`将price/post_only传给原prepare与原Engine，默认仍100/False；原整链展开为四组mode/side×LIMIT/MARKET/GTX十二种，核实际POST type和timeInForce；完整原CAS/L2、partial、DELETE/GET、原账户联合观察与cold不重下断言均保留。`set_native_filled_account`默认maker=False不变；GTX才用原commissionRate夹具的maker=0.0002，并同步raw maker、成交/现金费用及原生余额，非post-only沿原taker=0.0004。另以固定0.02@100的手算费用0.0004/0.0008核raw字段，避免仅改标签或两份同错来源自证。未修改通用fill helper、生产代码、费用模型或F/P假设。
+
+修改前后157个Trade/顶层tests源码逐文件对照仅两项变化，其余155项（含全部生产文件）均保持bffb43f基线对应摘要；新聚合摘要`19bcee1a72cc4816491de3c3e4e1d40f2145c6e37adfbcaac2da03c7641f582b`。execution测试新SHA `17b7543f32461eb02961da96a61bc154d447567c6f5698dd22ab64aa104a3eab`，terminal测试新SHA `0a203eddb5a0d4670a2a312452bfad87dc4c902516a0e019c3103f71f19a810d`。两版compileall这两个修改测试文件均exit0，diff检查及四个本轮文件的尾空白检查均通过；所有编辑/编译发生在原75229终态且无活pytest之后。
+
+截至本段落盘，新14项尚未产生运行结果，下一步以独立GUID先3.11再3.14串行执行十二条整链、原撤单错误默认消费者和原完整成交均价矛盾默认消费者。这是测试覆盖扩展，不伪造生产RED，也不把旧bffb43f的双版69项记作新测试身份下的新全量通过；真实生产失败仍需原件→诊断→最小修复。B两项绕行的生产代码未变、仍未获批准修复，整组WIP不commit/push；C5–C7/OKX与整个Goal均未完成。
+
+3.11原20377随后自然exit0，14 passed/0failure/error/skip，CLI无warning，XML1363.719s（CLI1363.76s）。原件`chanpy-native-full-lifecycle-matrix-py311-cb55dd6cc7f6426bb49034440630cbd1.xml` SHA `a86f84e8116a2149b9593dbc62a9483666f95ac12f9de697bbc5918de2f3cb10`。14个case身份唯一：capacity_case0..3各含limit-False/market-False/limit-True十二条整链，另两项为原撤单错误及原coherent native average矛盾消费者；case/status SHA `ba7f98097f50b593e0065218038b1847be52a56cefe7135d2c03d7ba93c83730`。实际fixture定义为one_way/hedged×True/False方向，各类型/方向均实际执行，不用标签总数代替。
+
+157源码在启动、中途只读核对、原句柄终态后均为`19bcee1a72cc4816491de3c3e4e1d40f2145c6e37adfbcaac2da03c7641f582b`；原任务结束且确认无活pytest后才更新计划/台账，没有活测试期间编辑、编译、并发或重启。十二条链保留真实SDK POST、原claim/L2、非零partial、DELETE不当终态、原GET、完整原生账户观察和cold/kill-switch/重复回报/只一POST；GTX还实际经过maker=true及0.0004合成成交费，普通LIMIT/MARKET为taker及0.0008费用。没有生产行为修复或新公式；本范围仅证明新14项的3.11结果，不是双版14项、整个execution模块或A/C5全部验收。
+
+下一步同一冻结源码、相同三个selector在3.14串行复验，所有新结果待原任务产生。B两项owner绕行的生产实现未变，旧双版69项中的真实失败不被14项通过抵消；WIP继续不commit/push，C5–C7/OKX与完整Goal未完成。只读需求复核还确认原始POST直接FILLED/默认入口即时回报尚需单独证据：当前原生POST fixture固定NEW，query-FILLED专项不能替代；后续按原计划补证时仍只允许原GET发布终态来源，不能据本地状态/DTO自动释放或解锁，暂未启动该新增范围。
+
+### 2026-10-27 / 原14项3.14终态与方案B人类批准
+
+恢复时先轮询原exec291/原93608，均报告句柄不存在；未因此重启测试。只读检查原20044/19788及全部Python进程无活pytest，同一原JUnit已落盘。原件`chanpy-native-full-lifecycle-matrix-py314-9c30c29321ca48ba9aec332006ce433e.xml`为14 passed/0failure/error/skip，XML1147.715s、SHA `a29650ec7efee6e6d19c7e9d96752e7b37c126b0381834be35c51ca46bdc6e71`。两版14个唯一classname::case|status精确相等，case/status SHA `ba7f98097f50b593e0065218038b1847be52a56cefe7135d2c03d7ba93c83730`；157源码仍`19bcee1a72cc4816491de3c3e4e1d40f2145c6e37adfbcaac2da03c7641f582b`。原句柄已缺失，不把JUnit结果夸大为重新观察到的exit0或CLI无warning；所列14项通过不抹除原2项owner失败。
+
+用户已明确答复原call_150a21c7f5a94431aca1b1ef382aaef2：“批准方案B：增加同调用fetch入口owner复核（推荐）”。设计§6当前状态改为已批准、未实现/验收，历史待批记录保持原时点。先在执行计划落盘复用/清理顺序，再按保留的真实RED最小实现B；不再次请求同一授权，不据批准宣称完成。仍全fake、串行、不改真实配置/资金/交易门禁，不commit/push整组未验收WIP，C5–C7/OKX及整个Goal未完成。
+
+### 2026-10-27 / 已批准B的真实RED→分层修补→3.14相邻38项
+
+全部严格主线程、同一任务自然终态后才改文件/编译/启动下一批；原失败保留，无skip/xfail/-x。只改NativePreparedIntent、NativePreparation及两个已有测试，复用原同调用context/current/原writer与SDK sender，不加registry/表/资金算法或真实配置。普通公开assert仍None；原bound fetch在实际bridge/frame/闭包核验后仍按已安装descriptor完整fresh-check，其他31个原声明/5 Entry不跳过。source_failure只由本次有效归属的current失败使用；失效/重复/错线程不能以旧闭包写原风险状态。两处cleanup分别恢复实际安装对象，不覆盖外来替换。
+
+| Temp JUnit原件 | 实际结果 / 原句柄 / XML秒 | SHA256 |
+| --- | --- | --- |
+| chanpy-native-fetch-owner-baseline-red-e9e6302ae96f42c9855f36faf34c2b2a.xml | 2 failed，24324 exit1，74.679；外来request各1次 | ffb02420d85aefc86b6adbce245269020ea5f5de0e23f24053ff58f52614d79e |
+| chanpy-native-fetch-owner-first-green-c8779a6c3a5b40cda066cec5bcc9f03c.xml | 6 passed，25150 exit0，294.072 | 6654439397b7f4ca635c8d8736e61e421e9b22c03ac92953931e5540b636ed27 |
+| chanpy-native-fetch-closure-red-4847e28ca3e3409893fb188ee79c1474.xml | 2 failed，20881 exit1，90.386；实际闭包替身先执行 | a768832822a96e7f2a4e02a1681b101f5a4be8a225221d09c2608a76c31e0d32 |
+| chanpy-native-fetch-bridge-focused-py314-bffeb7eaee374fa9801de6c2101a8ee7.xml | 9 failed/5 passed，69121 exit1，560.771；AST直接body漏try内owner | fb3f0762a0c5767243b40c5eb0cd53c6cd148e5c53daf2a3a7162e569f8e36df |
+| chanpy-native-lexical-function-red-84ca524548f84f4bb531c05b73052e05.xml | 5 failed，原命令exit1，1.584 | f504b9434fd0d747ecb04e726f2f06308a9da48f0b23df40241f2bb9f60b150e |
+| chanpy-native-lexical-function-green-fb66574585d64d46a7b279b3b28c747b.xml | 6 passed，70787 exit0，51.850 | bf8911ca2b37defce8d2389198e0a930eb2e07f39ab6df8fd7e99b64da7d82e9 |
+| chanpy-native-fetch-rebound-clone-red-40a750d1143246e185d58bb1c390841e.xml | 1 failed，97370 exit1，53.080；复制并重绑仍发送 | 6935919e1d2ad713b225b670af01e8a9a09e1b775a4628151d7454389a8f17cf |
+| chanpy-native-fetch-lifetime-mixed-940757319f894bebb5937e3c30e3703f.xml | 3 failed/7 passed/1线程警告，90111 exit1，243.726 | 316e0c09793544c23e57b926b53f593a0c5f33df350a44594c37930a36e9b9df |
+| chanpy-native-fetch-joint-py314-1b61f84d0267401c927344715c980f0e.xml | 38 passed，88851 exit0，1450.639（CLI1450.70） | 9747bcd9847e61b416dc343a391a9a644178e27f536df48997060bb6047e71a6 |
+
+最终38项均0failure/error/skip、CLI无warning，38个唯一classname::name|status SHA `2ba64017ffad8deeb6ee2abdc66aef53d39a1f22c6b415264791a73df9cbf364`。157源文件启动/终态均`dab2304e4bf8c4c7cd38339452a933f42e6b5fe386e29683c41d7de41cb1f215`；HEAD仍436c011cda223da4f9970cbc1a6d5067dff0b646，确认无活pytest后才写本记录。双版全部Trade及两个修改测试compileall、diff在启动前通过，但38项运行仅为3.14，不冒称双版同批或更广旧范围复验。
+
+其中生命周期RED有明确原风险状态写入各1次及错线程SQLite原警告；修补只把未获本调用归属的使用前置纯拒绝，不削弱真正来源失败的sticky行为，不释放未知/重下。AST修补遍历同一词法层的try/if/with，拒绝跨其他函数/类选择同名节点和重复定义，不以删除fresh-check让正向通过。复制修补只保留生成器实际安装对象的普通局部引用，不添加caller证明。直接原bound fetch/完整SDK检查、原L2与旧窗口仍必需。
+
+主线程有限review及本38项尚不覆盖原fetch内部预处理、全部Requests/urllib3传递路径、完整default/terminal/旧状态机和C5–C7/OKX；下一步按设计§6继续实际预处理绕行TDD及最终双版/适用全回归。POST直接FILLED默认整链仍独立待补，不能用query-only FILLED专项拼接；所有实际交易/研究/配置门禁保持，WIP不commit/push，Goal active且完整C0–C7范围不缩小。
+
+### 2026-10-27 / 原fetch预处理的来源资格继续TDD（非第三hook）
+
+38项之后独立验证原fetch在B入口后、Session.request前的真实方法/回调。原79112 exit1，15 failed/0error/skip，XML650.093s（CLI650.15s）；`chanpy-native-fetch-preprocessing-red-d56d81805e134a51a24d18ce41716c3d.xml` SHA `ee40d0ebab055d91346359e7f9c56733a2cb92c9c7af27292965d774fd03113e`。六个方法和九个回调入口均实际执行未证明代码后才拒绝；不把这些失败藏在已过38项中，也不从短路断言补造未单列的外来调用计数。
+
+原47518 exit1：20项11 failed/9旧行为控制passed，XML267.501s（CLI267.56s）；`chanpy-native-proxy-qualification-red-f8c0a28eaf7c4339bb7776ae8e230a06.xml` SHA `52d9b14ae1b1e24f26b7e8c7d674b2200340ae3f219184b9da68dd869b84ce87`。新风险9种回调未被前置拒绝、L1后2种代表回调current仍通过。后续复核纠正本轮临时方案：来源实现完整性不是新资金/年龄许可；已有query还能发布原生终态证据，9个旧正向不构成自定义callback的支持承诺。原件不改标，另写明确拒绝测试；原45152 exit1为9 failed＋3正常管理控制passed，XML263.050s（CLI263.11s），`chanpy-native-query-callback-identity-red-d738a1e2d55a468b8de007f3cf3aa0a2.xml` SHA `7af5acb53ec3e540111b54324d961ce1cbb5ccbee22a8f91e1994200741f67fe`。
+
+修补仅在原SDK完整身份循环加入六个实际预处理方法（现37＋5 Entry）；共享来源资格fresh-check实际私有只读函数后，静态读取九个proxy callback入口，只接受None，不执行未知descriptor/callback。删除未验收的分散新风险资格接线；NativePreparedClient本轮临时新增行已撤回，实际恢复职责不加资金、候选、年龄或kill许可。原client binding、金融模型/参数/四个金额模块未改，不加入弱presence摘要或新来源JSON证明，也未新加runtime hook/registry/表/依赖。正常SDK既有管理仍须通过，未知源码执行不因“管理兼容”被认证。
+
+原91689 exit0：3.14的9项smoke全部passed/0failure/error/skip/CLI无warning，XML250.013s（CLI250.07s），`chanpy-native-fetch-source-smoke-a8a8d740e06344c2b57d3f9deb3b9071.xml` SHA `56958c9bd183acc098d279d0da2f374f4f079ee058f390d2951576478b95825d`。正常原SDK单POST、方法/回调拒绝、读取前及L1后拒绝、正常过龄/kill/freeze查询撤单均实际覆盖。157源码在运行中只读核查/终态仍`15b03c645c72e0d036b0f55998988a5963002271c56500d19843cbd231765c66`；无活pytest后才写本段，双版Trade及两个修改测试compileall、diff通过，HEAD仍436c011cda223da4f9970cbc1a6d5067dff0b646，四个金额模块相对HEAD无diff。
+
+仅此smoke已验，15/20项及完整SDK/execution/HTTP/claim/terminal/default/旧状态机不能被冒称在新源码全过；下一步冻结源码做顶层完整模块与另一解释器适用回归。只有原共同验收后才Lore/普通push，当前WIP未发布；全fake、实际配置与研究/交易门禁不变，C5–C7/OKX与整个Goal继续active。
+
+### 2026-10-27 / 当前源码的完整SDK、execution、HTTP三模块：3.14已验，3.11待验
+
+原35968自然exit0，CPython3.14完整运行209 passed/0failure/error/skip，XML5675.430s（CLI5675.53s）；不是只挑旧38项或9项smoke。原JUnit逐项确认SDK90、execution86、HTTP33，共209个唯一case/status，无重复；包含原十二条POST→partial→cancel→原生账户→cold组合以及本轮B/预处理变异。命令未使用-x、skip/xfail或排除表达式，原失败证据保持。
+
+原件`chanpy-native-sdk-execution-http-py314-296349047a954e5ca0ac9386e7691966.xml` SHA `981b4aa5fdfb50c649055d96363c75c21c4429e1fc13398f9fe3f1c671c03eb9`；209个唯一classname::name|status SHA `78bb76d1c6dbf6967ab84c616a85720f4d0c9e2b74b9cc3d0a1dacb59ee00e14`。157个Trade/顶层tests源码在启动、期间及原进程终态后均`15b03c645c72e0d036b0f55998988a5963002271c56500d19843cbd231765c66`。观察超时/上下文续行始终沿原会话，未重启或并发测试；最终确认无活pytest后才写本记录。
+
+该次只证明上述3.14当前源码范围，不冒称双版、全部claim/terminal/default/旧状态机或C5–C7/OKX完成。下一步先保持同一157源码，串行运行3.11相同三模块并逐项比较；其后仍须适用联合回归与POST直接FILLED的默认完整来源/记账/恢复证据。原POST固定NEW链和query-only FILLED专项不能拼成该缺口已验。没有生产代码、依赖、真实配置、金额模型或交易门禁变更；整组WIP仍不commit/push，Goal active，完整C0–C7目标不缩小。
+
+### 2026-10-27 / 双版同源码三模块各209项通过，直接FILLED默认链仍待TDD
+
+后续原21347自然exit0，CPython3.11.15为209 passed/0failure/error/skip，XML6735.395s（CLI6735.49s）；原件`chanpy-native-sdk-execution-http-py311-75a3803bb67a4f9481a2ffddf7da1350.xml` SHA `3c8d200896f8a93c6775ac4f763203a255a67dd4d9d70d203986639de688e57e`。两份原JUnit重新逐项核对：各209个唯一classname::name，SDK90/execution86/HTTP33，case/status差异0；共同SHA `78bb76d1c6dbf6967ab84c616a85720f4d0c9e2b74b9cc3d0a1dacb59ee00e14`。3.14原件SHA及时间保持上一节，不将此前smoke或旧38项重标为本209项。
+
+157个Trade/顶层tests源码启动、原进程运行期间及双版终态仍`15b03c645c72e0d036b0f55998988a5963002271c56500d19843cbd231765c66`；17:26确认全局无活pytest后才记录。所有观察续行均沿原21347/35968，不因等待、截断或进度百分比重启；未并发、未修改运行中的文件。依赖仍为CCXT4.5.89、Requests2.34.2、urllib3 2.8.0，未新增依赖、配置或金额假设。
+
+本结果覆盖所列完整三模块及其中十二条原POST→partial→cancel→账户→cold组合，可作下一小步测试夹具复用的行为保护；不证明POST直接FILLED的默认入口已经取得原生GET终态来源，也不替代其余适用claim/terminal/default/旧状态机、C6、OKX或C7认证。下一步按执行计划先写夹具复用/清理范围，再以原配置add_trade和底层fake保留真实RED，生产行为不得先改；最终联合验收前仍不commit/push，Goal active。
+
+### 2026-10-27 / 默认POST直接FILLED：原链有效RED，原partial/cancel基线通过
+
+按修改前计划，仅两个已有测试文件变化：提取原raw成交/钱包/持仓行更新，所有Session fake在原add_trade之前安装，生产代码不变。157源码新SHA `8ca1acd1e76213da82756d4455714355f7f9c6c8c99415dc041c0c3b0a02a47d`；将这两个测试文件摘要替换回修改前值，整体精确回到15b03c基线，证明未顺带改其他源码。双版两个文件compileall与diff检查通过，不把编译或旧基线当行为GREEN。
+
+3.14原61648自然exit1，1 failed/1 passed/0error/skip，XML152.937s（CLI152.99s）；原件`chanpy-native-default-filled-post-red-py314-c627533c6bb34344b47ebb1cd1aba34e.xml` SHA `13c27c206e8cc123f3bf455adcbde9a88bd12e4679cdd2b7754c41dfd33ffb70`。新用例在真实默认source/L1/L2、唯一原SDK POST、0.1@100原报告记账全部成功后，精确失败于原journal的native_terminal_observation数量0（预期1）；不是参数/导入/错误owner失败。另一个原one-way long LIMIT的partial→cancel→账户→cold完整case通过，保护原helper行为。
+
+根因只读核实：原place_order只在POST缺字段时调用query_order，完整FILLED直接返回DTO；原默认report随后使记录不再属于submitted/partially_filled/closing恢复集合，而原pending reader仍必须有原GET终态观察和精确已应用累计量才能释放。不能靠补写DTO终态证据或扩大opened恢复SQL掩盖。生产尚未修改；先补陈旧、矛盾及不可用GET的真实RED，再最小复用原查询并保留已知POST累计事实。整组WIP仍未验收/提交/推送，Goal active。
+
+后续四项原15005自然exit1：4 failed/0error/skip，XML213.405s（CLI213.46s）；`chanpy-native-default-filled-query-red-py314-20dd9f73988e430eb92f6a3303363b69.xml` SHA `6062fd43103d75f8c1712bd8c27701ba7a40a6054fc03beae1402d10a3b00008`。正向仍精确缺原GET终态观察，陈旧NEW/0、均价99/quote9.9、GET超时三负向均DID NOT RAISE，因为原完整POST从未进入查询；原生产文件SHA仍c3707c5cf14fd963aebf44fc492037621c7ae80bb3830969d426547e71160562，新157测试源码5f51ee67367019e2a88425020283f24d61b7516c40e989034381ad84614b86d1。fake均在调用前安装，无运行中owner替换，未把失败改为skip/xfail。
+
+无活pytest后，最小实现仅扩原place_order的native-client-v1完整终态分支：先保留原DTO已验证事实，复用原query_order取得原生终态source，前后核原owner，六项identity/requested/filled/average/status必须精确相同才返回原报告消费者。陈旧、矛盾或不可用查询不应用替代成交，原ACK/claim/submitting未知语义保留；无新hook、表、资金算法、容差或opened恢复SQL。此处仅记录未验收实现，下一步原四RED及原partial/cancel/account/cold基线GREEN仍待，不据代码或编译宣称修复完成。
+
+原13823随后自然exit0：3.14五项全部passed/0failure/error/skip，XML378.583s（CLI378.64s）；`chanpy-native-default-filled-post-green-py314-3df94c12a6374e7dadd32fbeebfa7c0d.xml` SHA `60295760acb1560e138cea402c452cca8489ad0d2b6a5913d8c9b87b9ecc1857`，5个唯一case/status SHA `b54e02c0c6cb66696b26c78d169cd56cbbe5c461def55a960b994594204f4aea`。正向真实默认入口取得原GET终态、完整execution/fee/funding/account与cold幂等管理；陈旧/矛盾/不可用GET均保留claim/submitting/0本地成交，第二次入口无额外POST；原partial/cancel/account/cold基线仍passed。157源码终态`92a85d2fe23f11c520315de452ca927bd25a02086a5cb018edb59cebea4910f7`，仅一个生产与两个计划内测试文件相对15b基线变化，三文件旧SHA重建整体精确回15b；双版compileall与diff通过，确认无活pytest后记录。
+
+该5项只覆盖新正向的one-way long LIMIT及三个负向，不外推其余方向/订单类型或旧209在新源码再次通过。下一步不改生产行为，只把正向接到现有capacity_case的四个one_way/hedged×long/short参数，保留全部source/记账/冷恢复断言，再串行双版核验；其余必需联合回归及C5–C7/OKX继续未完成，WIP不commit/push，Goal active。
+
+首轮八项原21548自然exit1：2 failed/6 passed/0error/skip，XML606.108s（CLI606.18s）；`chanpy-native-default-filled-matrix-py314-d168df36bed14c56ab63d15ce5a14969.xml` SHA `4b8221a84d282ae0275d08a0fc8c3229fcb969a9398952c46c49f01cf6e77fe3`，157源码06e1f49ee8c682c55cbfc9dd913a2523dda574fc68d6e223a8d53f7243dd5b5b。两项hedged在完整POST/GET/原report通过后于账户对账失败；两个one_way、三个查询负向及原partial基线passed。此混合结果保留，不改成八项GREEN，不缩减组合。
+
+只读immutable/query_only核原失败SQLite：capacity_case2本地/契约leg=LONG，case3=SHORT，二者原成交fact202及其raw.positionSide却均为BOTH，订单号123456、数量0.1。根因是新fake在POST里复用了add_trade之前的signal record；原native CAS会把signal阶段BOTH归一到LONG/SHORT，而fake应按实际SDK提交结果生成成交。原position_side_mismatch、未归属手续费202及连带未实现盈亏差异是正确拒绝，生产文件仍76a781c5f719654674d9ce187d289a8c71f08b852aa76d0a976cb366ef0ccadd。
+
+按修改前夹具修正范围，只从已有POST Response的side/positionSide构造fake成交行所需的两项数据，信号initial本体不改、不写预设leg，不在调用中更换Session/SDK，不动金额或生产校验；新增native fill、实际POST与原persisted record的side/leg相等断言，原全部账户/cold断言保留。后续须重跑完整八项，再做同源3.11及其余联合验收，当前未提交/推送，Goal active。
+
+修正后原69839自然exit0：3.14完整八项passed/0failure/error/skip，XML658.635s（CLI658.70s）；`chanpy-native-default-filled-matrix-leg-py314-02b16d58b2d647b2b92f19280062ad63.xml` SHA `9050a41eec2b473728bdfd5b59cb6632386aacdc2af0beea8ffb6e72ee33ecf2`。8个唯一case/status SHA `3f41221c29c70e7bb0628d9b264c5f7f4b6c0e0fff000f8f22a048deb02fc2f3`；与原混合轮case ID差异0，无删减/跳过。四个mode/side均完整默认POST→原GET终态→report→execution/fee/funding/account→cold通过，含新增原始成交/POST/持久化side与leg一致性断言；三个异常查询与原partial基线保持通过。
+
+157源码启动/终态`422701808991483a88beb1e5e907adb7919f5de685f7b2d4a0749fc3e04f5d7a`。将唯一变动测试文件恢复到旧摘要可精确重建原06e1f49e全体摘要；生产仍`76a781c5f719654674d9ce187d289a8c71f08b852aa76d0a976cb366ef0ccadd`，没有为夹具问题放宽生产position-side校验或财务规则。无活pytest后才记录；双版 changed-test compileall、显式空白检查及diff通过。当前仅本八项3.14已验，下一步冻结同源码串行3.11相同八项；其余必需联合范围/C5–C7/OKX未完成，WIP不commit/push，Goal active。
+
+后续原63106自然exit0：3.11完整8 passed/0failure/error/skip，XML772.896s（CLI772.94s）；`chanpy-native-default-filled-matrix-leg-py311-1f346ccb477a434589f678cf68bb3d26.xml` SHA `4277495b3ce1d76bfbdfcd0898c979b7ab3667d1d966006f887e32a79b0b4f27`。两份原JUnit各8个唯一case，逐项集合/状态差异0，共同case/status SHA仍3f41221c29c70e7bb0628d9b264c5f7f4b6c0e0fff000f8f22a048deb02fc2f3；157源码全程42270180，生产76a781c5不变，确认无活pytest后才记录。观察续行沿同一原任务，未重启；原混合2 failed/6 passed及夹具诊断保持原件，不重标为通过。
+
+此双版八项证明默认LIMIT四种mode/side、三个异常查询与一个原partial基线，不替代未覆盖订单类型/入口或全部前序回归。下一步按C5参数适配要求补MARKET/GTX直接FILLED的相同source→claim→POST/GET→report→账户/cold链，先写测试复用清理计划，生产不改；其后仍需当前代码的适用联合验收、main review与原Lore/push门槛，完整Goal保持active。
+
+按修改前计划仅扩已有default-entry测试：共享原底层FILLED Response/positionRisk与完整source/account/cold验证段，默认LIMIT仍走原add_trade；MARKET/GTX复用原prepare_for_engine、place_order和_apply_order_report，未手工claim/L2。maker只按实际POST timeInForce=GTX生成，沿原raw updater既有金额公式；新增实际POST type/timeInForce、maker与0.002/0.004精确费用断言，原side/leg、原生GET、账户与cold断言均保留。
+
+双版 changed-test compileall、显式空白和diff检查通过；原3.14 collect-only确认16项＝默认LIMIT四组＋MARKET/GTX八组＋原异常查询三组＋原partial基线一组，原八项ID未删。此仅为采集，不是运行通过。157新源码`aecad0c9ce93f9f36b2eaf6fea3c82eb382a47f54eeeed8cf6f8598a228f2e5a`，把唯一变动测试文件替回旧摘要可精确重建原42270180；生产仍76a781c5不变。下一步同源16项先3.14再3.11，出现任何失败保留完整原件并诊断，不据编译/采集或旧双版八项宣称新矩阵通过，整组WIP不commit/push，Goal active。
+
+原86968于2026-10-27自然exit0：3.14完整16 passed/0failure/error/skip，XML1419.923s（CLI1419.99s）；原JUnit `C:\Users\yangj\AppData\Local\Temp\chanpy-native-filled-order-styles-py314-c4f33c692cdd4fda91c3a57ad97018ec.xml` SHA `2bd70c5e949bd0f873d54104abef7225dbf4009966726e63a704ba2d1b9ac4f3`。16个唯一case/status SHA `0013adf84a6a81b2eb79a176ee2716f6e180ba47bc5e0f847eebfb663cf4ac57`，逐项核对保留原八项全部ID，新增八项，无筛除或跳过。157源码启动/结束均aecad0c9，生产`Trade/CCXTTradeEngine.py`仍76a781c5；本轮没有生产修改。原进程结束且全局无活pytest后才记录证据；下一步同源同16项串行3.11，尚不能宣称双版或整组联合验收通过。
+
+等待期间仅作只读C6中断复核：`record_order_ack`当前只持久化订单号/时间；完整POST与GET的六字段比较只发生于同一次`place_order`调用，原`restore`则独立query后应用本地累计report。因此“POST已知FILLED、第一次GET不可用、进程重启后GET陈旧/矛盾”的跨调用守恒仍须实际fixture证明；目前只是审计疑点，不称已复现或已修复。双版16项完成后沿原SQLite/SDK/底层fake写最小中断RED，不在本轮运行时编辑、不猜测新增表/资金模型/恢复SQL或将POST DTO当原生终态来源。C5–C7/OKX与完整Goal仍未完成，WIP不commit/push。
+
+后续原70758也自然exit0：3.11.15完整16 passed/0failure/error/skip，XML1655.656s（CLI1655.69s）；原JUnit `C:\Users\yangj\AppData\Local\Temp\chanpy-native-filled-order-styles-py311-b0ccdcc8cf4441d480876fdfeb6df0fb.xml` SHA `722ea267c79da0d35c7778b9d4d6f2a485c47130d116aaec5806f5dbdcdbf5e2`。两份原JUnit各16个唯一case，逐项case/status差异0，共同SHA `0013adf84a6a81b2eb79a176ee2716f6e180ba47bc5e0f847eebfb663cf4ac57`；3.14原件SHA重新核对未变。两版启动/结束157源码均aecad0c9，生产76a781c5保持；确认全局无活pytest后才记录。此证明本16项双版矩阵，不代替跨调用已知成交守恒、当前源码的其余联合回归或C5–C7/OKX完成。
+
+下一步仅向原default-entry测试增加两个中断参数，不改生产或重构已验证helper：完整原POST/0.1@100之后第一次原GET底层超时，原claim/ACK/未知投影保留；原SQLite重开、实际原SDK新实例、过龄及kill=YES下，原restore收到陈旧NEW/0或FILLED均价99时必须不改原投影/历史。随后解除fake回报变异，正常原GET须能按0.1@100恢复一次、重复restore不重记，并完整账户对账。只有实际观察到因缺行为而失败才记RED；导入、fixture或owner错误不算。所有fake均在调用前安装、原SDK/原writer不mock，无新表/资金模型/金融容差/许可，未commit/push。
+
+首次原2460是夹具覆盖失败，不是目标行为RED：两项failed/0error/skip，XML115.366s（CLI115.43s），`chanpy-native-cold-filled-post-red-py314-f4f0522d459f4127abc2b835fc1e3739.xml` SHA `b64ad66afe6d06fd7101871f30a6dafdbb5fe6548db542b114a492bfdf7a4b96`。157源码e4a4e54b，生产76a781c5未变；原失败库经immutable/query_only读取确认id2为原旧v3 ALT部分成交，排在目标native TEST id3之前。完整restore先走旧SDK的正常load_markets/fetch_currencies，在strict fapi-only fake未覆盖的SAPI capital/config/getall处断言，尚未请求目标cold订单，不能拿此失败修生产或声称守恒缺口已复现。
+
+修改前夹具修正范围：不删/过滤旧ALT，不mock恢复列表，不预热或手填新SDK缓存。只在此新测试的底层cold Session fake补原SDK实际使用的SAPI货币列表、空spot/inverse目录及旧ALT查单响应，linear目录仍由原raw metadata fake提供，全部经原SDK load_markets/parser；旧ALT响应复用pending_raw，累计quote按其已知量×均价精确生成。restore的正确集合须包含旧ALT而不含矛盾TEST；正常回复后集合须包含两者，再次恢复只含仍在途ALT，且其累计量/均价/原尝试不变。如此保留完整混合账本，而不是把全账户restore错误缩成单单查询；无SDK/options/实际配置或生产修改，原失败保持原件。
+
+第二轮原87585仍属夹具覆盖失败：2 failed/0error/skip，XML117.688s（CLI117.74s），`chanpy-native-cold-filled-post-mixed-red-py314-d8edc226901349b4988f75e44d47c619.xml` SHA `8156b653fd743846102475ec219d1dd2ff5ce06fc74c895e6ca33b3e0d82b41d`，源码ccb26579/生产76a781c5未变。此轮到达SDK fetch_currencies的margin/allPairs后被strict旧fake拒绝，尚未到目标GET，不重标为行为RED。读取已安装CCXT 4.5.89的实际describe默认值与完整fetch_currencies/fetch_markets分支，确认fetchMargins=True、types为spot/linear/inverse、loadAllOptions=False；因此只补其cross/isolated margin目录的空列表响应，不改实际SDK options或生产配置。全部响应仍只在此测试的底层虚拟venue产生，原SDK及完整mixed restore不替换。
+
+第三轮原76648已形成真正行为RED：2 failed/0error/skip，XML128.533s（CLI128.58s）；原JUnit `C:\Users\yangj\AppData\Local\Temp\chanpy-native-cold-filled-post-complete-red-py314-48dfd41c7d5e47a0b661e2fa37880fef.xml` SHA `3b48b3038596047573b17bb88c9034593b98f38600ddddbe3dcdba91658f4f67`。157源码启动/终态均`7a59622e0cf5ef56f2714c4332312da98b2f5fda1278fa007979ec33e3a28c90`，生产仍76a781c5；把唯一改动测试还原到双版16项时的摘要可重建aecad0c9。两项均先通过原唯一FILLED POST/0.1@100、首GET真实超时、原claim/ACK未知投影、真实新SDK/原SQLite重开、目标第二次GET与原metadata的断言，最后失败于完整restore实际返回id集合{2,3}而不是仅旧ALT的{2}，不是导入/owner/SDK初始化错误。
+
+原失败库再次用immutable/query_only读证：两项旧ALT均仍为partially_filled/0.3@100；stale把目标TEST记为submitted、open_order_status=open、0成交，新增零量report；average把目标记成open/0.1@99，并持久化了原GET的99均价终态及report。已知POST明明是0.1@100，原ACK历史却只有id/零投影；当前六字段比较只在首次调用内，首次GET超时后没有跨重启的已知累计事实可供后续原query比较。此证明已知回报守恒缺口，不证明完整原账户门禁会放行（本次在目标断言即停止），也不能用limit价格/资金模型推导成交均价作为修补。
+
+尚未修改生产；两个真实RED、前两轮夹具失败及双版16项各保留独立原件。正常回复后的恢复/重复/完整账户正向对照在RED处停止，尚未验证，必须由后续GREEN跑完。下一步只沿原journal/ACK/原query消费者持久保存并核对已验证SDK POST累计事实；该事实不等于原GET终态、执行/现金观察或新风险许可，不新增表、资金模型、容差、hook、公开caller证明或恢复SQL放宽。完整方案/复用边界记入原执行计划，整组仍未验收/commit/push，C0–C7 Goal保持active。
+
+后续最小修复WIP已落地，但真实SDK冷恢复尚待GREEN：原OrderAudit新增六字段规范化/比较与显式`sdk_submission_report`，复用原事件表、append writer和owner-pinned事务；原ACK/缺字段路径不改。实际原POST完整响应在GET前保存（含NEW/部分成交），终态精确相等、非终态保持原累计单调/同量均价语义。原query在发布GET来源或交给原report应用前重读原attempt核对。history v3如实区分SDK事实及原query来源，旧v1/v2保持；SDK事实本身不应用成交、不生成`native_terminal_observation`，完整账户/释放门槛不变。新增实际helper/read_history沿原fresh-compile清单核验，未新增SDK hook、金融模型/默认值或公开回报证明入口。
+
+24项快速规范化/比较测试先观察到缺`_sdk_submission_report`失败：24 failed，XML2.413s/CLI2.47s，`chanpy-native-submission-values-red-py314-1e24ca51987641a6b3462d7a067b6752.xml` SHA `c291ee2498061e8efa145ac18424992963adfe9335ba7005b798ae933cd4b7e1`。仅实现规范化后12 passed/12缺`_assert_sdk_submission`失败，XML2.285s/CLI2.34s，`chanpy-native-submission-format-step-py314-17e661067c9b4812b76297c3d3dd5001.xml` SHA `d0df0140b9b4b3e8a719a0342baa657d7aeed95f2073c078ca7de3456b4bd39a`；均为新函数尚未实现，不把前两轮底层fake目录失败混作这组TDD。
+
+实现比较及接线后，24快速＋35整个旧order_audit_history在两版各59 passed/0failure/error/skip，逐case/status摘要同为 `9c2dedd4ac25be2918c266d862180c07fd865c564fc6072061251ca51cbbbf96`：3.14 XML4.468s/CLI4.54s，`chanpy-native-submission-pure-history-green-py314-afc7240e5dca45798bd5adb7eec39934.xml` SHA `a51c2b2058ed60564605aad14482646e8c3c280fc89d011fc30d8909488a59fd`；3.11 XML4.690s/CLI4.74s，`chanpy-native-submission-pure-history-green-py311-815796b6ca0a4849a3e91944b27a7c9d.xml` SHA `bdb6987eee3e4c6abe120ce3266e1ba9a7e48cd2de9ae54d48ed14d66b455e66`。这证明快速逻辑/旧历史兼容，不是原SDK/资金或整个整组验收。随后只给新冷恢复测试补SDK事实v3/未生成GET终态的显式断言，未改这59项或生产实现。
+
+双版五个修改模块compileall与diff通过（仅既有CRLF提示）；当前157源码 `fdbd55483787b6cc88c289b2807fe4465acce8222497856f88d89e728474cfcc`。接下来原两项冷恢复、原完整成交默认入口一组及原NEW默认入口一组共4项先作真实SDK小集，必须跑完后半段正常恢复/幂等/完整账户，不据59项GREEN宣称该缺口已修复。事实篡改、发布回滚/owner边界及当前完整原生/默认/终态/旧状态机与适用双版仍待联合验收，整组WIP不commit/push，Goal active。
+
+原88680自然exit0：上述3.14实际SDK四项4 passed/0failure/error/skip，XML350.637s（CLI350.69s）；`C:\Users\yangj\AppData\Local\Temp\chanpy-native-submission-cold-integration-py314-d36d7efcab764e2abf548c8b39eb8b2b.xml` SHA `94254573c689f39e00f6884dde5529ab0e1462095115e7de40d1395c9bc77fb9`。4个唯一case/status SHA `3234dd9281b84fe5f116bc14efaa065cdbfad01ebb84215e169f274e3c5b8de8`；157源码启动/结束均fdbd5548，无活pytest后才记录，未对运行中的源码/测试/文档做修改或另起任务。
+
+两项原真实RED的后半段现已在3.14执行通过：SDK事实保存后仍无原GET终态、投影保持未知；mixed冷恢复只处理旧ALT、拒绝目标stale/99；改回正常原GET后0.1@100恢复一次、后续不重复应用，旧ALT累计量/均价/尝试保持，完整components/account匹配，过龄/kill=YES仍可管理。另一个原完整成交默认入口及其原native冷初始化、一个原NEW默认入口同时通过。此仅证明这四项，不外推整个订单类型/方向、持久事实变异/发布失败、原适用联合回归或C5–C7/OKX完成；下一步同源同四项3.11串行验证，整组仍不commit/push。
+
+后续原49252自然exit0：3.11同四项4 passed/0failure/error/skip，XML409.949s（CLI409.98s），`chanpy-native-submission-cold-integration-py311-b7c1eadfef3e46648a02f2ef6975595f.xml` SHA `767a9d338e348d58502a6455527dc26349fccea9a00b2771626432b93a5b811d`。两份JUnit各4个唯一case/status逐项差异0，共同摘要仍3234dd9281b84fe5f116bc14efaa065cdbfad01ebb84215e169f274e3c5b8de8；3.14原件SHA复核不变，157源码启动/结束均fdbd5548，确认无活pytest后才继续。两个原冷中断RED在两版均已执行至正常恢复/幂等/完整账户后半段；仍不等于整组验收或发布许可。
+
+后续验证仅追加测试、不改生产或提取既有已验证代码：复用原default-entry的profile/SDK/底层FILLED venue与原SQL篡改、stamp和foreign-owner模式，新增一处仅供新测试使用的GET超时准备 helper及发布失败断言 helper，避免重复另一套源/资金构造。验证SDK事实单独不能释放未知预留；一份真实SDK未知事实上循环检查规范化/contract/身份/kind/未来stamp/额外字段及旧前缀/错误header；SQL发布失败、四种非法stamp、DB/连接交换应保留原ACK/claim、无GET或重发，外库零SQL；三种新依赖晚换须在执行替身前拒绝。只保护来源与派生/身份约束，不宣称可识别自洽重写整库或把SDK已知均价误当有独立原生签名。全部原件/失败保留，原联合回归与Lore/push门槛不变。
+
+新增12项已完成原69392的3.14一次完整运行，自然exit0：12 passed/0failure/error/skip，XML738.788s（CLI738.84s）；原JUnit `C:\Users\yangj\AppData\Local\Temp\chanpy-native-submission-safety-py314-e22f83f8070e419ba5c8e80046b16808.xml` SHA `4d6ca32f613e030bab2f3c1152cbe81a1c1e796bcf4ccbac15fdc29f3c5c3249`。12个唯一case/status SHA `11263ded088ac06802fda7ccb5ffb4e0bdc3af32b00a1fbcf93d346a4e311aa7`，157源码启动/结束均 `9ac5e0bd8740a5c8b18d9d2cf76bc5b7d5a9f50317e2261b62dd21d78d28ac2d`；仅default-entry测试追加，替回其旧摘要可精确重建原fdbd5548，生产未改。双版测试模块compileall、显式空白/diff及collect-only 12项已完成；采集不算运行，运行原件单独保留。
+
+这12项首次均GREEN，验证的是已实现/已批准边界，不捏造新的行为RED：SDK事实单独仍有未知预留且非完整匹配；循环8种自洽重哈希的格式/contract/身份/kind/未来时间/额外字段变异拒绝，旧v1前缀保持、错误v2头拒绝；SQL失败与4种非法stamp回滚新事实而保留原ACK/claim，无GET/重发；两种owner交换外库零SQL/本地无INSERT；三种新依赖在执行替身前拒绝。所有场景只用实际原SDK/原SQLite及底层fake，未改生产、真实配置或门禁。下一步同源同12项3.11串行验证，其后仍须当前源码的完整受影响联合/双版及main review；不据本小集发布整组WIP或关闭C0–C7 Goal。
+
+2026-10-28 03:26续行只读复核：原11713观察句柄已失效；精确PID21140/42484、命令UUID f39cf76fcce845198f24ffca18b88e4b及全局pytest进程均已不存在。原JUnit `C:\Users\yangj\AppData\Local\Temp\chanpy-native-submission-safety-py311-f39cf76fcce845198f24ffca18b88e4b.xml`已完整，3.11十二项12 passed/0failure/error/skip，XML869.547s，文件SHA `6c23803eccf371a6619f58f26738177b45cee1b69174a10bdc94b32555f6bee7`；没有取得原shell终态退出码，因此只记录完整JUnit和进程终止证据，不补造exit0/CLI时长。双版各12个唯一case key，排序case/status SHA同为 `11263ded088ac06802fda7ccb5ffb4e0bdc3af32b00a1fbcf93d346a4e311aa7`；3.14原件SHA复核不变。当前157源码仍 `9ac5e0bd8740a5c8b18d9d2cf76bc5b7d5a9f50317e2261b62dd21d78d28ac2d`，三生产及两测试SHA与原启动记录精确一致。
+
+下一联合范围已核文件清单：109个顶层test_*.py，全部10个monetary模块、其他native基础、前序交易安全/状态机和C0–C6既有离线回归均包含；用显式路径及既有`-m "not network"`，不递归research，不新增跳过/排除，不改真实配置或访问真实端点。计划先3.14、再同源同集合3.11；这是待执行验收，不将文件清单或旧7,129通过重标为当前结果。确认无活pytest后才追加本记录，运行期间继续冻结代码/测试/文档，不因观察超时重启；整组WIP未提交/推送，Goal active，C5–C7/OKX和外部认证仍未完成。
+
+### 2026-10-28完整109模块原始结果（未通过）
+
+原94299自03:28:12起运行，08:09:11自然exit1；连续跟进同一句柄，未因观察超时/无输出/进度截断重启。3.14.2完整结果为7327 passed/2 failed/2 skipped/1既有network deselected/24 warnings，CLI16854.77s，XML16853.761s。全部7331个case key唯一，case/status SHA `fb9a3f6f5b681822317e5dfa5ad6e978942d2fae67b31cc353260b2226a56ecf`；原JUnit `C:\Users\yangj\AppData\Local\Temp\chanpy-native-joint-top109-py314-a45c6dc590d049e7867fe6119b6a4c37.xml` SHA `315322fd7e11f816133dc7c91691776f29c380c670af054fa5809b3761338482`。157个Trade/顶层tests源码启动/终态及08:12复核均 `9ac5e0bd8740a5c8b18d9d2cf76bc5b7d5a9f50317e2261b62dd21d78d28ac2d`，确认全局无活pytest后才写本记录。
+
+十个monetary模块的59 claim、47 consumers、94 default_entry、76 engine、40 entry_closure、86 execution、33 http_boundary、78 prepared_intent、90 sdk、50 terminal_observation共653项均passed；这不是C5–C7或整个Goal完成。两跳过原因为Binance income无isolated position cash channel和未安装PyQt6的股票GUI；24警告为小合成样本XGBoost AUC、MLP未收敛和文本输入弃用，未隐藏、不称零警告。范围只含显式顶层模块和已有network排除，不递归research，不访问真实交易端点或修改实际配置。
+
+两个失败均为`tests.test_native_prepared_current::test_original_engine_consumes_local_reconstitution_but_still_refuses_unfunded_intent[binance|okx]`，断言consumed实际`[]`、旧期望`[3]`。单独原27494再现同样2 failed/0error/skip，CLI8.33s、XML8.278s；`C:\Users\yangj\AppData\Local\Temp\chanpy-native-diagnostic-current-repro-py314-34a25a1dce834f88a45ed6d47a8fb500.xml` SHA `16949a7930225507ce72bc99c91276e9918ddc4096e9039d2c09ca1b38289597`，自然exit1。故不是只在大组合中发生的污染。
+
+根因：原夹具明确构造binding-v2诊断意图；实际Engine仅在binding-v4分支调用金额current，v2直接在冻结资金门槛拒绝。原断言强制旧内部调用顺序，与已批准“不升级旧诊断”的当前契约不符；真实只读current API本身及相邻cold/漂移/旧wire拒绝在大组合通过。修改前清理计划已写执行计划：只替换此测试的高层spy，改为真实owned current、明确v2/非准入字段及Engine验证/公开send/原claim拒绝，精确比较全records/history/transition/source trace和零SQL增量。原测试文件SHA `d101b8e6b05abb22d9fe472d3465c3b1d4855fffaab7a93aff9f48682fe34c36`；生产不改，尚未执行补验，不把本失败重标为已通过。后续仅按适用证据复用规则合并未改范围，明确保留原混合结果与ID映射；3.11完整最终树验收、主线程review及Lore/push仍待，Goal active。
+
+### 2026-10-28旧诊断测试契约对齐与整模块补验
+
+按上述修改前计划，仅`tests/test_native_prepared_current.py`去掉高层spy/调用次数预期；明确实际binding-v2/stage intent/economics_complete=false/native_admission_verified=false，在原owned事务调用真实current reader，再核原私有验证和公开place_order均以TRADE_UNLOCK_FAIL拒绝，原claim也拒绝。全records/history/transition的canonical字节、原source trace及SQL total_changes均保持；诊断不升级、不新增请求/写入，未改任何生产或金融/配置/交易门禁。新测试SHA `64b1fc315668483ac52201e0e4f0f55ad5900189efb5beb34e5e093785fc6848`。
+
+原92455自然exit0：3.14.2完整该模块70 passed/0failure/error/skip，CLI230.57s、XML230.504s，08:20:46.123至08:24:37.958。原JUnit `C:\Users\yangj\AppData\Local\Temp\chanpy-native-current-contract-py314-9c9f4ab233f040ab87a7665fa14d7a76.xml` SHA `c3bfb3a069ec677d2a9d1a69cb3b366db9fa9904fa95cd2b391f6e9845550efa`；70个唯一case/status SHA `4629c6d09c3958219c5624e384a8681efc710fb2277f7d66d520cac1b7d3fe99`。157源码启动/结束与补验后均`8e5a7bb821aafdd4d1e95951173e2fba51a1af4a5df2bafce06510f87c7f80dc`，换回此文件旧SHA可精确重建原9ac5e0bd，其余156个源码与三生产重点摘要不变。无活pytest后才编译/写本记录；双版Trade/tests compileall均exit0。
+
+两旧ID `test_original_engine_consumes_local_reconstitution_but_still_refuses_unfunded_intent[binance|okx]`一一映射到`test_diagnostic_current_view_cannot_become_engine_monetary_permission[binance|okx]`，两venue各自对应，其他68项key/状态不变。原完整109模块扣除旧模块、合入这70项的适用组合证据是7331唯一case、7329 passed/2原skip，排序case/status SHA `5ce273b8438483a08aaee90c029213e12343557e0306377ab640e5450ebaefe4`。原完整失败JUnit及SHA315322fd保持，24原警告/1既有network排除不隐藏；绝不称最终树一次3.14全绿。下一步同一最终源码的3.11完整109模块尚待启动，仍须完整终态、逐项case/status、主线程review与Lore/普通push门槛；当前整组未提交/推送，C5–C7/OKX/外部认证未完成，Goal active。
+
+### 2026-10-28完整3.11终态、双版组合对账与阶段交付边界
+
+原12028自然exit0：08:26:13.279启动、14:34:44.688结束，CPython3.11.15显式完整109顶层`test_*.py`、原`-m "not network"`范围，7329 passed/2 skipped/1 deselected/24 warnings，CLI22108.34s（6:08:28）、XML22107.026s。原JUnit `C:\Users\yangj\AppData\Local\Temp\chanpy-native-joint-top109-py311-3f3e2a561a924c48a1b752ec0bfeea84.xml` SHA `a2ac15885b57d8e12d6bf074a2eeb95b31f1520c6c7701ed8a20e4bfb4d742a7`。原shell39256/launcher25200/实际pytest12876及同UUID持续核实，连续观察未重启；终态后确认全局活pytest为0，才继续文档收尾。不是观察超时推定完成。
+
+157个Trade/顶层tests源码始终`8e5a7bb821aafdd4d1e95951173e2fba51a1af4a5df2bafce06510f87c7f80dc`。7331个case key全部唯一，排序case/status SHA `5ce273b8438483a08aaee90c029213e12343557e0306377ab640e5450ebaefe4`，与3.14原完整运行扣除单一旧诊断模块后、合入70项补验的组合证据逐项差异0；该70项3.11子集摘要同为`4629c6d09c3958219c5624e384a8681efc710fb2277f7d66d520cac1b7d3fe99`。原3.14完整JUnit SHA315322fd和补验SHAc3bfb3a0复核不变。只允许已记录的两旧ID到两新ID映射，不添加跳过/排除、不抹原失败，也不称两版各一次最终文档树全绿。
+
+十个金额模块在两版完整运行中均passed：claim59、consumers47、default_entry94、engine76、entry_closure40、execution86、http_boundary33、prepared_intent78、sdk90、terminal_observation50，共653项。其余顶层适用旧交易安全/状态机、C0–C6软件回归包含在109模块中；不递归research、不执行正式回测/preflight或读取正式绩效。两个原skip仍为Binance income无isolated position cash channel、未安装PyQt6的股票GUI；24警告仍为18条小合成XGBoost AUC、5条MLP未收敛、1条文本输入弃用，不能宣称零警告或把skip当PASS。
+
+主线程变更审查覆盖原owner-pinned事务、原L0/L1/claim/L2和完整账本、默认profile及无降级、A/B实际bound fetch/Session使用点、SDK六字段持久事实与原native终态/执行/费用/资金费/账户、cold混合旧历史、旧wire/前缀及GET/DELETE/reduce-only管理。真实新风险正向链是原SDK和原writer＋底层fake，不是手造L2或mock current=PASS；legacy helper仅造旧v3历史给原恢复/单位reader，不声称其能新开风险。共享current/history头及原add_trade发送/回报段减少重复；没有第二资金/订单引擎、新表、依赖、默认预算/epsilon或实际配置修改。已记录的两旧spy断言对齐为真实只读和拒绝/零增量，更严格保留诊断不能升级的边界。
+
+本次结果满足[本执行/恢复子链](../plans/2026-10-25-native-monetary-claim-execution.md)的fake联合门槛，可按已授权Lore/普通push进行阶段交付，发布动作与远端SHA须另以实际Git结果核实。当前支持仅为所列Binance条件金额软件路径；F/P仍是具名客户端假设，SDK提交事实不能释放未知预留，真正完整原生观察仍必需。37个声明方法/5个Entry及必要adapter条件不是全部Python/Requests栈信任、服务器锁额、真实价格/费用/精度/时延或同SDK任意并发认证。OKX同等级原生金额、信号换代/更广E2E/迁移/实际容量与通知、C7外部认证尚未完成；实际配置、candidate/testnet/live和研究门禁均保持，整个C0–C7 Goal继续active。
+
+终态后的收尾仅更新README、执行计划、A/B规格与本台账四份文档，157源码仍8e5a7bb8；原双版Trade/tests compileall证据适用，不因Git提交而重标为新运行。README依赖的两项既有文档检查按新文档字节串行补验：3.14为2 passed/0warning，CLI0.27s，`chanpy-native-final-docs-py314-614e822a7f9541e88279beedcb6edd6f.xml` SHA `3bf5ead8eae2e7d738b01354a36af2e7fa6a88606a0d64b45c49ef3729ae13a2`；3.11为2 passed/0warning，CLI0.22s，`chanpy-native-final-docs-py311-e3ae41c9595349ea8207c8bdb8c2bc84.xml` SHA `61c514a967d94af7dec9eb888b35d8b271337c504ce0cf27f7f779d80ea8c1cf`，均在`C:\Users\yangj\AppData\Local\Temp\`，自然exit0。文档在两次检查期间字节不变；没有新造行为RED或读取正式V29绩效。
+
+四份证据文档31处本地链接和README新增3个本地目标均存在；工作树diff检查通过，仅保留既有Git LF/CRLF提示。运行时重新只读确认CPython3.11.15/3.14.2、两版CCXT4.5.89、Requests2.34.2/urllib3 2.8.0，未安装/更新依赖。提交前只读核对`origin/full-version`仍为已授权基线`436c011cda223da4f9970cbc1a6d5067dff0b646`；origin精确属于`helloxiaobit/chan.py`，不输出可能的凭据。本执行子链的待交付范围为16生产文件、29测试/fixture与四份文档，无实际配置、规则或冻结研究资产；发布仍以接下来的实际Lore/普通push及远端身份为准，整个Goal不关闭。

@@ -203,6 +203,32 @@ class CTradeEngine(metaclass=abc.ABCMeta):
             snapshot.update(entry_assessment=assessment, deployment_id=record["deployment_id"],
                             model_version=record["model_version"], entry_observed_ms=assessment["decision_ms"])
             score_before = assessment["score"]
+        quota, order_price, client_id = self._acquire_open_intent(record, price, snapshot=snapshot, score_before=score_before)
+        position_side = self._position_side(record)
+        self.rate_limit()
+        self.check_open_inputs(record)
+        order = self.place_order(
+            code,
+            bool(record["is_buy"]),
+            quota,
+            order_price,
+            client_order_id=client_id,
+            position_side=position_side,
+        )
+        self._apply_order_report(record_id, "open", order, client_id, int(record.get("open_attempt") or 0)+1)
+        if self.push_msg:
+            bs = "买开" if record["is_buy"] else "卖开"
+            send_msg(
+                "开仓订单",
+                f"{code} {bs} filled={order.filled}/{order.requested} "
+                f"avg={order.avg_price or 'NA'} status={order.status} "
+                f"bstype={record['bstype']} id={record_id}",
+            )
+        return order
+
+    def _acquire_open_intent(self, record, price, *, snapshot, score_before):
+        """Original prepare/CAS hook; callers still use the same send/report path."""
+        code, record_id = record["stock_code"], record["id"]
         quota = self.quota_gen.get_quota(code, price)
         if quota <= 0:
             raise CChanException(f"仓位计算为0: {code} price={price}", ErrCode.QUOTA_NOT_ENOUGH)
@@ -230,26 +256,7 @@ class CTradeEngine(metaclass=abc.ABCMeta):
                 f"开仓意图已被其他进程获取 id={record_id}",
                 ErrCode.SIGNAL_TRADED,
             )
-        self.rate_limit()
-        self.check_open_inputs(record)
-        order = self.place_order(
-            code,
-            bool(record["is_buy"]),
-            quota,
-            order_price,
-            client_order_id=client_id,
-            position_side=position_side,
-        )
-        self._apply_order_report(record_id, "open", order, client_id, int(record.get("open_attempt") or 0)+1)
-        if self.push_msg:
-            bs = "买开" if record["is_buy"] else "卖开"
-            send_msg(
-                "开仓订单",
-                f"{code} {bs} filled={order.filled}/{order.requested} "
-                f"avg={order.avg_price or 'NA'} status={order.status} "
-                f"bstype={record['bstype']} id={record_id}",
-            )
-        return order
+        return quota, order_price, client_id
 
     def close_partial_open(
         self, record: dict, price: Optional[float], reason: str

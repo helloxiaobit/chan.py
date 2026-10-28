@@ -19,6 +19,7 @@ from Trade.AccountSources import collect_account_snapshot
 from Trade.OpenQuotaGen import CBenchPriceQuotaGen
 from Trade.Script.OpeningInputs import COpeningInputs
 from .test_crypto_venue_parameters import venue_engine
+from .test_crypto_order_contract import open_legacy_history
 from .test_execution_facts import NativeSources, fill, funding
 from .test_m6_trade import make_signal
 from .test_native_account_snapshot import asset, position, snapshot_client
@@ -88,7 +89,7 @@ def native_order_case(db, db_conf, tmp_path, monkeypatch, venue, *, mode="one_wa
             trade.quota_gen = CBenchPriceQuotaGen(float(Decimal(amount)*price))
             key = db.add_signal(make_signal(code=code, is_buy=side))
             history_keys.append(key)
-            trade.add_trade(db.get_record(key), price)
+            open_legacy_history(trade, db.get_record(key), price)
         else:
             key = history_keys[0]
             trade.cover_trade(db.get_record(key), price, "native-unit partial close")

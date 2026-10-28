@@ -17,6 +17,7 @@ from .OrderAudit import ATTEMPTS, EVENTS, validate_schema, verify_history_prefix
 
 SCHEMA = "chan-native-account-check-v1"
 CLIENT_SCHEMA = "chan-native-account-check-v2"
+TERMINAL_SCHEMA = "chan-native-account-check-v3"
 _BASE = ("before", "after", "wallets", "executions")
 
 
@@ -84,7 +85,8 @@ def _report(context, request, inputs):
     payload = {"account_context": context, "coverage": "historical_native_components_only", "economics_complete": False,
                "native_admission_verified": False, "status": "matched_observations" if p["status"] == "matched_components" else p["status"],
                "issues": p["issues"], "components": components}
-    return {"schema": "chan-native-account-component-result-v2" if inputs.get("client_roots") else "chan-native-account-component-result-v1",
+    return {"schema": "chan-native-account-component-result-v3" if components["schema"] == "chan-native-account-components-v3"
+            else "chan-native-account-component-result-v2" if inputs.get("client_roots") else "chan-native-account-component-result-v1",
             "payload": payload, "payload_sha256": _sha(payload)}
 
 
@@ -105,7 +107,8 @@ def reconcile_native_account(chan, context, request):
     except (CChanException, sqlite3.DatabaseError, ValueError, TypeError, KeyError, AttributeError):
         report = _failure(context)
     payload = {"account_context": context, "source_ids": request, "inputs": inputs, "report": report}
-    return _publish(db, {"schema": CLIENT_SCHEMA if inputs is not None and inputs.get("client_roots") else SCHEMA,
+    return _publish(db, {"schema": TERMINAL_SCHEMA if report["schema"] == "chan-native-account-component-result-v3"
+                         else CLIENT_SCHEMA if inputs is not None and inputs.get("client_roots") else SCHEMA,
                          "payload": payload, "payload_sha256": _sha(payload)})
 
 
@@ -113,8 +116,8 @@ def read_native_check(db, row, document):
     try:
         payload = document["payload"]
         context, inputs, report = payload["account_context"], payload["inputs"], payload["report"]
-        client = document["schema"] == CLIENT_SCHEMA
-        if (set(document) != {"schema", "payload", "payload_sha256"} or document["schema"] not in {SCHEMA, CLIENT_SCHEMA}
+        client = document["schema"] in {CLIENT_SCHEMA, TERMINAL_SCHEMA}
+        if (set(document) != {"schema", "payload", "payload_sha256"} or document["schema"] not in {SCHEMA, CLIENT_SCHEMA, TERMINAL_SCHEMA}
                 or set(payload) != {"account_context", "source_ids", "inputs", "report"}
                 or canonical_bytes(document).decode() != row["payload"] or _sha(document) != row["check_id"]
                 or _sha(document) != row["payload_sha256"] or _sha(payload) != document["payload_sha256"]
@@ -137,7 +140,9 @@ def read_native_check(db, row, document):
                 roots = _stored_client_order_roots(db, inputs["histories"])
                 if not roots or canonical_bytes(roots) != canonical_bytes(inputs["client_roots"]):
                     _fail()
-            if canonical_bytes(_report(context, payload["source_ids"], inputs)) != canonical_bytes(report):
+            rebuilt = _report(context, payload["source_ids"], inputs)
+            if (canonical_bytes(rebuilt) != canonical_bytes(report)
+                    or (document["schema"] == TERMINAL_SCHEMA) is not (rebuilt["schema"] == "chan-native-account-component-result-v3")):
                 _fail()
         return document
     except (ValueError, TypeError, KeyError, AttributeError):

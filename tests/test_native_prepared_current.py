@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from Common.ChanException import CChanException
+from Common.ChanException import CChanException, ErrCode
 from CustomBuySellPoint.Decision import canonical_bytes
 from OfflineData.offline_data_util import CKLineDB
 from Trade.NativeOrderTransition import read_native_order_transition
@@ -79,24 +79,36 @@ def test_current_sdk_state_cannot_replace_the_original_invocation_baseline(store
 
 
 @pytest.mark.parametrize("venue", ["binance", "okx"])
-def test_original_engine_consumes_local_reconstitution_but_still_refuses_unfunded_intent(store, tmp_path, monkeypatch, venue):
-    from Trade import NativePreparedIntent
+def test_diagnostic_current_view_cannot_become_engine_monetary_permission(store, tmp_path, monkeypatch, venue):
     case = make_case(store, tmp_path, monkeypatch, venue)
     assert acquire(case)
-    original = current_api()
-    consumed = []
-    def checked(engine, record_id):
-        result = original(engine, record_id)
-        consumed.append(record_id)
-        return result
-    monkeypatch.setattr(NativePreparedIntent, "assert_native_prepared_intent_current", checked)
-    after, trace, changes = case["db"].get_record(case["key"]), list(case["trace"]), case["db"].db.conn.total_changes
-    with pytest.raises(CChanException):
+    db, engine = case["db"], case["trade"]
+    after = db.get_record(case["key"])
+    transition = read_native_order_transition(db, case["key"])
+    payload = transition["payload"]
+    assert transition["schema"] == "chan-native-order-transition-v2"
+    assert payload["stage"] == "intent"
+    assert payload["root"]["preparation"]["schema"] == "chan-native-prepared-intent-binding-v2"
+    assert payload["economics_complete"] is payload["native_admission_verified"] is False
+    original = canonical_bytes([db.query_all(), db.get_order_history(case["key"]), transition])
+    trace, changes = copy.deepcopy(case["trace"]), db.db.conn.total_changes
+    # A real read-only current view does not turn this old diagnostic into v4.
+    with db.db.transaction():
+        assert current_api()(engine, case["key"]) is None
+    with pytest.raises(CChanException, match="仅证明一致性") as denied:
         case["trade"]._validated_persisted_intent(after["stock_code"], bool(after["is_buy"]), after["open_requested_qty"],
             after["open_client_order_id"], False, after["position_side"])
-    assert consumed == [case["key"]]
-    assert case["db"].get_record(case["key"]) == after and case["trace"] == trace
-    assert case["db"].db.conn.total_changes == changes
+    assert denied.value.errcode == ErrCode.TRADE_UNLOCK_FAIL
+    with pytest.raises(CChanException, match="仅证明一致性") as denied:
+        engine.place_order(after["stock_code"], bool(after["is_buy"]), after["open_requested_qty"], 100,
+            client_order_id=after["open_client_order_id"], position_side=after["position_side"])
+    assert denied.value.errcode == ErrCode.TRADE_UNLOCK_FAIL
+    with pytest.raises(CChanException):
+        db.claim_order_submission(case["key"], "open")
+    assert db.get_record(case["key"]) == after and case["trace"] == trace
+    assert canonical_bytes([db.query_all(), db.get_order_history(case["key"]),
+                            read_native_order_transition(db, case["key"])]) == original
+    assert db.db.conn.total_changes == changes
 
 
 @pytest.mark.parametrize("venue", ["binance", "okx"])

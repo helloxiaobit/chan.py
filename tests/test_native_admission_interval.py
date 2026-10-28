@@ -19,6 +19,7 @@ from Trade.OpenQuotaGen import CBenchPriceQuotaGen
 from Trade.db_util import CChanDB
 from .test_account_risk_freeze import persist
 from .test_crypto_venue_parameters import venue_engine
+from .test_crypto_order_contract import open_legacy_history
 from .test_execution_facts import NativeSources
 from .test_execution_store import store
 from .test_m6_trade import make_signal
@@ -60,7 +61,7 @@ def persisted_case(db, tmp_path, monkeypatch, venue, *, legs="one_way", delayed_
             trade.quota_gen = CBenchPriceQuotaGen(float(quantity*100+Decimal("0.7")))
             trade.exchange.fill, trade.exchange.status = contracts, "closed"
             key = db.add_signal(make_signal(code=market["symbol"], is_buy=is_buy))
-            trade.add_trade(db.get_record(key), 100)
+            open_legacy_history(trade, db.get_record(key), 100)
             keys.append(key)
     units = [{k: m[k] for k in ("exchange", "id", "symbol", "type", "base", "quote", "settle", "contractSize")} for m in bundle["markets"]]
     clock["now"] = NOW-5000
@@ -297,7 +298,7 @@ def test_other_trade_shaped_table_and_other_connection_freezes_are_not_hidden(st
             trade.exchange.account_alias = "fake-Futures-A"
         trade.exchange.fill, trade.exchange.status = 3, "closed"
         key = other.add_signal(make_signal(code="TEST/USDT:USDT"))
-        trade.add_trade(other.get_record(key), 100)
+        open_legacy_history(trade, other.get_record(key), 100)
         assert db.get_account_check(case["check_id"]) == case["check"]  # Old check remains a valid *historical* check.
         with pytest.raises(CChanException):
             assert_interval(api, case)

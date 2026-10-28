@@ -17,6 +17,84 @@ from .AccountIdentity import observe_account_context
 from .AccountRiskStore import _sha, risk_state
 
 
+def initialize_native_order_recovery_client(engine, record_id):
+    """Initialize only a new L2 recovery SDK, not admission or a source renewal.
+
+    Existing-risk management needs current native units/account, not a fresh
+    candidate, input guard, old funding window or new-risk permission. No
+    caller cache/receipt/budget is accepted; the old transition stays intact.
+    """
+    client = None
+    try:
+        from .CCXTTradeEngine import CCCXTTradeEngine
+        if (type(engine) is not CCCXTTradeEngine or engine.exchange is not None or engine.dry_run is not False
+                or engine.market_type != "swap" or type(record_id) is not int or record_id <= 0):
+            Prepared._fail()
+        chan = engine.chan_db
+        database = Boundary._database(chan)
+        connection, table, mode = database.conn, chan.table, engine.mode
+        configuration, implementation = canonical_bytes(engine.ccxt_conf), Prepared._implementation()
+
+        def owners(*, owned=False):
+            Boundary._same_database(chan, database, connection, table, owned=owned)
+            if (engine.chan_db is not chan or engine.exchange is not client or engine.mode != mode
+                    or engine.dry_run is not False or engine.market_type != "swap"
+                    or canonical_bytes(engine.ccxt_conf) != configuration or Prepared._implementation() != implementation):
+                Prepared._fail()
+            if client is not None:
+                Prepare._assert_execution_sdk(client, mode)
+
+        with database.transaction():
+            owners(owned=True)
+            record = chan.get_record(record_id)
+            document = Transition._read(chan, record)
+            owners(owned=True)
+            binding = document["payload"]["root"]["preparation"]
+            if (document["schema"] != Transition.PREPARED_DOCUMENT_SCHEMA or document["payload"]["stage"] != "claim"
+                    or binding["schema"] != Prepared.MONETARY_BINDING_SCHEMA):
+                Prepared._fail()
+            frozen_record, frozen_transition = canonical_bytes(record), canonical_bytes(document)
+            codes = binding["identity"]["payload"]["scope"]["code_list"]
+            contract = Prepared._contract(binding)
+        owners()
+        client = engine.get_exchange()
+        owners()
+        reference, ccxt = Instrument.source._reference(client.id, mode)
+        if type(client) is not type(reference) or client.markets or client.markets_by_id:
+            Prepared._fail()
+        Instrument._original_method(client, "parse_market", reference.parse_market.__func__)
+        Instrument._original_method(client, "set_markets", ccxt.Exchange.set_markets)
+        source = Instrument.source.collect_native_instrument_evidence(client, codes, mode=mode)
+        owners()
+        Instrument.source.verify_native_instrument_evidence(source)
+        owners()
+        payload = source["payload"]
+        client.set_markets([client.parse_market(copy.deepcopy(payload["raw_rows"][row["raw_index"]])) for row in payload["observations"]])
+        owners()
+        before = Prepare._client_binding(client)
+        observed = observe_account_context(client, mode)
+        owners()
+        if observed != contract["account_context"]:
+            Prepared._fail()
+        # Check the same original L2/record after all source callbacks. Fresh
+        # native reads do not alter or renew the original monetary evidence.
+        with database.transaction():
+            owners(owned=True)
+            actual = chan.get_record(record_id)
+            owners(owned=True)
+            if canonical_bytes(actual) != frozen_record or canonical_bytes(Transition._read(chan, actual)) != frozen_transition:
+                Prepared._fail()
+            owners(owned=True)
+        owners()
+        if Prepare._client_binding(client) != before:
+            Prepared._fail()
+        owners()
+    except Exception:
+        if client is not None and engine.exchange is client:
+            engine.exchange = None
+        Prepared._fail()
+
+
 def initialize_native_prepared_client(engine, record_id, *, instrument_max_age_ms, instrument_max_observation_span_ms):
     """Build a new SDK cache using the original parser and native settings.
 
@@ -54,6 +132,8 @@ def initialize_native_prepared_client(engine, record_id, *, instrument_max_age_m
             if client is not None and any(getattr(client, target, None) != (engine.ccxt_conf.get(key) or None)
                                           for target, key in (("apiKey", "api_key"), ("secret", "secret"), ("password", "password"))):
                 Prepared._fail()
+            if client is not None and monetary_binding is not None:
+                Prepare._assert_execution_sdk(client, engine.mode)
 
         with database.transaction():
             owners(owned=True)

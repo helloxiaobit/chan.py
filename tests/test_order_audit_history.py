@@ -281,13 +281,13 @@ def test_a_successful_fill_cannot_silently_rewrite_attempt_identity(store, chang
 
 @pytest.mark.parametrize("venue", ["binance", "okx"])
 def test_real_contract_and_both_historical_close_specs_survive_recovery(store, tmp_path, venue):
-    from .test_crypto_order_contract import CODE
+    from .test_crypto_order_contract import CODE, open_legacy_history
     from .test_crypto_order_recovery import recovery_engine
     db, _ = store
     trade = recovery_engine(db, tmp_path, venue)
     trade.exchange.fill, trade.exchange.status = 3, "closed"
     key = db.add_signal(make_signal(code=CODE))
-    trade.add_trade(db.get_record(key), 100)
+    open_legacy_history(trade, db.get_record(key), 100)
     contract = json.loads(db.get_record(key)["open_order_contract"])
     trade.exchange.fill, trade.exchange.status = 1, "canceled"
     trade.cover_trade(db.get_record(key), 101, "partial exit")

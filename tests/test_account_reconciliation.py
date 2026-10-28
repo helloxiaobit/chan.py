@@ -48,7 +48,7 @@ def interval_case(db, tmp_path, monkeypatch, venue, *, side=True, mode="one_way"
     clock[0] = at+100
     trade.exchange.fill, trade.exchange.status = 3, "closed"
     key = db.add_signal(make_signal(code=CODE, is_buy=side))
-    trade.add_trade(db.get_record(key), 100)
+    order_fixture.open_legacy_history(trade, db.get_record(key), 100)
     clock[0] = at+200
     trade.exchange.fill, trade.exchange.status = 1, "canceled"
     trade.cover_trade(db.get_record(key), 110 if side else 90, "partial close")
@@ -288,7 +288,7 @@ def pooled_case(db, tmp_path, monkeypatch, venue, extra_contracts):
     trade.quota_gen = CBenchPriceQuotaGen(6.5)
     trade.exchange.fill, trade.exchange.status = extra_contracts, "canceled"
     key = db.add_signal(make_signal(code=CODE))
-    trade.add_trade(db.get_record(key), 101)
+    order_fixture.open_legacy_history(trade, db.get_record(key), 101)
     inputs["histories"].append(db.get_order_history(key))
     inputs["projections"].append({"trade_table": db.table, "record_id": key, "instrument": CODE,
         "current_qty": db.get_record(key)["current_qty"], "position_side": "BOTH", "is_buy": True})

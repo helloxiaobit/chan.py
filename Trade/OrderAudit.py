@@ -1,7 +1,8 @@
 """SQLite facts accompanying the existing projection, not another order engine.
 
-This journal proves local intents/applied reports only, not broker executions,
-fees or funding. Hashes detect accidental drift, not whole-file forgery.
+Old events prove local intents/applied reports only. Explicit native terminal
+observations retain original query evidence, never fees, funding or admission.
+Hashes detect accidental drift, not whole-file forgery.
 """
 import hashlib
 import json
@@ -182,7 +183,104 @@ def _load(row):
         _fail()
 
 
+def _native_terminal_observation(identity, raw, started_ms, finished_ms):
+    """Pure rebuild of a query's raw fields, not a caller permission or fill."""
+    try:
+        from decimal import localcontext
+        from .ExecutionFacts import _MONEY, _id, _number, _string, _time
+        from .NativePendingOrders import _raw_order
+        from .NativePendingOwnership import _validate_contract
+        _validate_contract(identity)
+        contract = identity["order_contract"]
+        if (identity["phase"] != "open" or contract["schema"] != "chan-native-client-order-v1"
+                or contract["account_context"]["venue"] != "binance"
+                or any(type(at) is not int or not 0 <= at < 2**63 for at in (started_ms, finished_ms))
+                or not identity["intent_ms"] <= started_ms <= finished_ms
+                or canonical_bytes(raw) != canonical_bytes(_raw_order(raw, "binance"))):
+            _fail()
+        created, updated = _time(raw["time"]), _time(raw["updateTime"])
+        statuses = {"FILLED": "closed", "CANCELED": "canceled", "REJECTED": "rejected",
+                    "EXPIRED": "canceled", "EXPIRED_IN_MATCH": "canceled"}
+        status = statuses[raw["status"]]
+        if (not identity["intent_ms"] <= created <= updated <= finished_ms
+                or raw["symbol"] != contract["market"]["id"]
+                or raw["clientOrderId"] != identity["client_order_id"] or int(_id(raw["orderId"])) <= 0
+                or raw["side"] != ("BUY" if identity["is_buy"] else "SELL")
+                or raw["positionSide"] != identity["position_side"]
+                or raw["type"] != ("MARKET" if contract["price"] is None else "LIMIT")
+                or raw["origType"] != raw["type"] or raw["reduceOnly"] is not False
+                or raw["closePosition"] is not False or raw.get("priceMatch") not in {"NONE", ""}
+                or raw["timeInForce"] not in {"GTC", "IOC", "FOK", "GTX"}
+                or (raw["timeInForce"] == "GTX") is not contract["post_only"]
+                or (raw["type"] == "LIMIT" and raw["timeInForce"] != ("GTX" if contract["post_only"] else "GTC"))):
+            _fail()
+        with localcontext(_MONEY):
+            requested, filled, size = (_number(value, positive=positive) for value, positive in
+                ((raw["origQty"], True), (raw["executedQty"], False), (contract["market"]["contractSize"], True)))
+            average, quote = _number(raw["avgPrice"]), _number(raw["cumQuote"])
+            if (requested != _number(contract["quantity"]) or requested/size != _number(contract["exchange_amount"])
+                    or not 0 <= filled <= requested or quote != filled*average
+                    or (status == "closed" and filled != requested)
+                    or (filled and average <= 0) or (not filled and (average != 0 or quote != 0))
+                    or (contract["price"] is not None and _number(raw["price"]) != _number(contract["price"]))):
+                _fail()
+            payload = {"account_context": contract["account_context"], "contract_id": contract["contract_id"],
+                "source": "original_query_native_response", "started_ms": started_ms, "finished_ms": finished_ms,
+                "native_order_id": _id(raw["orderId"]), "client_order_id": identity["client_order_id"], "status": status,
+                "requested_base_quantity": _string(requested), "requested_contracts": _string(requested/size),
+                "filled_base_quantity": _string(filled), "filled_contracts": _string(filled/size),
+                "average_price": _string(average) if filled else None, "raw": raw,
+                "economics_complete": False, "native_admission_verified": False}
+        return {"schema": "chan-native-order-terminal-observation-v1", "payload": payload,
+                "payload_sha256": _hash(_encode(payload))}
+    except Exception:
+        raise CChanException("原生终态来源/原订单身份不完整，不能据此释放预留", ErrCode.LIST_ORDER_FAIL) from None
+
+
+def _sdk_submission_report(values):
+    """Normalize an SDK response's known facts, not a terminal-release proof."""
+    try:
+        from .ExecutionFacts import _id, _number, _string
+        if (type(values) is not dict or set(values) != {"order_id", "client_order_id", "requested", "filled", "avg_price", "status"}
+                or type(values["order_id"]) is not str or int(_id(values["order_id"])) <= 0
+                or type(values["client_order_id"]) is not str or not values["client_order_id"]
+                or values["client_order_id"].strip() != values["client_order_id"]
+                or type(values["status"]) is not str or values["status"] not in {"open", "closed", "canceled", "rejected"}):
+            _fail()
+        def number(value, *, positive=False):
+            if type(value) not in (str, int, float):
+                _fail()
+            return _number(str(value), positive=positive)
+        requested, filled = number(values["requested"], positive=True), number(values["filled"])
+        average = None if values["avg_price"] is None else number(values["avg_price"], positive=True)
+        if (not 0 <= filled <= requested or bool(filled) != (average is not None)
+                or (values["status"] == "closed" and filled != requested)):
+            _fail()
+        return {"order_id": values["order_id"], "client_order_id": values["client_order_id"],
+            "requested": _string(requested), "filled": _string(filled),
+            "avg_price": None if average is None else _string(average), "status": values["status"]}
+    except Exception:
+        _fail()
+
+
+def _assert_sdk_submission(attempt, values):
+    """Do not forget known POST facts across a later query or process restart."""
+    from .ExecutionFacts import _number
+    reports = [event["submission_report"] for event in attempt["events"] if event["kind"] == "sdk_submission_report"]
+    if not reports:
+        return
+    if len(reports) != 1:
+        _fail()
+    known, actual = _sdk_submission_report(reports[0]), _sdk_submission_report(values)
+    if (any(known[key] != actual[key] for key in ("order_id", "client_order_id", "requested"))
+            or (known["status"] != "open" and known != actual)
+            or _number(actual["filled"]) < _number(known["filled"])
+            or (actual["filled"] == known["filled"] and actual["avg_price"] != known["avg_price"])):
+        raise CChanException("查单累计回报与原已知提交事实矛盾，保留未知且禁止重下", ErrCode.LIST_ORDER_FAIL)
+
+
 def _read_attempt(db, row):
+    connection = db.conn
     payload = _load(row)
     identity = payload["identity"]
     if (_key(identity) != tuple(row[key] for key in ("trade_table", "record_id", "phase", "attempt"))
@@ -193,17 +291,70 @@ def _read_attempt(db, row):
     events, previous = [], None
     for ordinal, event_row in enumerate(rows, 1):
         event = _load(event_row)
+        extra = {key: event[key] for key in ("native_order_observation", "submission_report") if key in event}
         if (event["identity_sha256"] != row["payload_sha256"] or event["ordinal"] != ordinal
                 or event["previous_sha256"] != previous or event_row["previous_sha256"] != previous
                 or event["kind"] != event_row["kind"] or event["observed_ms"] != event_row["observed_ms"]
-                or event_row["ordinal"] != ordinal or _hash(_encode(event["state"])) != event_row["data_sha256"]):
+                or event_row["ordinal"] != ordinal
+                or _hash(_encode({"state": event["state"], **extra} if extra else event["state"])) != event_row["data_sha256"]):
             _fail()
         events.append(event)
         previous = event_row["payload_sha256"]
     if not events or events[0]["kind"] != ("intent" if row["origin"] == "new_intent" else "legacy_snapshot"):
         _fail()
     reference = events[0].get("native_boundary_sha256")
+    if sum(event["kind"] == "sdk_submission_report" for event in events) > 1:
+        _fail()
     for event in events:
+        if event["kind"] == "native_terminal_observation":
+            try:
+                observation = event["native_order_observation"]
+                value = observation["payload"]
+                checked_ms = utc_now_ms()
+                if db.conn is not connection:
+                    _fail()
+                valid = (set(event) == {"identity_sha256", "kind", "ordinal", "previous_sha256", "observed_ms", "state", "native_order_observation"}
+                    and payload["origin"] == "new_intent" and reference is not None and len(events) >= 3
+                    and events[1]["kind"] == "claim" and events[1].get("native_boundary_sha256") == reference
+                    and type(event["observed_ms"]) is int and type(checked_ms) is int
+                    and value["finished_ms"] <= event["observed_ms"] <= checked_ms < 2**63
+                    and event["state"]["order_id"] == value["native_order_id"]
+                    and canonical_bytes(observation) == canonical_bytes(_native_terminal_observation(
+                        identity, value["raw"], value["started_ms"], value["finished_ms"])))
+            except (ValueError, TypeError, KeyError, AttributeError):
+                _fail()
+            if not valid:
+                _fail()
+        elif "native_order_observation" in event:
+            _fail()
+        if event["kind"] == "sdk_submission_report":
+            try:
+                from .NativePendingOwnership import _validate_contract
+                from .ExecutionFacts import _number
+                _validate_contract(identity)
+                report, contract = event["submission_report"], identity["order_contract"]
+                checked_ms = utc_now_ms()
+                if db.conn is not connection:
+                    _fail()
+                valid = (set(event) == {"identity_sha256", "kind", "ordinal", "previous_sha256", "observed_ms", "state", "submission_report"}
+                    and payload["origin"] == "new_intent" and reference is not None and len(events) >= 3
+                    and events[1]["kind"] == "claim" and events[1].get("native_boundary_sha256") == reference
+                    and identity["phase"] == "open" and contract["schema"] == "chan-native-client-order-v1"
+                    and identity["contract_complete"] is True and contract["account_context"]["venue"] == "binance"
+                    and type(event["observed_ms"]) is int and type(checked_ms) is int
+                    and identity["intent_ms"] <= event["observed_ms"] <= checked_ms < 2**63
+                    and event["state"]["order_id"] == report["order_id"]
+                    and report["client_order_id"] == identity["client_order_id"]
+                    and _number(report["requested"]) == _number(contract["quantity"])
+                    and canonical_bytes(report) == canonical_bytes(_sdk_submission_report(report))
+                    and any(prior["kind"] == "ack" and prior["ordinal"] < event["ordinal"]
+                            and prior["state"]["order_id"] == report["order_id"] for prior in events))
+            except (ValueError, TypeError, KeyError, AttributeError):
+                _fail()
+            if not valid:
+                _fail()
+        elif "submission_report" in event:
+            _fail()
         if "native_boundary_sha256" in event:
             value = event["native_boundary_sha256"]
             delta = event.get("native_delta")
@@ -222,24 +373,55 @@ def _read_attempt(db, row):
     return {**payload, "events": events}
 
 
-def _append(db, row, kind, state, *, native_boundary_sha256=None, native_delta=None):
+def _append(db, row, kind, state, *, native_boundary_sha256=None, native_delta=None, native_order_observation=None,
+            submission_report=None, _assert_current=None):
     identity = _load(row)["identity"]
     key = _key(identity)
-    digest = _hash(_encode(state))
-    if db.query_one(f"SELECT event_id FROM {EVENTS} WHERE trade_table=? AND record_id=? AND phase=? AND attempt=? AND kind=? AND data_sha256=?", (*key, kind, digest)):
+    if (native_order_observation is not None) != (kind == "native_terminal_observation"):
+        _fail()
+    if (submission_report is not None) != (kind == "sdk_submission_report"):
+        _fail()
+    extra = {}
+    if native_order_observation is not None:
+        extra["native_order_observation"] = native_order_observation
+    if submission_report is not None:
+        if canonical_bytes(submission_report) != canonical_bytes(_sdk_submission_report(submission_report)):
+            _fail()
+        extra["submission_report"] = submission_report
+    if extra and _assert_current is None:
+        _fail()
+    digest = _hash(_encode({"state": state, **extra} if extra else state))
+    if _assert_current is not None:
+        _assert_current()
+    duplicate = db.query_one(f"SELECT event_id FROM {EVENTS} WHERE trade_table=? AND record_id=? AND phase=? AND attempt=? AND kind=? AND data_sha256=?", (*key, kind, digest))
+    if _assert_current is not None:
+        _assert_current()
+    if duplicate:
         return
     previous = db.query_one(f"SELECT ordinal,payload_sha256 FROM {EVENTS} WHERE trade_table=? AND record_id=? AND phase=? AND attempt=? ORDER BY ordinal DESC LIMIT 1", key)
+    if _assert_current is not None:
+        _assert_current()
     ordinal = previous["ordinal"]+1 if previous else 1
     previous_sha = previous["payload_sha256"] if previous else None
     observed = utc_now_ms()
+    if _assert_current is not None:
+        _assert_current()
+    if native_order_observation is not None and (type(observed) is not int
+            or not native_order_observation["payload"]["finished_ms"] <= observed < 2**63):
+        _fail()
+    if submission_report is not None and (type(observed) is not int or not identity["intent_ms"] <= observed < 2**63):
+        _fail()
     event = {"identity_sha256": row["payload_sha256"], "kind": kind, "ordinal": ordinal,
              "previous_sha256": previous_sha, "observed_ms": observed, "state": state}
     if native_boundary_sha256 is not None:
         event["native_boundary_sha256"] = native_boundary_sha256
         event["native_delta"] = native_delta
+    event.update(extra)
     raw = _encode(event)
     db.execute(f"INSERT INTO {EVENTS}(trade_table,record_id,phase,attempt,ordinal,kind,observed_ms,data_sha256,previous_sha256,payload,payload_sha256) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
                (*key, ordinal, kind, observed, digest, previous_sha, raw, _hash(raw)))
+    if _assert_current is not None:
+        _assert_current()
 
 
 def _ensure(db, table, record, prefix, *, new=False, native_boundary_sha256=None, native_delta=None):
@@ -274,6 +456,18 @@ def record_transition(db, table, before, after, prefix, kind, *, native_boundary
         _append(db, row, kind, _state(after, prefix), native_boundary_sha256=native_boundary_sha256, native_delta=native_delta)
 
 
+def _history_header(attempts):
+    kinds = {event["kind"] for attempt in attempts for event in attempt["events"]}
+    native = "native_terminal_observation" in kinds
+    if "sdk_submission_report" in kinds:
+        return {"schema": "chan-order-history-v3",
+            "coverage": ("intents_applied_reports_sdk_submission_reports_and_native_query_observations" if native
+                         else "intents_applied_reports_and_sdk_submission_reports"), "economics_complete": False}
+    return {"schema": "chan-order-history-v2" if native else "chan-order-history-v1",
+            "coverage": "intents_applied_reports_and_native_query_observations" if native else "intents_and_applied_reports_only",
+            "economics_complete": False}
+
+
 def read_history(db, table, record):
     validate_schema(db.conn)
     rows = db.query(f"SELECT * FROM {ATTEMPTS} WHERE trade_table=? AND record_id=? ORDER BY CASE phase WHEN 'open' THEN 0 ELSE 1 END,attempt", (table, record["id"]))
@@ -302,8 +496,7 @@ def read_history(db, table, record):
         current = _state(record, "open")
         if any(state[key] != current[key] for key in ("status", "is_open", "current_qty", "total_close_qty", "total_close_avg")):
             _fail()
-    return {"schema": "chan-order-history-v1", "coverage": "intents_and_applied_reports_only",
-            "economics_complete": False, "attempts": attempts, "gaps": gaps}
+    return {**_history_header(attempts), "attempts": attempts, "gaps": gaps}
 
 
 def verify_history_prefix(db, histories):
@@ -316,8 +509,8 @@ def verify_history_prefix(db, histories):
     try:
         for history in histories:
             if (set(history) != {"schema", "coverage", "economics_complete", "attempts", "gaps"}
-                    or history["schema"] != "chan-order-history-v1"
-                    or history["coverage"] != "intents_and_applied_reports_only" or history["economics_complete"] is not False):
+                    or canonical_bytes({key: history[key] for key in ("schema", "coverage", "economics_complete")})
+                       != canonical_bytes(_history_header(history["attempts"]))):
                 _fail()
             for saved in history["attempts"]:
                 row = db.query_one(f"SELECT * FROM {ATTEMPTS} WHERE trade_table=? AND record_id=? AND phase=? AND attempt=?", _key(saved["identity"]))
