@@ -16,6 +16,8 @@
 
 后续已完成[原有订单冷管理审计](2026-10-30-native-cold-management-audit.md)：双版各13项外部诊断确认三个CLI冷初始化仍受新风险许可阻断、暖对象原撤单语义保留、暖reduce prepare仍被kill阻断；不是新管理功能RED/GREEN，也不加入原7405节点。原Observe-account的mode/leverage不足以单独证明剩余数量，不能只放开构造或query-only。对应[新增管理角色/账户串行提案](../specs/2026-10-30-native-existing-risk-management-design.md)已提请本线程用户审批，尚未批准或实施；仅独立推进审计/文档，不改生产/仓内测试/配置/依赖。批准A/B、新风险账户协议及A/P/F不重问；此次涉及新的撤单/关闭权限和管理HTTP作用域，不能由查单批准推断。
 
+后续2026-10-30本线程用户已明确批准该限定管理方案，审批边界已写回规格；不是恢复/升级query-only或真实交易授权。等待期间独立补齐[当前代码optional-free核心复验](2026-10-30-core-optional-free-current.md)：新的3.14/34包、3.11/35包隔离core投影均离线固定版本安装/pip check通过，可选11包真实缺失、14原模块导入及96根新固定收盘K→API逐字段验证通过，双版payload相同。没有把它冒称旧core快照或管理功能GREEN；首版网络阻断范围不足已保留并以前移阻断v2全程复验。产品/仓内测试/requirements/实际配置此时均未改，接下来按批准设计严格TDD推进管理角色；整个Goal active。
+
 ## 交付身份与归属
 
 - 开始时远端：`895fc700705e48013019a4054645e016a6e08d0e`。
