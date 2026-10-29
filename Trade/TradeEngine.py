@@ -118,6 +118,10 @@ class CTradeEngine(metaclass=abc.ABCMeta):
         """配置运行壳的新增风险 hook；股票/旧显式库调用默认不变。"""
         return None
 
+    def assert_order_mutation_allowed(self):
+        """Execution-role restriction only; ordinary engine behavior is unchanged."""
+        return None
+
     def rate_limit(self):
         wait = self.api_interval - (time.time() - self._last_api_ts)
         if wait > 0:
@@ -191,6 +195,7 @@ class CTradeEngine(metaclass=abc.ABCMeta):
 
     def add_trade(self, trade_info: dict, price: float) -> COrderResult:
         """先持久化开仓意图，再提交并应用交易所累计成交量。"""
+        self.assert_order_mutation_allowed()
         record_id = trade_info["id"]
         record = self.chan_db.get_record(record_id)
         code = record["stock_code"]
@@ -262,6 +267,7 @@ class CTradeEngine(metaclass=abc.ABCMeta):
         self, record: dict, price: Optional[float], reason: str
     ) -> Optional[COrderResult]:
         """先终止仍在成交的开仓单，再只平掉已经形成的实际仓位。"""
+        self.assert_order_mutation_allowed()
         record_id = record["id"]
         current = self.chan_db.get_record(record_id)
         if current["status"] != "partially_filled":
@@ -291,6 +297,7 @@ class CTradeEngine(metaclass=abc.ABCMeta):
 
     def cover_trade(self, record: dict, price: Optional[float], reason: str) -> COrderResult:
         """先持久化平仓意图，再以 reduce-only 提交当前剩余数量。"""
+        self.assert_order_mutation_allowed()
         record_id = record["id"]
         previous_attempt = record.get("cover_attempt")
         record = self.chan_db.get_record(record_id)
@@ -349,6 +356,7 @@ class CTradeEngine(metaclass=abc.ABCMeta):
 
     def poll_orders(self, times: int = 3, interval: float = 5.0, adjust_price: bool = True):
         """轮询平仓；最后一轮仅在撤单终态确认后重下剩余数量。"""
+        self.assert_order_mutation_allowed()
         for index in range(times):
             pending = [
                 rec for rec in self.chan_db.get_recoverable_records()

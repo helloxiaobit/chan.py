@@ -12,6 +12,7 @@ from Common.KLineTime import utc_now_ms
 from CustomBuySellPoint.Decision import canonical_bytes
 from Trade.ExecutionFacts import collect_execution_scan, verify_execution_scan
 from .test_crypto_order_contract import CODE, market
+from .native_source_io import NativeSources
 
 
 def definition(venue):
@@ -39,48 +40,6 @@ def funding(venue, at, *, key=901, amount="-0.02"):
     return {"instId": "TEST-USDT-SWAP", "instType": "SWAP", "billId": str(key), "type": "8",
             "subType": "173" if Decimal(amount) < 0 else "174", "ts": str(at), "pnl": amount,
             "balChg": amount, "posBalChg": "0", "ccy": "USDT", "mgnMode": "cross", "fee": "0"}
-
-
-class NativeSources:
-    """Raw private GETs only; create/cancel are intentionally absent."""
-    def __init__(self, venue, rows=None, cash=None):
-        self.id, self.rows, self.cash, self.requests = venue, rows or [], cash or [], []
-        self.endpoints = []
-        self.override = None
-
-    def request(self, kind, params):
-        self.requests.append((kind, copy.deepcopy(params)))
-        if self.override:
-            return self.override(kind, params)
-        rows = self.rows if kind == "trades" else self.cash
-        start = int(params.get("startTime", params.get("begin", 0)))
-        end = int(params.get("endTime", params.get("end", 2**63-1)))
-        key = "time" if self.id == "binance" else "ts"
-        rows = [r for r in rows if start <= int(r[key]) <= end]
-        if self.id == "okx":
-            rows = sorted(rows, key=lambda r: int(r["billId"]), reverse=True)
-            if "after" in params:
-                rows = [r for r in rows if int(r["billId"]) < int(params["after"])]
-        result = copy.deepcopy(rows[:int(params["limit"])])
-        return result if self.id == "binance" else {"code": "0", "data": result, "msg": ""}
-
-    def fapiPrivateGetUserTrades(self, params):
-        return self.request("trades", params)
-
-    def fapiPrivateGetIncome(self, params):
-        return self.request("funding", params)
-
-    def privateGetTradeFillsHistory(self, params):
-        self.endpoints.append("fills-history")
-        return self.request("trades", params)
-
-    def privateGetTradeFills(self, params):
-        self.endpoints.append("fills")
-        return self.request("trades", params)
-
-    def privateGetAccountBillsArchive(self, params):
-        self.endpoints.append("bills-archive")
-        return self.request("funding", params)
 
 
 def collect(source, start, end):

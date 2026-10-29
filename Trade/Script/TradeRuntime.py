@@ -7,13 +7,14 @@ from Config.EnvConfig import CEnv
 
 
 @contextmanager
-def configured_trade_engine(db, *, env=None, quota_gen=None, opening_inputs=None, now_ms=None, push_msg=True):
+def configured_trade_engine(db, *, env=None, quota_gen=None, opening_inputs=None, now_ms=None, push_msg=True, query_only=False):
     from Trade.CCXTTradeEngine import CCCXTTradeEngine
     from Trade.PaperState import CPersistentPaperState
     from Trade.PaperInputs import CSoftwarePaperInputs
     env = env or CEnv.get_instance()
     trade, ccxt = env.get_section("trade"), env.ccxt_conf
-    options = dict(quota_gen=quota_gen, ccxt_conf=ccxt, trade_conf=trade, opening_inputs=opening_inputs, push_msg=push_msg)
+    options = dict(quota_gen=quota_gen, ccxt_conf=ccxt, trade_conf=trade, opening_inputs=opening_inputs,
+                   push_msg=push_msg, query_only=query_only)
     if "paper" not in trade:
         yield CCCXTTradeEngine(db, **options)
         return

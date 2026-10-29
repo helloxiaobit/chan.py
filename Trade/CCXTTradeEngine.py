@@ -22,7 +22,7 @@ from CustomBuySellPoint.Decision import canonical_bytes
 from .db_util import CChanDB
 from .AccountIdentity import observe_account_context, verify_account_context
 from .OpenQuotaGen import COpenQuotaGen
-from .SafetyPolicy import build_trading_safety_policy
+from .SafetyPolicy import build_trading_safety_policy, build_query_only_safety_policy
 from .TradeEngine import COrderResult, CTradeEngine
 from .PaperState import paper_state_operation
 
@@ -145,6 +145,7 @@ class CCCXTTradeEngine(CTradeEngine):
         push_msg: bool = True,
         opening_inputs=None,
         paper_inputs=None,
+        query_only=False,
     ):
         super(CCCXTTradeEngine, self).__init__(
             market="crypto", chan_db=chan_db, quota_gen=quota_gen, push_msg=push_msg)
@@ -168,9 +169,11 @@ class CCCXTTradeEngine(CTradeEngine):
                 ErrCode.TRADE_UNLOCK_FAIL,
             )
         self.ccxt_conf = ccxt_conf
-        self.safety_policy = build_trading_safety_policy(
-            ccxt_conf, trade_conf, environ
-        )
+        if type(query_only) is not bool:
+            raise CChanException("query_only 必须是明确布尔值", ErrCode.PARA_ERROR)
+        self.safety_policy = (build_query_only_safety_policy(ccxt_conf, environ) if query_only else
+                              build_trading_safety_policy(ccxt_conf, trade_conf, environ))
+        self._query_only_policy = self.safety_policy if query_only else None
         self.mode = self.safety_policy.mode
         self.dry_run = self.safety_policy.dry_run
         self.market_type = str(ccxt_conf.get("default_type", "spot")).lower()
@@ -230,6 +233,11 @@ class CCCXTTradeEngine(CTradeEngine):
             from .PaperInputs import CSoftwarePaperInputs
             if type(paper_inputs) is not CSoftwarePaperInputs or self.sim_state.paper_store is None:
                 raise CChanException("软件行情策略需要原持久 paper server/reader，不能传 ready 标志", ErrCode.PARA_ERROR)
+
+    def assert_order_mutation_allowed(self):
+        # Keep the constructor role even if a caller replaces the public policy.
+        if self._query_only_policy is not None:
+            self._query_only_policy.assert_order_allowed()
 
     def check_open_inputs(self, record, *, price=None):
         if self.opening_inputs is not None:
@@ -665,6 +673,7 @@ class CCCXTTradeEngine(CTradeEngine):
                     raise CChanException(f"精度化后订单违反 market {key}.{bound}", ErrCode.QUOTA_NOT_ENOUGH)
 
     def prepare_order(self, code, amount, price, *, reduce_only=False, record=None, post_only=False):
+        self.assert_order_mutation_allowed()
         if self.dry_run:
             if self.sim_state.paper_account is not None:
                 return self._prepare_paper_order(code, amount, price, reduce_only=reduce_only, record=record, post_only=post_only)
@@ -872,6 +881,7 @@ class CCCXTTradeEngine(CTradeEngine):
         post_only: bool = False,
         position_side: Optional[str] = None,
     ) -> COrderResult:
+        self.assert_order_mutation_allowed()
         amount = float(amount)
         if not math.isfinite(amount) or amount <= 0:
             raise CChanException("下单数量必须大于 0", ErrCode.PARA_ERROR)
@@ -1012,6 +1022,7 @@ class CCCXTTradeEngine(CTradeEngine):
 
     @paper_state_operation
     def cancel_order(self, code: str, order_id: str) -> bool:
+        self.assert_order_mutation_allowed()
         if self.dry_run:
             if self.sim_state.paper_account is not None:
                 state = self._paper_state(code, order_id, None)

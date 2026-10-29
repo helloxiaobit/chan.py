@@ -2,6 +2,16 @@
 
 用户在 2026-10-20 批准按 [C0–C7 计划](../plans/2026-10-20-crypto-full-version-completion.md) 开发并向 `helloxiaobit/chan.py full-version` 提交、推送。按阶段串行验证；Goal 仅在全部要求有结果后关闭。
 
+## 当前检查点（2026-10-30，查单子步离线验收完成）
+
+已批准的限定query-only角色与五fresh-worker混合历史恢复已完成本轮离线验收；精确范围见[双版报告](2026-10-30-native-query-only-verification.md)。新非Temp代际a097f905的两版各37/37批原件已齐备并独立核对：各7403 passed/2原有skip、7405唯一节点、24原始警告，完整node/state差异0。双版collection均7405/7406、仅原1个network排除；query-only50项、configured-process4项和原金额执行/入口模块均按实际完整成员复核，不借总数推断。两版12改动py的compileall、diff检查和主线程solo review已通过，源码179文件map仍1a44946c。原2793自然exit0、无活pytest后才补文档。
+
+原System Temp证据丢失、本代际3.14第34批与3.11第17批partial均保留为历史事实；只有新完整原件计入，不伪造原退出码、不修改原verifier/result或混合旧成绩。收尾补充审计两次字段/路径口径探针失败也如实记录，纠正读取后全部原件再核一致；不是测试断言放宽或新增业务通过数。
+
+本项保持六生产文件、六测试文件和对应文档的明确范围：共享原配置检查/原七入口，不新造发送器、表、金额公式或配置开关；原raw分页fake原样复用。实际配置、候选、kill、资金/SDK A/B、测试网/实盘和研究门禁未改。当前验证针对HEAD552f09e加本次工作树，最终Lore/普通push及远端身份以Git交付记录为准，不冒充新HEAD上重跑旧矩阵。
+
+**C5/C6仍进行中，C7未认证，整个Goal active。** 其他管理CLI的独立冷变更角色、候选换代/重新武装、OKX同等级金额、跨实现旧证明迁移、更广E2E及容量/舍入/实际通知送达仍待；查单可追加真实ack/累计回报，不意味着可撤单或降风险发单。以下逐日与逐批段落是当时检查点，不能把旧“未验/开发中”当作当前最终结果，也不能因本轮通过宣称全部完整版完成。
+
 ## 交付身份与归属
 
 - 开始时远端：`895fc700705e48013019a4054645e016a6e08d0e`。
@@ -37,7 +47,7 @@
 | C3 | 已完成离线实现与验收 | UTC purge/unknown、三模型身份、write-once 部署、三阶段评分与 SQLite 版本链；非实盘/外部认证 |
 | C4 | 已完成离线实现与验收 | 有界实际样本→三模型→搜索/独立验证→部署→全 trial 重放；93 项组合、608 项全仓离线通过，非经济采用 |
 | C5 | 进行中 | 单位/原生恢复/历史/来源、区间核对与持久冻结、cross/lot paper 已验；Binance已批准F/P条件金额现已贯通原CAS/claim/L2、SDK/HTTP使用点、终态/账户与cold恢复fake联合验收；OKX同等级原生金额路径、其余支持范围与C7外部认证仍待 |
-| C6 | 进行中（仍未完成） | 配置运行壳/失败传播/OS锁、输入/报价、API、软件paper进程级路径、通知脱敏与双版安装已验；Binance显式profile现已接原Engine及配置CLI/父壳输入时代，双版319项适用fake联验通过；信号显式换代、原生独立进程/更广E2E、迁移和外部通知送达仍待 |
+| C6 | 进行中（仍未完成） | 配置壳/输入报价/API/paper/通知/安装及Binance原金额CLI已验；限定query-only与同库五fresh-worker恢复现已双版离线验收，112顶层模块各7403通过/2原skip；其他冷管理动作、信号换代、更广E2E、跨实现迁移及外部通知送达仍待 |
 | C7 | 待前置验收 | 公共行情与有准入后的外部认证；代码发布按阶段进行 |
 
 基线：前一审计在完全相同 `22a5a56`、依赖和环境上执行的所选离线功能集合为 116 passed / 1 skipped / 1 deselected，带一个 XGBoost 弃用警告和 pytest 临时目录清理提示；该证据仅覆盖列明集合，不称全仓或真实交易所验收。行为修改后补跑对应回归。
@@ -1955,3 +1965,49 @@ CPython3.11.15原JUnit实际收集69项：`test_native_monetary_execution.py`为
 只据此支持配置软件接线：新CLI正向用fake live标签，父壳的外部stage传输仍fake，实际open/原SDK在同一进程中运行；尚非独立原生子进程、真实testnet/live、服务器锁额或时延/容量认证。旧输入时代不得因这次脚本身份变化重新封成当前准入；原已知L2管理继续按历史读原证据。候选换代/重新武装、OKX金额、本轮以外更广C5/C6及C7仍未完成，原完整Goal active；本轮Lore/普通push及远端身份随后以Git结果核实。
 
 收尾仅补三份文档；两版既有README文档检查各2 passed/0warning，自然exit0：3.14 CLI0.22s、`chanpy-configured-cli-final-docs-py314-50d9d408cfbc45e2af45d0d3edd48385.xml` SHA `5ccb2aa4041b3a7d23d9a71166ef3f3d0dc9f56bca242b71dcb93261271c49a9`；3.11 CLI0.21s、`chanpy-configured-cli-final-docs-py311-1e6db9c73fd34321a64997be647b6789.xml` SHA `53eb785f2f4d089cdb57c95a6e68f6588d57e99b2bb2aca7e0824005839ee578`。本轮计划/台账27处本地链接和README新目标均存在，diff检查通过；两生产脚本/一新测试的双版compileall适用同一未改源码。待发布范围严格为两生产脚本、一测试文件与README/本计划/台账三文档，非本轮文件和真实配置均不改；实际Git发布另核身份。
+
+### 2026-10-29独立进程与已批准查单角色：开发中，未交付
+
+上述配置CLI子步已实际Lore/普通push为`552f09e83bd4ba21a0209452e1dedaf844fd7d2b`，此后远端身份复核一致；当前新WIP尚无提交。沿[进程计划](../plans/2026-10-28-native-configured-process.md)补原RunTradeStage/CLI/cold SDK→同一原SQLite的独立进程，父进程只建立一次混合TEST/ALT旧历史，底层fake不替代Engine/来源/金额/CAS/L2。原许可完整时3.14四mode/side＋raw来源/CLI110项通过，不据此声称撤许可后的恢复已经可用。
+
+随后实证cold RestoreOrders在kill/缺candidate/unlock下于Engine构造处闭锁，零GET；用户已另行批准[限定查单角色](../specs/2026-10-28-native-cold-query-only-design.md)。按[实施计划](../plans/2026-10-28-native-cold-query-only.md)保留原普通构造/所有发送门禁，仅RestoreOrders显式使用冻结query-only policy；七类原公开变更入口在其副作用前拒绝，不给cancel/reduce额外许可。审查又用RED确认替换公开policy能绕过初版角色，现以构造时持有的原查单policy拒绝，并把新增角色检查/两个共享配置检查接入原实际函数枚举；不新造资金账本、sender或SDK hook。
+
+原3.14全112模块长任务出现4个新process用例F，后于00:35确认观察句柄/精确进程均不在、无终态JUnit；不能称完整通过。最小复现确认process故障注入被原append-only触发器正确拦住，现只在临时fake库的单一事务中按原测试模式暂撤trigger、注入坏L2并恢复原trigger，提交后才由第五进程读取；保留原UPDATE拒绝、坏证明不修复/不重下。相关原失败/63与142项GREEN及双版compileall见实施计划，未修改生产trigger/表或真实配置。
+
+最终179源码map冻结为`1a44946c062ce07e602cd2704a684160a1e486329d555479eb14a37ac5f3c123`（逐文件raw SHA的canonical sorted JSON新口径）。两解释器实际collect均7405/7406、仅1个network deselected，node顺序完全一致，冻结为37个互斥完整批次。当前3.14仅0–3批原终态通过：1599 passed/1既有skip、18条既有模型/弃用警告，1600唯一node/原JUnit SHA/source map均核对通过；3.11用例尚未运行。不得将未完成旧长任务或这些批次冒称完整双版验收、发布或C5/C6完成；实际交易/研究门禁、OKX金额与C7外部认证继续保留，整个Goal active。
+
+随后第4–6批各400 passed/0warning，CLI537.35s/802.31s/26.80s，自然exit0。累计3.14的0–6批2799 passed/1既有skip（2800唯一node），七份XML逐个外部SHA、实际node/状态、result JSON与冻结manifest独立复核一致，179源码map未变。包含完整原CLI20项和独立fresh-process四模式/方向矩阵；准确原件及SHA见实施计划。三份阶段文档8个本地链接、双版12文件compileall、diff检查均通过。当前仍未完成37批、3.11实际运行或提交/push，整个Goal保持active。
+
+第7/8批又各400 passed/0warning，CLI20.33s/67.49s，自然exit0。累计九批3599 passed/1既有skip、3600唯一node，全部原XML独立重建case/state与冻结manifest精确相符，原件SHA及源码map重核不变；细节见实施计划。继续原金额claim/default-entry等剩余批次，不能把来源/CLI部分通过扩大为完整双版验收或C5–C7完成，尚无本轮提交/push。
+
+随后第9/10批自然exit0，分别288 passed/58 passed、0warning，CLI699.05s/688.32s。十一份原XML的外部SHA、重建case/state、顺序与互斥性独立核对原manifest，均精确一致；179源码map仍为1a44946c口径的冻结值。累计3.14仅11/37批，3945 passed/1既有skip、3946唯一node，18条既有警告；原件及SHA登记在实施计划。原99811及其pytest全部退出后才补此文档，未改生产/测试源码。继续第11及后续批次，3.11实际用例与完整验收/发布仍未完成；不扩大查单角色、实际交易或研究授权，Goal保持active。
+
+第11/12批随后自然exit0：7 passed/6 passed、均0warning，CLI603.18s/642.51s；原件及SHA见实施计划。原76226及pytest全部退出后，主线程独立重读十三份XML与result JSON，精确重建3959唯一node/state和顺序，无重叠/遗漏于manifest前十三片段，179源码map与HEAD552f09e均未变。累计3.14仅13/37批，3958 passed/1既有skip、18条既有警告；覆盖原默认入口成交与账户回读的预定片段，不是整个模块或双版验收。继续第13及后续批次，3.11实际用例、完整验收及本轮提交/push仍未完成，Goal active；本轮只在无活测试时更新文档，没有生产/测试源码或实际配置/交易/研究门禁变更。
+
+第13/14批随后自然exit0：7 passed/64 passed、均0warning，CLI640.05s/633.98s；原件及SHA见实施计划。原49313全部自然结束后独立核对十五份XML/result JSON，4030唯一node/state和顺序精确对应manifest前十五片段，原件SHA、179源码map及HEAD552f09e均未变。累计3.14仅15/37批，4029 passed/1既有skip、18条既有警告；覆盖原已知成交/未知查询、profile预算及SDK提交事实边界的预定片段。只读复核独立进程helper仍只fake底层HTTP/时钟，未替换原准入/CAS或由子进程重建证明。仅在无活pytest时补文档，源码/配置/门禁未改；继续第15及后续批次，3.11实际用例、完整验收和本轮提交/push尚未完成，Goal active，不宣称C5–C7完成或真实交易认证。
+
+第15/16批随后自然exit0：16 passed/23 passed、均0warning，CLI661.13s/660.03s；原件及SHA见实施计划。原82328全部结束后，十七份XML/result JSON的外部SHA、实际4069唯一node/state和顺序独立匹配manifest前十七片段；179源码map及HEAD552f09e未变。累计3.14仅17/37批，4068 passed/1既有skip、18条既有警告。另从完整manifest和原XML独立筛出默认金额入口模块，94项成员/顺序精确相同且全部passed，故该模块在3.14冻结所选清单内完整通过；不扩大为3.11、完整Engine或C5–C7验收。本轮只在无活pytest时补两份记录，代码/配置/门禁均未改；后续从第17批继续，双版完整验收与本轮提交/push仍未完成，Goal active。
+
+第17/18批随后自然exit0：85 passed/10 passed、均0warning，CLI645.65s/639.14s；原件及SHA见实施计划。原98425全部结束后独立重读十九份XML/result JSON，实际4164唯一node/state、顺序与互斥性精确对应manifest前十九片段，原件SHA、179源码map及HEAD552f09e未变。累计3.14仅19/37批，4163 passed/1既有skip、18条既有警告。额外独立核实Engine所选76项及默认金额入口所选94项均完整匹配manifest且全部passed；结论仅限3.14，不代表3.11、完整执行链、C5–C7或真实交易认证。本轮仅无活pytest时补两份文档，代码/配置/门禁未改；继续第19及后续批次，完整双版验收与本轮提交/push未完成，Goal active。
+
+第19/20批随后自然exit0：12 passed/5 passed、均0warning，CLI603.88s/589.47s；原件及SHA见实施计划。原69665全部结束后独立重读二十一份XML/result JSON，4181唯一node/state、顺序与互斥性精确匹配manifest前二十一片段，原件SHA、179源码map及HEAD552f09e均未变。累计3.14仅21/37批，4180 passed/1既有skip、18条既有警告；默认金额入口94项和Engine76项保持各自所选清单完整通过。本轮覆盖原SDK（底层fake）提交、错误脱敏、部分成交/撤单/原生账户/冷重启的预定参数，未据此宣布完整执行模块、C6数据/模型全链、3.11或外部认证通过。仅在无活pytest时补两份记录，代码/配置/门禁未改；继续第21及后续批次，完整双版验收和本轮提交/push未完成，Goal active。
+
+第21/22批随后自然exit0：5 passed/12 passed、均0warning，CLI583.54s/635.84s；原件及SHA见实施计划。原71282全部结束后独立重读二十三份XML/result JSON，4198唯一node/state、顺序与互斥性精确匹配manifest前二十三片段；原件SHA、179源码map及HEAD552f09e均未变。累计3.14仅23/37批，4197 passed/1既有skip、18条既有警告；默认金额入口94项和Engine76项保持各自所选清单完整通过。本轮继续覆盖冷重启、取消错误保留未知、临时request恢复与fetch预处理会话切换等片段，不扩大为完整执行模块、3.11、C5–C7或外部认证。仅在无活pytest时补两份记录，代码/配置/门禁未改；继续第23及后续批次，完整双版验收和本轮提交/push仍未完成，Goal active。
+
+第23/24批随后自然exit0：15 passed/13 passed、均0warning，CLI649.32s/636.60s；原件及SHA见实施计划。原36661全部结束后独立重读二十五份XML/result JSON，4226唯一node/state、顺序与互斥性精确匹配manifest前二十五片段，原件SHA、179源码map及HEAD552f09e均未变；分支仍full-version，工作树范围无新增配置或非本项文件。累计3.14仅25/37批，4225 passed/1既有skip、18条既有警告；默认金额入口94项和Engine76项仍为各自所选清单完整通过。本轮覆盖SDK等待期owner、SQL前阻断、claim闭包及fetch/桥接身份等边界，不扩大为3.11、完整执行模块、C5–C7或外部认证。仅在无活pytest时补两份记录，代码/配置/门禁未改；继续第25及后续批次，完整双版验收和本轮提交/push仍未完成，Goal active。
+
+第25/26批随后自然exit0：10 passed/30 passed、均0warning，CLI620.44s/686.29s；原件及SHA见实施计划。原7058全部结束后独立核二十七份XML/result JSON，4266唯一node/state、顺序与互斥性精确对应manifest前二十七片段，原件SHA、179源码map及HEAD552f09e未变。累计3.14仅27/37批，4265 passed/1既有skip、18条既有警告。另独立重建执行模块86项，完整匹配其manifest所选清单且全passed；默认金额入口94项、Engine76项保持同样结论，仅限3.14，不扩大为完整双版、其他HTTP边界、C5–C7或真实交易认证。本轮覆盖桥接/传输作用域、原adapter零重试、原窗口预算及profile漂移等边界，且仅无活pytest时补文档，代码/配置/门禁未改；继续第27及后续批次，完整双版验收与本轮提交/push仍未完成，Goal active。
+
+### 2026-10-29验证环境与原件缺失：进入恢复，未新增验收结论
+
+原59386终态报告第27批132 passed/第28批56 passed，但恢复检查时两套Temp虚拟环境启动文件及验证目录内manifest/JUnit/result已缺失，原件无法独立复核，不将188项加入已验收数。目录仍在、文件缺失及中午修改时间是已观察事实，删除机制/发起者未核得；详见[恢复计划](../plans/2026-10-29-native-verification-evidence-recovery.md)。此前0–26共27批的4265 passed/1 skip为当时已核的历史记录，不改写也不冒充当前原件。
+
+当前源码179文件map仍1a44946c、full-version/HEAD552f09e未变；两版基础解释器和uv仍可用，原71/70包freeze SHA及两份requirements SHA已重核一致。全局3.14包版本不同，不能当作原环境继续。恢复使用非Temp独占目录、原固定依赖和相同112模块/7405节点/37切分；新代际从0重取完整双版原件，不暗换版本、不放宽测试或复制旧成绩。产品代码、requirements、实际配置、权限和交易/研究门禁未改，尚未提交/push，整个Goal active。
+
+恢复进展：新隔离3.14/70包及3.11/71包已逐包核对原依赖快照、真实导入前缀/user-site及pip check，均通过；离线缺缓存的真实安装exit1保留后才从公开PyPI恢复相同版本，无全局更新。task-local控制自检双版各14项通过，不计业务验收。两版实际collect均exit0且独立核对原7405-node SHA、112模块、179源码map与37批切分精确一致。新代际a097f905、manifest raw SHA `a4e4d9ab8277389949a5f66f0ecb4243c43a79c10e6b0241c6679ccc2b0fffb3`，完整路径/封装SHA见[恢复计划](../plans/2026-10-29-native-verification-evidence-recovery.md)。产品测试新验收仍从0开始，接着完整3.14再完整3.11；仍未提交/push或关闭任何交易门禁。
+
+新代际3.14第0–1批已自然exit0，原8328全部结束后独立重读800唯一node/state、manifest、result JSON及两份XML外部SHA，顺序与成员精确匹配前两片段、179源码map与环境身份不变：799 passed/1原有skip、13既有警告。XML及SHA和CLI/外层时长逐项记录在恢复计划；只验收新2/37批，不加入历史旧成绩。期间只读复核原SDK/账本/七变更入口、五fresh-worker测试及AST不变的两个共享fake，无新增生产改动或权限设计。仅在无活pytest时补记录，继续完整3.14剩余批次再完整3.11；本项提交/push与C5/C6/C7仍未完成，Goal active。
+
+2026-10-29 22:18续接：原44921句柄缺失且系统已无Python/pytest/uv。磁盘保留新代际0–33完整原件，独立重读验证6433唯一节点按序精确匹配、6432 passed/1原有skip、19原始警告；外部SHA/canonical封装/source/runtime/helper/requirements/config均未漂移。原native execution 86项、Engine76项、default-entry94项、claim59项和cold-process4项已完整通过3.14所选清单，但query-only runtime50项和完整3.11仍未验。第34批只有partial stdout，无JUnit/result/退出码，不计其节点；原因未知，事实、逐批SHA及工件可逆归档/完整重跑方案见[恢复计划](../plans/2026-10-29-native-verification-evidence-recovery.md)。只在无活pytest时补文档，不改冻结清单或原verifier/产品/测试/实际配置；继续未完成第34–36再完整3.11，尚未Lore/push或宣称C5/C6/C7完成，Goal active。
+
+2026-10-30 01:13续接：原78007已不存在且两次系统检查无Python/pytest/uv；3.11第16批完整23 passed已独立核验，第17批仅partial、无JUnit/result/退出码，不计成绩。当前新代际全部3.14的37/37批可读取且独立核定7403 passed/2原有skip、7405节点、24警告；3.11的17/37批为4068 passed/1原有skip、4069节点、18警告，与3.14对应node/state逐项相等，179源码和两版完整环境身份未漂移。默认金额入口94项、cold-process4项已双版通过；3.11 Engine仍32/76、查单角色仍0/50，不宣称完整验收。按[恢复计划](../plans/2026-10-29-native-verification-evidence-recovery.md)保留中断原件，仅归档已停第17批started，再用原helper完整重跑85节点至新GUID并串行续行；不改产品、测试、依赖、实际配置或门禁。完整双版/Lore/push仍未完成，C5/C6/C7和整个Goal active。

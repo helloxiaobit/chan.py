@@ -1148,6 +1148,18 @@ UTF-8 canonical JSON（sort_keys=True、ensure_ascii=False、separators=(",", ":
 
 配置CLI/父壳接线另经双CPython各319项适用组合通过，含20个新边界用例和原paper/input/quote/notification/native current回归，详见[接线计划](docs/superpowers/plans/2026-10-28-native-configured-cycle.md)。新正向是fake live标签；父壳→原CLI交接在同一进程验证、外部stage传输仍fake，不声称独立原生子进程或真实交易所认证。
 
+### C6 查单专用冷初始化与独立进程（fake离线验收，2026-10-30）
+
+原`RestoreOrders`现显式使用冻结的query-only角色：kill、缺candidate/profile/unlock或旧新风险输入过期不妨碍核对原已存在订单，但原账户/单位/订单/SDK/L2与实现身份仍须成立。未知GET非零退出，保留事实，不释放、不重下、不修补或重签。查单可经原writer追加真实ack/累计回报，不是数据库零写入。
+
+该Engine永远拒绝原add/cover/partial-close/poll/prepare/place/cancel七类变更，包含dry-run/paper及降风险；恢复环境、修改配置或替换公开policy不能升级原构造角色。普通Engine及其他管理CLI不借此跳过原门禁；这也不是直接SDK或任意Python的权限沙箱。
+
+四个模式/方向场景各用五个fresh worker、同一原SQLite混合历史验证唯一原SDK POST、重复不重下、撤新风险许可后的未知/健康GET及损坏L2拒绝。只fake底层HTTP/时钟，无真实端点。冻结的112个顶层测试模块共7405节点，CPython3.14.2和3.11.15各37批完整核验：各7403 passed/2原有skip、24原始警告，完整节点/状态逐项相同；其中query-only50项、独立process4项均双版通过。原1个network排除未增加，股票GUI缺PyQt6与Binance缺isolated现金通道的原skip保留。
+
+本轮以六个原生产文件复用现有政策/Engine/SDK/SQLite；两个纯raw测试分页类原样抽出复用，无新依赖、发送器、账本或实际配置变化。准确源码/环境、manifest/JUnit/日志摘要、中断保留及范围见[双版验收报告](docs/superpowers/reports/2026-10-30-native-query-only-verification.md)、[查单计划](docs/superpowers/plans/2026-10-28-native-cold-query-only.md)和[恢复计划](docs/superpowers/plans/2026-10-29-native-verification-evidence-recovery.md)。原始大工件在本地非Temp验证根，GitHub报告不等于已附全量可搬运复现包。
+
+这只完成限定查单与列明软件验证，不关闭C5/C6或整个Goal。其他管理动作的独立冷角色、候选换代/重新武装、OKX同等级金额、跨实现旧证明迁移、更广E2E及实际时延/容量/舍入仍待；C7外部认证、真实测试网/实盘与研究门禁不变。
+
 ## A股与可选件
 
 - A股研究:`DATA_SRC.BAO_STOCK`(联网)或 `OfflineData/bao_download.py` 落地后离线;GUI 见 `App/ashare_bsp_scanner_gui.py`

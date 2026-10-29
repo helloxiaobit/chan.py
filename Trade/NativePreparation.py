@@ -182,7 +182,7 @@ def _selected_runtime(engine, guard, policy):
     from .Script import Deployment as deployment_module
     selected = []
     for owner, module, cls, names in (
-        (engine, "Trade.CCXTTradeEngine", "CCCXTTradeEngine", ("prepare_order", "get_exchange", "check_open_inputs", "_market_contract",
+        (engine, "Trade.CCXTTradeEngine", "CCCXTTradeEngine", ("prepare_order", "get_exchange", "check_open_inputs", "assert_order_mutation_allowed", "_market_contract",
              "_native_entry_profile", "_acquire_open_intent",
              "_execution_settings", "_observe_account", "_assert_account_context", "_validated_persisted_intent",
              "_read_order_contract", "_assert_persisted_monetary_contract", "_monetary_consumer_owner", "_fetch_persisted_order",
@@ -249,7 +249,7 @@ def _selected_runtime(engine, guard, policy):
     selected.extend(("Trade.CCXTTradeEngine", name, getattr(engine_module, name))
                     for name in ("_quantity", "_float_exact", "_contract_id"))
     selected.extend(("Trade.SafetyPolicy", name, getattr(safety_module, name))
-                    for name in ("build_trading_safety_policy", "_load_candidate_receipt"))
+                    for name in ("build_trading_safety_policy", "_load_candidate_receipt", "_configured_mode", "_assert_private_configuration"))
     selected.append(("Trade.AccountIdentity", "observe_account_context", engine_module.observe_account_context))
     selected.append(("Trade.Script.Deployment", "verify_entry_assessment", deployment_module.verify_entry_assessment))
     selected.extend((__name__, name, globals()[name]) for name in ("_local_prepare_view", "_stable_local_view", "_function_identity", "_assert_execution_sdk"))

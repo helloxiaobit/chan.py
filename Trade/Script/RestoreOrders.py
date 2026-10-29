@@ -17,7 +17,7 @@ def main():
     try:
         db = CChanDB()
         try:
-            with configured_trade_engine(db) as engine:
+            with configured_trade_engine(db, query_only=True) as engine:
                 result = restore_orders(db, engine)
                 issues = engine.paper_inputs.issues if engine.paper_inputs is not None else []
         finally:

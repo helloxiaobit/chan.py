@@ -97,6 +97,43 @@ class TradingSafetyPolicy:
             raise _locked("CHANPY_LIVE_TRADING_UNLOCK 已失效")
 
 
+@dataclass(frozen=True)
+class QueryOnlyTradingSafetyPolicy(TradingSafetyPolicy):
+    """An immutable non-sending role, never new-risk permission."""
+
+    def assert_order_allowed(self) -> None:
+        raise _locked("查单专用引擎不能创建、修改或取消订单")
+
+
+def _configured_mode(exchange_conf):
+    mode = exchange_conf.get("mode", DRY_RUN)
+    if mode not in _MODES:
+        raise _locked("ccxt.mode 必须是 dry_run、testnet 或 live")
+    return mode
+
+
+def _assert_private_configuration(exchange_conf, mode):
+    if not exchange_conf.get("api_key") or not exchange_conf.get("secret"):
+        raise _locked("非 dry-run 模式缺少交易所凭据")
+    if mode == TESTNET and exchange_conf.get("testnet") is not True:
+        raise _locked("testnet 模式要求 ccxt.testnet=true")
+    if mode == LIVE and exchange_conf.get("testnet") is not False:
+        raise _locked("live 模式要求 ccxt.testnet=false")
+
+
+def build_query_only_safety_policy(ccxt_conf, environ=None) -> QueryOnlyTradingSafetyPolicy:
+    """Validate an explicit read route without inventing a candidate/unlock."""
+    exchange_conf = ccxt_conf or {}
+    mode = _configured_mode(exchange_conf)
+    if mode != DRY_RUN:
+        _assert_private_configuration(exchange_conf, mode)
+        if (exchange_conf.get("exchange") not in {"binance", "binanceusdm", "okx"}
+                or exchange_conf.get("default_type") not in {"spot", "swap", "future"}
+                or any(type(exchange_conf.get(key)) is not str for key in ("api_key", "secret"))):
+            raise _locked("查单专用原生路径需要明确的交易所、市场与凭据结构")
+    return QueryOnlyTradingSafetyPolicy(mode, None, os.environ if environ is None else environ)
+
+
 def build_trading_safety_policy(
     ccxt_conf: Mapping[str, Any] | None,
     trade_conf: Mapping[str, Any] | None,
@@ -105,22 +142,15 @@ def build_trading_safety_policy(
     exchange_conf = ccxt_conf or {}
     trading_conf = trade_conf or {}
     environment = os.environ if environ is None else environ
-    mode = exchange_conf.get("mode", DRY_RUN)
-    if mode not in _MODES:
-        raise _locked("ccxt.mode 必须是 dry_run、testnet 或 live")
+    mode = _configured_mode(exchange_conf)
     if mode == DRY_RUN:
         return TradingSafetyPolicy(mode, None, environment)
     receipt = _load_candidate_receipt(trading_conf)
-    if not exchange_conf.get("api_key") or not exchange_conf.get("secret"):
-        raise _locked("非 dry-run 模式缺少交易所凭据")
+    _assert_private_configuration(exchange_conf, mode)
     if mode == TESTNET:
-        if exchange_conf.get("testnet") is not True:
-            raise _locked("testnet 模式要求 ccxt.testnet=true")
         if environment.get("CHANPY_ENABLE_TESTNET") != _TESTNET_UNLOCK:
             raise _locked("testnet 模式要求 CHANPY_ENABLE_TESTNET=YES")
     else:
-        if exchange_conf.get("testnet") is not False:
-            raise _locked("live 模式要求 ccxt.testnet=false")
         if environment.get("CHANPY_LIVE_TRADING_UNLOCK") != _LIVE_UNLOCK:
             raise _locked(
                 "live 模式要求 CHANPY_LIVE_TRADING_UNLOCK="
