@@ -35,3 +35,15 @@
 先写离线TDD：原SDK/Entry、零网络，证明每次调用每个路由文件只解析一次且必须在返回前重新读取核字节；第二次调用必须重新读/parse，任一Entry（含最后source Entry）晚变或源字节漂移仍拒绝。观察原重复读取/未核字节变化的RED后，唯一生产修改限该函数，使用仅存于本次调用的path→source/tree字典，逐Entry原验证不删，末尾重新read比较；不增加跨调用缓存、SDK副本、hook、依赖或权限。复用适用SDK负向/管理来源/原A/B回归，双版串行冻结成员与源码后验收，原管理仍未接通。随后回到完整区间归属、动作参数、原CAS/A/B和CLI主线，不能把此成本清理称为管理能力完成。
 
 该局部清理已完成严格RED/GREEN及[双版254节点审查](../reports/2026-10-30-native-sdk-route-snapshot.md)，186源码/70与71包环境精确配对；同次parse由5/14降到1，末尾重新读原字节，下一调用仍fresh，无新权限或窗口放宽。它不是最终管理能力，不把旧7405或上轮478节点重标为当前再次运行。下一实施优先复用AccountReconcile.build_account_reconciliation_with_pending的原完整区间/执行归属：基线必须来自原已验证root/check，不发明lookback；owned pending须在after endpoint之前读取，wallet/execution覆盖原before.started到after.finished+1的完整区间并绑定全部原市场/账户/ledger。先用相同净仓位但存在unowned往返成交的RED证明不能凭净数量通过，再接动作数量/精度、原CAS和A/B。原新风险collector含冻结/资金前置条件，不能直接让其通用PASS充当管理许可或借管理路径解冻。
+
+## 0c3a9a9后完整区间接线与复用前计划
+
+先在tests/test_native_management_interval.py用原claimed_order/management_case和底层raw HTTP fake，补齐该fake venue新增成交的真实userTrades字段（显式零佣金，原现金不变），不mock对账/准入成功。先见缺入口RED；clean原两币区间应闭合，加入价格/费用均相抵但无原attempt归属的往返成交后，净position和钱包不变仍拒绝。再测缺失/重复/时间缺口、来源/DB/函数别名晚变及最终窗口，保留原件。
+
+唯一生产模块仍NativeManagement。抽取现有collector主体为私有共享实现，原v2诊断入口显式保留原采集顺序/结果，不给它新增授权；新增collect_native_management_interval入口才走完整区间路径。复用原runtime/owner/窗口尾检查，扩展枚举实际新增collector/builder与被调用别名，不复制SDK/账户/金额对账器。基线选原已验证L2 root所引check中已接受after账户快照，完整区间从该快照started_ms起到本次after.finished_ms+1；不得用任意caller baseline或短lookback。
+
+完整路径一次planned采集pending→after账户→各市场execution（前后原账户身份）→wallet→market，原Ledger/完整journal前后一致，调用原build_account_reconciliation_with_pending而非新风险余额容量PASS；不更改风险冻结或发布解冻。所有原窗口仍从本调用开始计时、不自动重采，不把JSON或matched_observations视为动作capability。原v2回归、区间/ownership及新入口适用双版串行验收后Lore/push；此步仍不代替请求精度、账户CAS、管理A/B或三CLI的后续实现。
+
+该完整区间观察子步现已[双版同442精确节点验收](../reports/2026-10-30-native-management-interval.md)：各441 passed/1原有isolated skip/零warning，新52项全通过；187源码map、成员/顺序/状态、原环境及raw工件独立配对一致。原基线/全市场execution+wallet、已知事实防抹除/末尾入库竞态、先账户后执行及独立单调预算均有RED/GREEN；整数ms端点相等通过原identity GET分隔，不改原严格规则。中间诊断一次错误假设调用次数也保留，未计入终验成绩。原source-v2沿私有共享主体保留诊断顺序；v3结果仍不是动作许可，未更新配置或表/资金/门禁。
+
+下一实施点是第3步剩余的实际请求与原SDK精度化/只关闭语义、当前调用不可转交context；然后第4–6步CAS账户占用、管理A/B和三CLI/fresh-worker。cancel不应借新风险余额或要求可关闭余量大于零，但close须原单终态及当前可证实余量。继续沿原intent/claim/journal，不创建新sender/表，真实通道完整性与实际网络预算不凭fake通过；整个Goal仍active。

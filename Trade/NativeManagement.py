@@ -97,7 +97,58 @@ def read_native_management_order_identity(chan, record_id, *, phase):
         _fail()
 
 
-def _source_runtime(engine):
+def _known_management_interval_sources(chan, context, *, current=None):
+    """Original verified stores and no-erasure rules, never a new baseline."""
+    from . import AccountStore as Store
+    from . import ExecutionStore as Scans
+    from . import AccountSources as Account
+    from . import NativeCurrentComponents as Current
+    database = Boundary._database(chan)
+    connection, table, key = database.conn, chan.table, account_key(context)
+    Boundary._same_database(chan, database, connection, table, owned=True)
+    fingerprint = {"account_evidence": [], "execution_scans": []}
+    for row in database.query(f"SELECT evidence_id FROM {Store.TABLE} ORDER BY evidence_id"):
+        document = Store.read_evidence(database, row["evidence_id"])
+        Boundary._same_database(chan, database, connection, table, owned=True)
+        observed = document["payload"]["account_context"]
+        if account_key(observed) != key:
+            continue
+        if observed != context:
+            _fail()
+        fingerprint["account_evidence"].append(row["evidence_id"])
+        if current is not None:
+            if document["schema"] == Account.WALLET_SCHEMA:
+                Current._known_facts(document, current["wallets"], current["before"]["payload"]["started_ms"], current["after"]["payload"]["finished_ms"]+1)
+                Current._latest(document, current["wallets"])
+            else:
+                Current._latest(document, [current["after"]])
+    by_instrument = {} if current is None else {row["receipt"]["payload"]["market"]["symbol"]: row for row in current["executions"]}
+    for row in database.query(f"SELECT scan_id FROM {Scans.SCANS} ORDER BY scan_id"):
+        receipt, linked = Scans.read_scan_with_account(database, row["scan_id"])
+        Boundary._same_database(chan, database, connection, table, owned=True)
+        if linked is None:
+            if receipt["payload"]["venue"] == context["venue"] and receipt["payload"]["mode"] == context["mode"]:
+                _fail()  # Caller namespace does not prove a different native account.
+            continue
+        observed = linked["observation"]["account_context"]
+        if account_key(observed) != key:
+            continue
+        if observed != context:
+            _fail()
+        fingerprint["execution_scans"].append({"scan_id": row["scan_id"], "manifest_sha256": linked["manifest_sha256"]})
+        if current is not None:
+            selected = by_instrument.get(receipt["payload"]["market"]["symbol"])
+            if selected is None:
+                _fail()
+            Current._known_facts(receipt, [selected["receipt"]], current["before"]["payload"]["started_ms"], current["after"]["payload"]["finished_ms"]+1)
+            at, latest = linked["observation"]["finished_ms"], selected["observed_ms"]
+            if at > latest or (at == latest and canonical_bytes(receipt) != canonical_bytes(selected["receipt"])):
+                _fail()
+    Boundary._same_database(chan, database, connection, table, owned=True)
+    return fingerprint
+
+
+def _source_runtime(engine, *, include_interval=False):
     """Reuse original runtime/SDK checks, with the actual frozen read role."""
     role = getattr(engine, "_management_only_policy", None)
     if role is None or engine.mode != role.mode or engine.dry_run is not role.dry_run:
@@ -131,6 +182,32 @@ def _source_runtime(engine):
         (Ownership, ("_build", "_match", "_validate_contract", "_terminal_reference")),
         (Facts, ("_market", "_number", "_string")),
     ) for name in names)
+    if include_interval:
+        from . import AccountIdentity as Identity
+        from . import ExecutionReconcile as Executions
+        from . import AccountStore as Store
+        from . import ExecutionStore as Scans
+        for owner, module, names in ((Reconcile, Identity, ("verify_account_context",)),
+                (Reconcile, Account, ("verify_account_snapshot", "verify_wallet_scan")),
+                (Reconcile, Executions, ("_order_ids", "build_execution_ownership")),
+                (Executions, Identity, ("verify_account_context",)), (Executions, Facts, ("verify_execution_scan",)),
+                (Store, Account, ("verify_account_snapshot", "verify_wallet_scan")),
+                (Store, Audit, ("validate_schema",)), (Scans, Audit, ("validate_schema",)),
+                (Scans, Identity, ("verify_account_context",)), (Scans, Facts, ("verify_execution_fact", "verify_execution_scan")),
+                (Current, Admission, ("_fail_sources",))):
+            if any(getattr(owner, name) is not getattr(module, name) for name in names):
+                _fail()
+        selected.extend((module, name) for module, names in (
+            (Identity, ("observe_account_context", "verify_account_context")),
+            (Account, ("collect_wallet_scan", "verify_wallet_scan")),
+            (Facts, ("collect_execution_scan", "verify_execution_scan")),
+            (Risk, ("read_check",)),
+            (Reconcile, ("build_account_reconciliation_with_pending", "_build", "_covered", "_unique", "_latest", "_cash_components")),
+            (Executions, ("build_execution_ownership", "_reason", "_requested", "_order_ids")),
+            (Current, ("_known_facts", "_latest")), (Admission, ("_fail_sources",)),
+            (Store, ("read_evidence", "_read_row", "_verify", "_encode")),
+            (Scans, ("read_scan_with_account", "_read_scan", "_read_manifest", "_read_fact", "_load", "_verify_observation", "_context", "_row_context", "_namespace_account")),
+        ) for name in names)
     callables = {module.__name__+":"+name: Prepare._function_identity(module.__name__, name,
         getattr(module, name), modules) for module, name in selected}
     for owner, module, cls, names in (
@@ -142,13 +219,30 @@ def _source_runtime(engine):
             if type(method) is not types.MethodType or method.__self__ is not owner:
                 _fail()
             callables[module+":"+cls+"."+name] = Prepare._function_identity(module, cls+"."+name, method.__func__, modules)
-    for name in ("read_native_management_order_identity", "_source_runtime", "collect_native_management_sources", "observe_native_management_quantity"):
+    for name in ("read_native_management_order_identity", "_source_runtime", "collect_native_management_sources",
+            "collect_native_management_interval", "_collect_native_management_sources", "_known_management_interval_sources", "observe_native_management_quantity"):
         callables[__name__+":"+name] = Prepare._function_identity(__name__, name, globals()[name], modules)
     return {"engine": Prepare._selected_runtime(engine, None, engine._management_only_policy), "sources": callables}
 
 
 def collect_native_management_sources(engine, record_id, *, phase, policy,
         instrument_max_age_ms, instrument_max_observation_span_ms, order_max_age_ms, order_max_observation_span_ms):
+    """Original v2 diagnostic reads only, never a complete action interval."""
+    return _collect_native_management_sources(engine, record_id, phase=phase, policy=policy,
+        instrument_max_age_ms=instrument_max_age_ms, instrument_max_observation_span_ms=instrument_max_observation_span_ms,
+        order_max_age_ms=order_max_age_ms, order_max_observation_span_ms=order_max_observation_span_ms, include_interval=False)
+
+
+def collect_native_management_interval(engine, record_id, *, phase, policy,
+        instrument_max_age_ms, instrument_max_observation_span_ms, order_max_age_ms, order_max_observation_span_ms):
+    """Own the original full interval, not an action capability or release."""
+    return _collect_native_management_sources(engine, record_id, phase=phase, policy=policy,
+        instrument_max_age_ms=instrument_max_age_ms, instrument_max_observation_span_ms=instrument_max_observation_span_ms,
+        order_max_age_ms=order_max_age_ms, order_max_observation_span_ms=order_max_observation_span_ms, include_interval=True)
+
+
+def _collect_native_management_sources(engine, record_id, *, phase, policy,
+        instrument_max_age_ms, instrument_max_observation_span_ms, order_max_age_ms, order_max_observation_span_ms, include_interval):
     """Own current GETs, not quantity capability, CAS, release or permission.
 
     Query may persist its original ACK/terminal observation, never apply fills.
@@ -164,8 +258,13 @@ def collect_native_management_sources(engine, record_id, *, phase, policy,
     from . import AccountSources as Account
     from . import NativePendingOrders as Pending
     from . import NativeMarketEvidence as Market
+    from . import AccountIdentity as Identity
+    from . import AccountRiskStore as Risk
+    from . import NativeAccountCheck as Check
+    from . import AccountReconcile as Reconcile
+    from . import ExecutionFacts as Facts
     try:
-        if (type(engine) is not CCCXTTradeEngine or engine.dry_run is not False or engine.market_type != "swap"
+        if (type(include_interval) is not bool or type(engine) is not CCCXTTradeEngine or engine.dry_run is not False or engine.market_type != "swap"
                 or engine.mode not in {"live", "testnet"}):
             _fail()
         provided = {"policy": policy, "instrument_max_age_ms": instrument_max_age_ms,
@@ -177,7 +276,7 @@ def collect_native_management_sources(engine, record_id, *, phase, policy,
             if name != "policy" and (type(value) is not int or not 0 <= value < 2**63):
                 _fail()
         values["policy"] = Current.read_native_component_policy(values["policy"])
-        runtime = _source_runtime(engine)
+        runtime = _source_runtime(engine, include_interval=include_interval)
         chan, mode, role = engine.chan_db, engine.mode, engine._management_only_policy
         database = Boundary._database(chan)
         connection, table = database.conn, chan.table
@@ -192,6 +291,16 @@ def collect_native_management_sources(engine, record_id, *, phase, policy,
             transition = Transition._read(chan, record)
             Boundary._same_database(chan, database, connection, table, owned=True)
             codes = transition["payload"]["root"]["preparation"]["identity"]["payload"]["scope"]["code_list"]
+            baseline = None
+            if include_interval:
+                check_id = transition["payload"]["root"]["boundary"]["payload"]["check_id"]
+                check = Risk.read_check(database, check_id)
+                if (check["payload"]["account_context"] != local["payload"]["account_context"]
+                        or check["payload"]["report"]["payload"]["status"] != "matched_observations"):
+                    _fail()
+                baseline = {"check_id": check_id, "check": check, "before": check["payload"]["inputs"]["after"]}
+                known = _known_management_interval_sources(chan, local["payload"]["account_context"])
+                Boundary._same_database(chan, database, connection, table, owned=True)
         if engine.exchange is None:
             Client.initialize_native_order_recovery_client(engine, record_id)
         exchange = engine.exchange
@@ -212,13 +321,14 @@ def collect_native_management_sources(engine, record_id, *, phase, policy,
                     or exchange.session is not session or session.request != request
                     or canonical_bytes(engine.ccxt_conf) != config or canonical_bytes(provided) != original
                     or canonical_bytes(database.query("PRAGMA database_list")) != location
-                    or Prepare._client_binding(exchange) != binding or _source_runtime(engine) != runtime
+                    or Prepare._client_binding(exchange) != binding or _source_runtime(engine, include_interval=include_interval) != runtime
                     or {**Prepare._implementation(), __name__: hashlib.sha256(Path(__file__).read_bytes()).hexdigest()} != implementation):
                 _fail()
             # Same original Entry verifier, not a second source/SDK verifier.
             Prepare._assert_execution_sdk(exchange, mode, source_entries=("fapiPrivateV3GetBalance", "fapiPrivateV3GetAccount",
                 "fapiPrivateV3GetPositionRisk", "fapiPrivateGetSymbolConfig", "fapiPrivateGetMultiAssetsMargin",
-                "fapiPrivateGetOpenAlgoOrders", "fapiPublicGetPremiumIndex", "fapiPublicGetTickerBookTicker", "fapiPublicGetExchangeInfo"))
+                "fapiPrivateGetOpenAlgoOrders", "fapiPublicGetPremiumIndex", "fapiPublicGetTickerBookTicker", "fapiPublicGetExchangeInfo")
+                +(("fapiPrivateGetUserTrades", "fapiPrivateGetIncome") if include_interval else ()))
             from . import NativePreparedIntent as Prepared
             Prepared._assert_native_adapter_retry_policy(exchange)
             if identity and read_native_management_order_identity(chan, record_id, phase=phase) != local:
@@ -258,11 +368,96 @@ def collect_native_management_sources(engine, record_id, *, phase, policy,
             _fail()
         units = [engine._market_contract(code)[0] for code in codes]
         owners()
-        account = Account.collect_account_snapshot(exchange, units, mode=mode)
-        owners()
-        pending = Pending.collect_native_pending_orders(exchange, units, mode=mode)
-        owners()
+        ledger, roots, prefix = None, (), None
+        component_windows = []
+        if include_interval:
+            with database.transaction():
+                Boundary._same_database(chan, database, connection, table, owned=True)
+                ledger, prefix = Risk._ledger(chan), Check._journal_prefix(database)
+                Check._verify_complete_histories(database, ledger["histories"], prefix)
+                if prefix["attempt_count"] != database.query_one(f"SELECT count(*) AS n FROM {Audit.ATTEMPTS}")["n"]:
+                    _fail()
+                roots = Risk._client_roots(chan, ledger["histories"])
+                Boundary._same_database(chan, database, connection, table, owned=True)
+            owners()
+            if Identity.observe_account_context(exchange, mode) != local["payload"]["account_context"]:
+                _fail()
+            owners()  # Original terminal GET must strictly precede pending's interval.
+            source_start = _monotonic_ns()
+            pending = Pending.collect_native_pending_orders(exchange, units, mode=mode)
+            component_windows.append({"age_roles": ["open_orders"], "span_role": "open_orders",
+                "started_ns": source_start, "finished_ns": _monotonic_ns()})
+            owners()
+            if Identity.observe_account_context(exchange, mode) != local["payload"]["account_context"]:
+                _fail()
+            owners()  # A real identity GET separates integer-ms observation intervals.
+            source_start = _monotonic_ns()
+            account = Account.collect_account_snapshot(exchange, units, mode=mode)
+            component_windows.append({"age_roles": ["account"], "span_role": "account",
+                "started_ns": source_start, "finished_ns": _monotonic_ns()})
+            owners()
+        else:
+            account = Account.collect_account_snapshot(exchange, units, mode=mode)
+            owners()
+            pending = Pending.collect_native_pending_orders(exchange, units, mode=mode)
+            owners()
+        wallets, executions, observations, interval = [], [], [], None
+        if include_interval:
+            context = local["payload"]["account_context"]
+            if any(source["payload"]["account_context"] != context for source in (pending, account)):
+                _fail()
+            start, end = baseline["before"]["payload"]["started_ms"], account["payload"]["finished_ms"]+1
+            for unit in units:
+                source_start = _monotonic_ns()
+                observed_start = utc_now_ms()
+                before_context = Identity.observe_account_context(exchange, mode)
+                owners()
+                if before_context != context:
+                    _fail()
+                receipt = Facts.collect_execution_scan(exchange, unit, account_scope=account_key(context), mode=mode, start_ms=start, end_ms=end)
+                owners()
+                after_context = Identity.observe_account_context(exchange, mode)
+                owners()
+                observation = {"before": before_context, "after": after_context, "started_ms": observed_start, "finished_ms": utc_now_ms()}
+                component_windows.append({"age_roles": ["execution"], "span_role": "execution",
+                    "started_ns": source_start, "finished_ns": _monotonic_ns()})
+                if before_context != context or after_context != context:
+                    _fail()
+                observations.append(observation)
+                executions.append({"receipt": receipt, "account_context": context, "observed_ms": observation["finished_ms"],
+                    "account_observation": observation})
+            source_start = _monotonic_ns()
+            wallet = Account.collect_wallet_scan(exchange, mode=mode, start_ms=start, end_ms=end)
+            component_windows.append({"age_roles": ["wallet"], "span_role": "wallet",
+                "started_ns": source_start, "finished_ns": _monotonic_ns()})
+            owners()
+            if wallet["payload"]["account_context"] != context:
+                _fail()
+            wallets.append(wallet)
+            current_sources = {"before": baseline["before"], "after": account, "wallets": wallets, "executions": executions}
+            with database.transaction():
+                Boundary._same_database(chan, database, connection, table, owned=True)
+                if (Risk._ledger(chan) != ledger or Check._journal_prefix(database) != prefix
+                        or Risk.read_check(database, baseline["check_id"]) != baseline["check"]
+                        or _known_management_interval_sources(chan, context, current=current_sources) != known):
+                    _fail()
+                report = Reconcile.build_account_reconciliation_with_pending(before=baseline["before"], after=account,
+                    wallets=wallets, executions=executions, histories=ledger["histories"], projections=ledger["projections"],
+                    pending_orders=pending, client_roots=roots)
+                Boundary._same_database(chan, database, connection, table, owned=True)
+            owners()
+            if report["payload"]["status"] != "matched_observations":
+                _fail()
+            body = {"check_id": baseline["check_id"], "before": baseline["before"], "wallets": wallets,
+                "executions": executions, "ledger_sha256": _sha(ledger), "journal_prefix": prefix, "report": report,
+                "known_sources_sha256": _sha(known),
+                "native_quantity_verified": False, "operation_authorized": False}
+            interval = body
+        source_start = _monotonic_ns() if include_interval else None
         market = Market.collect_native_market_evidence(exchange, units, mode=mode)
+        if include_interval:
+            component_windows.append({"age_roles": ["mark", "book"], "span_role": "market",
+                "started_ns": source_start, "finished_ns": _monotonic_ns()})
         owners()
         context = local["payload"]["account_context"]
         if any(document["payload"]["account_context"] != context for document in (account, pending)):
@@ -276,7 +471,19 @@ def collect_native_management_sources(engine, record_id, *, phase, policy,
             "order_window": {"started_ms": query_start, "finished_ms": query_end}, "account": account,
             "pending": pending, "market": market, "quantity": quantity, "policy": values, "runtime": runtime, "implementation_sha256": implementation,
             "started_ms": started, "finished_ms": utc_now_ms(), "native_quantity_verified": False, "operation_authorized": False}
-        document = json.loads(canonical_bytes({"schema": "chan-native-management-sources-v2", "payload": payload, "payload_sha256": _sha(payload)}))
+        if include_interval:
+            with database.transaction():
+                Boundary._same_database(chan, database, connection, table, owned=True)
+                if (Risk._ledger(chan) != ledger or Check._journal_prefix(database) != prefix
+                        or Risk.read_check(database, baseline["check_id"]) != baseline["check"]
+                        or _known_management_interval_sources(chan, context, current=current_sources) != known):
+                    _fail()
+                Boundary._same_database(chan, database, connection, table, owned=True)
+            owners()
+            interval["monotonic_windows"] = component_windows
+            payload["interval"] = {"schema": "chan-native-management-interval-v1", "payload": interval, "payload_sha256": _sha(interval)}
+        document = json.loads(canonical_bytes({"schema": "chan-native-management-sources-v3" if include_interval else "chan-native-management-sources-v2",
+            "payload": payload, "payload_sha256": _sha(payload)}))
         owners()
         finished, elapsed_end = utc_now_ms(), _monotonic_ns()
         instrument = instruments["payload"]
@@ -285,6 +492,17 @@ def collect_native_management_sources(engine, record_id, *, phase, policy,
         if (any(type(value) is not int or value < 0 for value in elapsed_clocks)
                 or tuple(sorted(elapsed_clocks)) != elapsed_clocks):
             _fail()
+        if include_interval:
+            if len(component_windows) != len(units)+4:
+                _fail()
+            previous = query_elapsed_end
+            for window in component_windows:
+                begin, end = window["started_ns"], window["finished_ns"]
+                if (type(begin) is not int or type(end) is not int or not previous <= begin <= end <= elapsed_end
+                        or end-begin > values["policy"]["max_observation_span_ms"][window["span_role"]]*1_000_000
+                        or any(elapsed_end-begin > values["policy"]["max_age_ms"][role]*1_000_000 for role in window["age_roles"])):
+                    _fail()
+                previous = end
         if (not 0 <= started <= query_start <= query_end <= finished < 2**63
                 or finished-query_start > order_max_age_ms or query_end-query_start > order_max_observation_span_ms
                 or finished-instrument["started_ms"] > instrument_max_age_ms
@@ -297,7 +515,8 @@ def collect_native_management_sources(engine, record_id, *, phase, policy,
                 or elapsed_end-elapsed_start > values["policy"]["max_observation_span_ms"]["total"]*1_000_000):
             _fail()
         Admission._assert_current_windows(values["policy"], started, finished, account=account["payload"],
-            market=market["payload"], wallets=[], executions=[], additional=[("open_orders", pending["payload"])])
+            market=market["payload"], wallets=[row["payload"] for row in wallets], executions=observations,
+            additional=[("open_orders", pending["payload"])])
         return document
     except Exception:
         _fail()
