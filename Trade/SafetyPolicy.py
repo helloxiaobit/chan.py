@@ -105,6 +105,14 @@ class QueryOnlyTradingSafetyPolicy(TradingSafetyPolicy):
         raise _locked("查单专用引擎不能创建、修改或取消订单")
 
 
+@dataclass(frozen=True)
+class ManagementOnlyTradingSafetyPolicy(TradingSafetyPolicy):
+    """Existing-risk role, never a generic or transferable send permission."""
+
+    def assert_order_allowed(self) -> None:
+        raise _locked("原有风险管理专用引擎需要本次逐单操作证明，不能通用发送")
+
+
 def _configured_mode(exchange_conf):
     mode = exchange_conf.get("mode", DRY_RUN)
     if mode not in _MODES:
@@ -132,6 +140,11 @@ def build_query_only_safety_policy(ccxt_conf, environ=None) -> QueryOnlyTradingS
                 or any(type(exchange_conf.get(key)) is not str for key in ("api_key", "secret"))):
             raise _locked("查单专用原生路径需要明确的交易所、市场与凭据结构")
     return QueryOnlyTradingSafetyPolicy(mode, None, os.environ if environ is None else environ)
+
+
+def build_management_only_safety_policy(ccxt_conf, environ=None) -> ManagementOnlyTradingSafetyPolicy:
+    validated = build_query_only_safety_policy(ccxt_conf, environ)
+    return ManagementOnlyTradingSafetyPolicy(validated.mode, None, validated.environ)
 
 
 def build_trading_safety_policy(

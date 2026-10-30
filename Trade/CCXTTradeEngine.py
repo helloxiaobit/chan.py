@@ -22,7 +22,7 @@ from CustomBuySellPoint.Decision import canonical_bytes
 from .db_util import CChanDB
 from .AccountIdentity import observe_account_context, verify_account_context
 from .OpenQuotaGen import COpenQuotaGen
-from .SafetyPolicy import build_trading_safety_policy, build_query_only_safety_policy
+from .SafetyPolicy import build_trading_safety_policy, build_query_only_safety_policy, build_management_only_safety_policy
 from .TradeEngine import COrderResult, CTradeEngine
 from .PaperState import paper_state_operation
 
@@ -146,6 +146,7 @@ class CCCXTTradeEngine(CTradeEngine):
         opening_inputs=None,
         paper_inputs=None,
         query_only=False,
+        management_only=False,
     ):
         super(CCCXTTradeEngine, self).__init__(
             market="crypto", chan_db=chan_db, quota_gen=quota_gen, push_msg=push_msg)
@@ -169,11 +170,16 @@ class CCCXTTradeEngine(CTradeEngine):
                 ErrCode.TRADE_UNLOCK_FAIL,
             )
         self.ccxt_conf = ccxt_conf
-        if type(query_only) is not bool:
-            raise CChanException("query_only 必须是明确布尔值", ErrCode.PARA_ERROR)
-        self.safety_policy = (build_query_only_safety_policy(ccxt_conf, environ) if query_only else
-                              build_trading_safety_policy(ccxt_conf, trade_conf, environ))
+        if type(query_only) is not bool or type(management_only) is not bool or (query_only and management_only):
+            raise CChanException("query_only/management_only 必须是明确互斥布尔值", ErrCode.PARA_ERROR)
+        if query_only:
+            self.safety_policy = build_query_only_safety_policy(ccxt_conf, environ)
+        elif management_only:
+            self.safety_policy = build_management_only_safety_policy(ccxt_conf, environ)
+        else:
+            self.safety_policy = build_trading_safety_policy(ccxt_conf, trade_conf, environ)
         self._query_only_policy = self.safety_policy if query_only else None
+        self._management_only_policy = self.safety_policy if management_only else None
         self.mode = self.safety_policy.mode
         self.dry_run = self.safety_policy.dry_run
         self.market_type = str(ccxt_conf.get("default_type", "spot")).lower()
@@ -238,6 +244,8 @@ class CCCXTTradeEngine(CTradeEngine):
         # Keep the constructor role even if a caller replaces the public policy.
         if self._query_only_policy is not None:
             self._query_only_policy.assert_order_allowed()
+        if self._management_only_policy is not None:
+            self._management_only_policy.assert_order_allowed()
 
     def check_open_inputs(self, record, *, price=None):
         if self.opening_inputs is not None:
