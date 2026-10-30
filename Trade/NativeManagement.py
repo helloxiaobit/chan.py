@@ -14,7 +14,7 @@ from Common.ChanException import CChanException, ErrCode
 from Common.KLineTime import utc_now_ms
 from CustomBuySellPoint.Decision import canonical_bytes
 from .AccountRiskStore import account_key, _sha
-from .ExecutionFacts import _MONEY, _number, _string
+from .ExecutionFacts import _MONEY, _market, _number, _string
 from . import NativeOrderBoundary as Boundary
 from . import NativeOrderTransition as Transition
 from . import NativePendingOwnership as Ownership
@@ -99,6 +99,9 @@ def read_native_management_order_identity(chan, record_id, *, phase):
 
 def _source_runtime(engine):
     """Reuse original runtime/SDK checks, with the actual frozen read role."""
+    role = getattr(engine, "_management_only_policy", None)
+    if role is None or engine.mode != role.mode or engine.dry_run is not role.dry_run:
+        _fail()
     from . import NativePreparation as Prepare
     from . import NativePreparedClient as Client
     from . import NativeInstrumentCurrent as Instrument
@@ -107,6 +110,13 @@ def _source_runtime(engine):
     from . import AccountSources as Account
     from . import NativePendingOrders as Pending
     from . import NativeMarketEvidence as Market
+    from . import AccountRiskStore as Risk
+    from . import AccountReconcile as Reconcile
+    from . import NativeAccountCheck as Check
+    from . import ExecutionFacts as Facts
+    if any(globals()[name] is not getattr(module, name) for module, names in
+            ((Facts, ("_market", "_number", "_string")), (Risk, ("account_key", "_sha"))) for name in names):
+        _fail()
     modules = {}
     selected = [(Prepare, "_selected_runtime"), (Prepare, "_client_binding"), (Client, "initialize_native_order_recovery_client"),
         (Instrument, "collect_native_instruments_for_engine"), (Current, "read_native_component_policy"),
@@ -114,6 +124,13 @@ def _source_runtime(engine):
         (Account, "verify_account_snapshot"), (Pending, "collect_native_pending_orders"),
         (Pending, "verify_native_pending_orders"), (Market, "collect_native_market_evidence"),
         (Market, "verify_native_market_evidence")]
+    selected.extend((module, name) for module, names in (
+        (Risk, ("_ledger", "_trade_tables", "_client_roots", "account_key", "_sha")),
+        (Reconcile, ("_native_positions", "_key", "_number")),
+        (Check, ("_journal_prefix", "_verify_complete_histories")),
+        (Ownership, ("_build", "_match", "_validate_contract", "_terminal_reference")),
+        (Facts, ("_market", "_number", "_string")),
+    ) for name in names)
     callables = {module.__name__+":"+name: Prepare._function_identity(module.__name__, name,
         getattr(module, name), modules) for module, name in selected}
     for owner, module, cls, names in (
@@ -125,7 +142,7 @@ def _source_runtime(engine):
             if type(method) is not types.MethodType or method.__self__ is not owner:
                 _fail()
             callables[module+":"+cls+"."+name] = Prepare._function_identity(module, cls+"."+name, method.__func__, modules)
-    for name in ("read_native_management_order_identity", "_source_runtime", "collect_native_management_sources"):
+    for name in ("read_native_management_order_identity", "_source_runtime", "collect_native_management_sources", "observe_native_management_quantity"):
         callables[__name__+":"+name] = Prepare._function_identity(__name__, name, globals()[name], modules)
     return {"engine": Prepare._selected_runtime(engine, None, engine._management_only_policy), "sources": callables}
 
@@ -252,12 +269,14 @@ def collect_native_management_sources(engine, record_id, *, phase, policy,
             _fail()
         if read_native_management_order_identity(chan, record_id, phase=phase) != local:
             _fail()
+        quantity = observe_native_management_quantity(chan, record_id, phase=phase, account_snapshot=account, pending_orders=pending)
+        owners()
         payload = {"identity": local, "account_context": context, "instruments": instruments,
             "order": {name: getattr(result, name) for name in ("order_id", "client_order_id", "requested", "filled", "avg_price", "status")},
             "order_window": {"started_ms": query_start, "finished_ms": query_end}, "account": account,
-            "pending": pending, "market": market, "policy": values, "runtime": runtime, "implementation_sha256": implementation,
+            "pending": pending, "market": market, "quantity": quantity, "policy": values, "runtime": runtime, "implementation_sha256": implementation,
             "started_ms": started, "finished_ms": utc_now_ms(), "native_quantity_verified": False, "operation_authorized": False}
-        document = json.loads(canonical_bytes({"schema": "chan-native-management-sources-v1", "payload": payload, "payload_sha256": _sha(payload)}))
+        document = json.loads(canonical_bytes({"schema": "chan-native-management-sources-v2", "payload": payload, "payload_sha256": _sha(payload)}))
         owners()
         finished, elapsed_end = utc_now_ms(), _monotonic_ns()
         instrument = instruments["payload"]
@@ -280,5 +299,157 @@ def collect_native_management_sources(engine, record_id, *, phase, policy,
         Admission._assert_current_windows(values["policy"], started, finished, account=account["payload"],
             market=market["payload"], wallets=[], executions=[], additional=[("open_orders", pending["payload"])])
         return document
+    except Exception:
+        _fail()
+
+
+def observe_native_management_quantity(chan, record_id, *, phase, account_snapshot, pending_orders):
+    """Associate exact original quantities; caller JSON never authorizes close.
+
+    Pure DB/read-only observation, with no freshness or atomic-absence claim.
+    The eventual consumer must own its sources and recheck them in its CAS.
+    """
+    from .AccountSources import verify_account_snapshot
+    from .NativePendingOrders import verify_native_pending_orders
+    from .AccountRiskStore import _ledger, _client_roots
+    from .AccountReconcile import _native_positions
+    from .NativeAccountCheck import _journal_prefix, _verify_complete_histories
+    try:
+        original = canonical_bytes({"account": account_snapshot, "pending": pending_orders})
+        values = json.loads(original)
+        account, pending = values["account"], values["pending"]
+        verify_account_snapshot(account)
+        verify_native_pending_orders(pending)
+        database = Boundary._database(chan)
+        connection, table, owned = database.conn, chan.table, database.conn.in_transaction
+        Boundary._same_database(chan, database, connection, table, owned=owned)
+        with database.transaction(), localcontext(_MONEY):
+            Boundary._same_database(chan, database, connection, table, owned=True)
+            local = read_native_management_order_identity(chan, record_id, phase=phase)
+            Boundary._same_database(chan, database, connection, table, owned=True)
+            context = local["payload"]["account_context"]
+            if any(document["payload"]["account_context"] != context for document in (account, pending)):
+                _fail()
+            account_units = {row["symbol"]: _market(row) for row in account["payload"]["markets"]}
+            pending_units = {row["symbol"]: _market(row) for row in pending["payload"]["markets"]}
+            if (account_units != pending_units or len(account_units) != len(account["payload"]["markets"])
+                    or len(pending_units) != len(pending["payload"]["markets"])):
+                _fail()
+            ledger = _ledger(chan)
+            Boundary._same_database(chan, database, connection, table, owned=True)
+            prefix = _journal_prefix(database)
+            _verify_complete_histories(database, ledger["histories"], prefix)
+            if prefix["attempt_count"] != database.query_one(f"SELECT count(*) AS n FROM {Audit.ATTEMPTS}")["n"]:
+                _fail()
+            Boundary._same_database(chan, database, connection, table, owned=True)
+            roots = _client_roots(chan, ledger["histories"])
+            Boundary._same_database(chan, database, connection, table, owned=True)
+            ownership = Ownership._build(pending["payload"], ledger, client_roots=roots)
+            if ownership["issues"]:
+                _fail()
+
+            def issue(*args, **kwargs):
+                _fail()
+
+            native = _native_positions(account["payload"], issue, "management")
+            histories = {(row["attempts"][0]["identity"]["trade_table"], row["attempts"][0]["identity"]["record_id"]): row
+                for row in ledger["histories"]}
+            records, leg_totals, record_map = [], {}, {}
+            for projection in ledger["projections"]:
+                ref = (projection["trade_table"], projection["record_id"])
+                history = histories[ref]
+                attempts = history["attempts"]
+                if history["gaps"] or not attempts:
+                    _fail()
+                opening = [a for a in attempts if a["identity"]["phase"] == "open"]
+                if len(opening) != 1:
+                    _fail()
+                identity = opening[0]["identity"]
+                contract = identity["order_contract"]
+                if account_key(contract["account_context"]) != account_key(context):
+                    continue  # Original ownership reader verified this other account.
+                leg = (identity["instrument"], identity["position_side"], contract["execution"]["margin_mode"])
+                totals = {"open": Decimal(0), "close": Decimal(0)}
+                blockers = []
+                for attempt in attempts:
+                    current, state = attempt["identity"], attempt["events"][-1]["state"]
+                    current_contract = current["order_contract"]
+                    if (current_contract["account_context"] != context or current["instrument"] != leg[0]
+                            or current["position_side"] != leg[1] or current_contract["execution"]["margin_mode"] != leg[2]
+                            or bool(current["is_buy"]) != bool(identity["is_buy"])
+                            or _market(current_contract["market"]) != account_units.get(current["instrument"])):
+                        _fail()
+                    quantity = _number(str(state["filled_qty"]))
+                    if not 0 <= quantity <= _number(current_contract["quantity"], positive=True):
+                        _fail()
+                    observed_fill = Decimal(0)
+                    for event in attempt["events"]:
+                        cumulative = _number(str(event["state"]["filled_qty"]))
+                        if cumulative != observed_fill and event["observed_ms"] > account["payload"]["finished_ms"]:
+                            _fail()  # A later local fill cannot be assigned to an earlier endpoint.
+                        observed_fill = cumulative
+                    totals[current["phase"]] += quantity
+                    if state["order_status"] not in {"closed", "canceled", "rejected"}:
+                        blockers.append(current["phase"]+"_order_not_terminal")
+                remaining = totals["open"]-totals["close"]
+                if (remaining < 0 or remaining != _number(str(projection["current_qty"]))
+                        or projection["instrument"] != leg[0] or projection["position_side"] != leg[1]
+                        or bool(projection["is_buy"]) != bool(identity["is_buy"])):
+                    _fail()
+                entry = {"trade_table": ref[0], "record_id": ref[1], "leg": list(leg),
+                    "direction": "long" if identity["is_buy"] else "short", "remaining_base_quantity": _string(remaining),
+                    "reserved_close_base_quantity": "0", "new_close_blockers": sorted(set(blockers))}
+                if ref in record_map:
+                    _fail()
+                record_map[ref] = entry
+                records.append(entry)
+                total = leg_totals.setdefault(leg, {"quantity": Decimal(0), "directions": set(), "reserved": Decimal(0)})
+                total["quantity"] += remaining
+                if remaining:
+                    total["directions"].add(entry["direction"])
+            for reservation in ownership["reservations"]:
+                ref = (reservation["attempt"]["trade_table"], reservation["attempt"]["record_id"])
+                if reservation["attempt"]["phase"] != "close":
+                    continue
+                entry = record_map[ref]
+                remaining = _number(reservation["remaining_base_quantity"])
+                entry["reserved_close_base_quantity"] = _string(_number(entry["reserved_close_base_quantity"])+remaining)
+                leg_totals[tuple(entry["leg"])]["reserved"] += remaining
+            legs = []
+            for leg in sorted(set(leg_totals) | set(native)):
+                total = leg_totals.get(leg, {"quantity": Decimal(0), "directions": set(), "reserved": Decimal(0)})
+                position = native.get(leg)
+                quantity = Decimal(0) if position is None else _number(position["quantity"])
+                if (quantity != total["quantity"] or total["reserved"] > quantity or len(total["directions"]) > 1
+                        or (quantity and (position is None or total["directions"] != {position["direction"]}))):
+                    _fail()
+                legs.append({"leg": list(leg), "quantity": _string(quantity), "reserved_close_quantity": _string(total["reserved"])})
+            for entry in records:
+                if _number(entry["reserved_close_base_quantity"]) > _number(entry["remaining_base_quantity"]):
+                    _fail()
+            selected = record_map[(table, record_id)]
+            leg = tuple(selected["leg"])
+            record_remaining = _number(selected["remaining_base_quantity"])
+            reserved = _number(selected["reserved_close_base_quantity"])
+            leg_quantity, leg_reserved = leg_totals[leg]["quantity"], leg_totals[leg]["reserved"]
+            available = min(record_remaining-reserved, leg_quantity-leg_reserved)
+            if selected["new_close_blockers"]:
+                available = Decimal(0)
+            payload = {"identity": local, "account_context": context, "source_account_sha256": _sha(account),
+                "source_pending_sha256": _sha(pending), "ledger_sha256": _sha(ledger), "journal_prefix": prefix,
+                "pending_ownership": {"payload": ownership, "payload_sha256": _sha(ownership)},
+                "local_remaining_quantity": _string(record_remaining), "native_leg_quantity": _string(leg_quantity),
+                "reserved_record_close_quantity": _string(reserved), "reserved_leg_close_quantity": _string(leg_reserved),
+                "observed_available_base_quantity": _string(available), "new_close_blockers": selected["new_close_blockers"],
+                "records": records, "legs": legs, "native_quantity_verified": False, "operation_authorized": False}
+            result = json.loads(canonical_bytes({"schema": "chan-native-management-quantity-v1", "payload": payload, "payload_sha256": _sha(payload)}))
+            Boundary._same_database(chan, database, connection, table, owned=True)
+            if _ledger(chan) != ledger or read_native_management_order_identity(chan, record_id, phase=phase) != local:
+                _fail()
+            Boundary._same_database(chan, database, connection, table, owned=True)
+        Boundary._same_database(chan, database, connection, table, owned=owned)
+        if canonical_bytes({"account": account_snapshot, "pending": pending_orders}) != original:
+            _fail()
+        return result
     except Exception:
         _fail()

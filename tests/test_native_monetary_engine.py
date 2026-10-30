@@ -27,7 +27,7 @@ def install_recovery_transport(case, monkeypatch):
     # recovery must use that same fake business clock, not the desktop clock.
     monkeypatch.setattr("Trade.CCXTTradeEngine.utc_now_ms", lambda: case["clock"]["now"])
     previous, observed = case["client"].session.request, []
-    state = {"row": None}
+    state = {"row": None, "requested_native_order_id": "123456"}
     def transport(method, url, **kwargs):
         target = urlsplit(url)
         if target.path != "/fapi/v1/order":
@@ -37,7 +37,7 @@ def install_recovery_transport(case, monkeypatch):
         assert not case["db"].db.conn.in_transaction
         params = {key: values[0] for key, values in parse_qs(target.query).items()}
         assert params["symbol"] == "TESTUSDT" and {"timestamp", "signature"} <= set(params)
-        assert params.get("orderId") == "123456" or params.get("origClientOrderId") == state["row"]["clientOrderId"]
+        assert params.get("orderId") == state["requested_native_order_id"] or params.get("origClientOrderId") == state["row"]["clientOrderId"]
         observed.append((method, copy.deepcopy(params)))
         row = copy.deepcopy(state["row"])
         if method == "DELETE":

@@ -2,7 +2,7 @@
 
 用户在 2026-10-20 批准按 [C0–C7 计划](../plans/2026-10-20-crypto-full-version-completion.md) 开发并向 `helloxiaobit/chan.py full-version` 提交、推送。按阶段串行验证；Goal 仅在全部要求有结果后关闭。
 
-## 当前检查点（2026-10-30，查单子步离线验收完成）
+## 当前检查点（2026-10-30，查单完成；管理数量读取子步已验）
 
 已批准的限定query-only角色与五fresh-worker混合历史恢复已完成本轮离线验收；精确范围见[双版报告](2026-10-30-native-query-only-verification.md)。新非Temp代际a097f905的两版各37/37批原件已齐备并独立核对：各7403 passed/2原有skip、7405唯一节点、24原始警告，完整node/state差异0。双版collection均7405/7406、仅原1个network排除；query-only50项、configured-process4项和原金额执行/入口模块均按实际完整成员复核，不借总数推断。两版12改动py的compileall、diff检查和主线程solo review已通过，源码179文件map仍1a44946c。原2793自然exit0、无活pytest后才补文档。
 
@@ -23,6 +23,8 @@
 当前管理角色仍无通用发送权、三CLI未接入，本地剩余量与JSON不是native可关闭额度或操作capability。当前原SDK/原单GET和position/pending/报价owned来源、数量消重、账户串行管理CAS/journal、A/B实际使用点与fresh-process仍继续实施；不以本基础子步替代批准的最终管理能力或关闭C5/C6/C7 Goal。实际配置/候选/资金/研究/测试网/实盘门禁均未改。
 
 基础子步已Lore/普通push为e017e3da7d57b8b777c1708cead4ef136b0d7956且远端精确一致。随后继续[原生来源读取子步](2026-10-30-native-management-sources.md)：复用原SDK查询、冷初始化、account/pending/instrument/mark-book和原runtime/Entry检查，不借开仓candidate/unlock，不新增发送器/账本/hook；严格RED修复继承查单分派、回调记录与Session/request/来源Entry晚变、最终UTC年龄及单来源单调预算遗漏。双版实际相同9模块各624唯一节点均自然exit0，各1原AUC警告，独立节点/state/183源码与70/71包环境核对一致；compileall、真实optional-free导入与diff/review通过。正向新来源证据仍限Binance one-way LONG原开仓attempt的暖/冷两币夹具，两个授权/数量标志均false。继续剩余attempt/模式、可关闭量/归属消重、账户串行CAS、管理A/B与原三CLI；管理执行及C5/C6/C7尚未完成，实际配置/研究/资金/交易门禁未改，Goal active。
+
+该来源子步已Lore/普通push为f9588c8afd3b9158e126036cb085f6e6b6e96b75。随后完成[四模式/attempt与数量读取子步](2026-10-30-native-management-quantity.md)：复用原全库ledger/journal prefix、pending归属与原生position独立通道检查，精确核剩余/方向/单位与单次关闭预占；同次自采显式source-v2接线，flags仍false。RED抓到contractSize/alias/无event attempt/未来成交端点、实际导入别名与role mode缺口；共享raw fake坏响应提前断言也真实复现并修正请求端固定身份，不放宽SDK检查。最终实际冻结14完整模块加原Engine三个明确组共478节点，双版各477 passed/1原有isolated skip、零warning，185文件/原环境/成员状态及原件完全配对；compileall、真实optional-free导入、diff与solo review通过。不是全仓重跑或管理执行完成；旧v3冷scope、完整原区间/执行归属、请求量/精度化、原CAS占用、管理A/B及三CLI仍未完成，实际配置/资金/研究/交易门禁不改，Goal active。
 
 ## 交付身份与归属
 

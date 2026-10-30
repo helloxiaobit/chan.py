@@ -1,5 +1,7 @@
 """Owned management reads reuse the original SDK and never permit mutation."""
 import copy
+import json
+from decimal import Decimal
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -47,11 +49,51 @@ def source_options(case):
         "order_max_age_ms": 2000, "order_max_observation_span_ms": 2000}
 
 
+def management_native_transport(case, state, previous):
+    """Bottom-only native responses include this fake venue's new fill.
+
+    The original preparation fixture predates the additional monetary order.
+    No caller receipt, quantity checker or DB/CAS result is replaced.
+    """
+    def transport(method, url, **kwargs):
+        response = previous(method, url, **kwargs)
+        path = urlsplit(url).path
+        if path not in {"/fapi/v3/account", "/fapi/v3/positionRisk", "/fapi/v1/openOrders"}:
+            return response
+        body = json.loads(response.content)
+        delta = Decimal(state["position_added_base"])*(1 if state["original_is_buy"] else -1)
+        if path == "/fapi/v3/positionRisk":
+            row = next(row for row in body if row["symbol"] == "TESTUSDT")
+            row["positionAmt"] = str(Decimal(row["positionAmt"])+delta)
+            row["unRealizedProfit"] = str((Decimal(row["markPrice"])-Decimal(row["entryPrice"]))*Decimal(row["positionAmt"]))
+            row["notional"] = str(Decimal(row["markPrice"])*Decimal(row["positionAmt"]))
+            row["updateTime"] = case["clock"]["now"]
+        elif path == "/fapi/v3/account":
+            row = next(row for row in body["positions"] if row["symbol"] == "TESTUSDT")
+            row["positionAmt"] = str(Decimal(row["positionAmt"])+delta)
+            # This fixture's existing TEST entry is 100 and its mark is 120/80.
+            pnl_delta = abs(delta)*Decimal(20)
+            row["unrealizedProfit"] = str(Decimal(row["unrealizedProfit"])+pnl_delta)
+            row["updateTime"] = case["clock"]["now"]
+            for key in ("totalUnrealizedProfit", "totalMarginBalance", "totalCrossUnPnl"):
+                body[key] = str(Decimal(body[key])+pnl_delta)
+            asset = next(row for row in body["assets"] if row["asset"] == "USDT")
+            for key in ("unrealizedProfit", "marginBalance", "crossUnPnl"):
+                asset[key] = str(Decimal(asset[key])+pnl_delta)
+        elif state["row"]["status"] in {"NEW", "PARTIALLY_FILLED"}:
+            body.append(copy.deepcopy(state["row"]))
+        response._content = json.dumps(body).encode()
+        return response
+    return transport
+
+
 def management_case(case, monkeypatch, *, cold=False):
     state, record, contract = claimed_order(case, monkeypatch)
     apply_query(case, record)
     engine = CCCXTTradeEngine(case["db"], ccxt_conf=copy.deepcopy(case["trade"].ccxt_conf), trade_conf={},
         environ={"CHANPY_KILL_SWITCH": "YES"}, management_only=True, push_msg=False)
+    state.update(position_added_base="0.02", original_is_buy=bool(record["is_buy"]))
+    monkeypatch.setattr(case["client"].session, "request", management_native_transport(case, state, case["client"].session.request))
     monkeypatch.setattr(Management, "utc_now_ms", lambda: case["clock"]["now"], raising=False)
     monkeypatch.setattr(Management, "_monotonic_ns", lambda: 0, raising=False)
     if cold:
@@ -83,7 +125,7 @@ def test_owned_current_sources_under_kill_use_original_sdk_reads_not_candidate_o
     calls, order_calls = len(case["http_calls"]), len(state["requests"])
     document = observe(engine, key, phase="open", **source_options(case))
     payload = document["payload"]
-    assert document["schema"] == "chan-native-management-sources-v1" and document["payload_sha256"] == _sha(payload)
+    assert document["schema"] == "chan-native-management-sources-v2" and document["payload_sha256"] == _sha(payload)
     assert payload["account_context"] == contract["account_context"]
     assert payload["identity"]["payload"]["local_remaining_quantity"] == "0.02"
     assert payload["order"]["order_id"] == "123456" and payload["order"]["filled"] == .02
@@ -95,6 +137,11 @@ def test_owned_current_sources_under_kill_use_original_sdk_reads_not_candidate_o
     assert len(payload["account"]["payload"]["markets"]) == 2
     assert len(payload["market"]["payload"]["observations"]) == 2
     assert payload["pending"]["payload"]["coverage"] == "observed_regular_and_algo_order_channels"
+    assert payload["quantity"]["schema"] == "chan-native-management-quantity-v1"
+    observed = payload["quantity"]["payload"]
+    assert observed["local_remaining_quantity"] == "0.02" and observed["native_leg_quantity"] == "0.06"
+    assert observed["new_close_blockers"] == ["open_order_not_terminal"]
+    assert observed["observed_available_base_quantity"] == "0"
     assert db.get_record(key) == original and db.get_order_history(key) == history
     assert Transition.read_native_order_transition(db, key) == transition
     assert not db.db.conn.in_transaction
@@ -167,6 +214,23 @@ def test_native_new_fill_must_use_original_report_consumer_not_a_management_quan
         source_api()(engine, case["key"], phase="open", **source_options(case))
     assert [method for method, _ in state["requests"]][before:] == ["GET"]
     assert case["db"].get_record(case["key"]) == original and case["db"].get_order_history(case["key"]) == history
+
+
+def test_original_terminal_query_allows_observing_only_this_records_remaining_quantity_not_other_records(single_case, monkeypatch):
+    case = single_case
+    engine, state, record, _ = management_case(case, monkeypatch)
+    # This setup still uses the original ordinary fake-only cancel/report path;
+    # the management engine under test remains incapable of sending DELETE.
+    assert case["trade"].cancel_order(record["stock_code"], "123456") is True
+    apply_query(case, record)
+    before = len(state["requests"])
+    payload = source_api()(engine, case["key"], phase="open", **source_options(case))["payload"]
+    quantity = payload["quantity"]["payload"]
+    assert payload["order"]["status"] == "canceled"
+    assert quantity["local_remaining_quantity"] == quantity["observed_available_base_quantity"] == "0.02"
+    assert quantity["native_leg_quantity"] == "0.06" and quantity["new_close_blockers"] == []
+    assert quantity["native_quantity_verified"] is quantity["operation_authorized"] is False
+    assert [method for method, _ in state["requests"]][before:] == ["GET"]
 
 
 @pytest.mark.parametrize("late", ["instrument_age", "monotonic_total", "monotonic_instrument", "monotonic_order"])

@@ -19,3 +19,11 @@
 2026-10-30已完成第1步和第2步的本地身份子层，见[基础子步证据](../reports/2026-10-30-native-management-foundation.md)：角色39项、身份12项及适用回归，双版各608个唯一节点通过，已Lore/普通push为e017e3d。随后完成第2步的[本次原生来源读取子步](../reports/2026-10-30-native-management-sources.md)：原SDK/原单GET、instrument/account/pending/mark-book、真实冷启动缺夹具配置/candidate、同调用owner及最终UTC/单调窗口；16新项连同原回归，双版各624唯一节点通过。读取结果仍不是native数量/操作能力，正向源证据限Binance one-way LONG既有开仓attempt；不是完整第2步或管理执行GREEN。已有13项当前行为刻画也不重标。下一步继续第2步剩余attempt/模式覆盖，再第3–6步；三个管理CLI尚未接新角色。中间阶段只有适用测试/审查通过才能交付并明确未闭合项，最终角色支持必须满足第2–6步所有条件，不能用“仍拒绝所有写”替代批准的最终管理能力。
 
 一币未知管理可能按已批准账户串行协议阻断其他币自动管理，原只读查询仍可用。原生数量/身份或服务器关闭语义缺证据时保持拒绝并列明未完成；不默加价格/费用假设、应急越权或按leg并行。旧历史跨实现迁移、候选换代及C7外部认证仍独立受门禁，Goal保持active。
+
+后续本轮[模式/attempt及数量读取验收](../reports/2026-10-30-native-management-quantity.md)：原金额L2 scope下的Binance四模式/方向冷open/close attempt共8项、27项独立数量/完整性检查及同次source-v2接线已验证；最终同一185源码、14完整模块加原Engine三个明确组共478节点，双版各477 passed/1原有isolated skip、零warning，原件/成员/状态/环境精确配对。尚未完成整个第2/3步：旧v3冷scope/迁移、外部往返成交与其它通道的完整原区间/执行归属、请求量/原SDK精度化及动作专用同次上下文仍需实证，不能只凭净数量或JSON放行。之后第4–6步原账户串行CAS/journal、管理A/B、三CLI/fresh-worker仍未接通；新风险/实际交易许可不变。
+
+## f9588c8后续执行细化
+
+先在tests/test_native_management_attempts.py复用原capacity_case四模式/方向、management_case及raw recovery transport，验证冷开仓/冷关闭attempt与原累计历史；测试共享transport仅将固定示例orderId改为当前原raw row的ID，不替换SDK/查询/准入成功。关闭夹具只用原prepare/CAS/claim/ACK/report生成本地历史，再由真实原SDK GET读取底层fake原单，不宣称真实关闭POST。已有相同生产源码证据按身份复用，任何真实缺口先RED再最小修正。
+
+其后第3步先独立观察原全账户ledger与原account/pending源码：复用原AccountReconcile数量/方向及NativePendingOwnership规则，不把caller JSON变成能力。按原record/leg精确核合计本地剩余和原生position、扣同账户原关闭在途量且消重；未知/跨账户/归属不清/超量拒绝，金额零默认容差。该观察仍不是管理CAS/发送许可；操作消费者必须在同调用自采并在原CAS和A/B里复验。每个新行为先见RED，原七入口锁保持；不以只读观察替代第4–6步。
