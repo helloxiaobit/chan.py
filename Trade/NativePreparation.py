@@ -92,7 +92,7 @@ def _function_identity(module, qualname, function, modules, *, path=None):
             "defaults_sha256": _sha({"positional": defaults, "keywords": keywords})}
 
 
-def _assert_execution_sdk(exchange, mode):
+def _assert_execution_sdk(exchange, mode, *, source_entries=()):
     """Check declared Binance SDK execution paths, never grant send permission.
 
     No SDK re-import/exec, cache renewal, endpoint, caller receipt or permit.
@@ -101,7 +101,8 @@ def _assert_execution_sdk(exchange, mode):
     import ccxt
     from ccxt.base.types import Entry
     try:
-        if (mode not in {"live", "testnet"} or exchange.id not in {"binance", "binanceusdm"}
+        if (type(source_entries) is not tuple or any(type(name) is not str for name in source_entries)
+                or mode not in {"live", "testnet"} or exchange.id not in {"binance", "binanceusdm"}
                 or type(exchange) is not getattr(ccxt, exchange.id)):
             _fail()
         sdk_root, modules = Path(ccxt.__file__).resolve().parent, {}
@@ -137,7 +138,7 @@ def _assert_execution_sdk(exchange, mode):
         for name in ("__init__", "__get__"):
             _function_identity("ccxt.base.types", "Entry."+name, vars(Entry)[name], modules, path=entry_path)
         for name in ("fapiPrivatePostOrder", "fapiPrivateGetOrder", "fapiPrivateDeleteOrder",
-                     "fapiPrivateGetAllOrders", "fapiPrivateGetOpenOrders"):
+                     "fapiPrivateGetAllOrders", "fapiPrivateGetOpenOrders")+source_entries:
             owner = next(cls for cls in type(exchange).__mro__ if name in vars(cls))
             descriptor = vars(owner)[name]
             if type(descriptor) is not Entry:
@@ -180,6 +181,12 @@ def _selected_runtime(engine, guard, policy):
     from . import TradeEngine as trade_module
     from DataAPI import ccxt as data_module
     from .Script import Deployment as deployment_module
+    management = guard is None
+    if management and (type(policy) is not safety_module.ManagementOnlyTradingSafetyPolicy
+            or engine._management_only_policy is not policy or engine.safety_policy is not policy
+            or engine._query_only_policy is not None):
+        _fail()
+    policy_class = "ManagementOnlyTradingSafetyPolicy" if management else "TradingSafetyPolicy"
     selected = []
     for owner, module, cls, names in (
         (engine, "Trade.CCXTTradeEngine", "CCCXTTradeEngine", ("prepare_order", "get_exchange", "check_open_inputs", "assert_order_mutation_allowed", "_market_contract",
@@ -187,8 +194,8 @@ def _selected_runtime(engine, guard, policy):
              "_execution_settings", "_observe_account", "_assert_account_context", "_validated_persisted_intent",
              "_read_order_contract", "_assert_persisted_monetary_contract", "_monetary_consumer_owner", "_fetch_persisted_order",
              "_find_order_in_history", "_check_order_identity", "_result_from_ccxt", "_resolve_position_side")),
-        (guard, "Trade.Script.OpeningInputs", "COpeningInputs", ("check", "assert_current", "snapshot")),
-        (policy, "Trade.SafetyPolicy", "TradingSafetyPolicy", ("assert_order_allowed",)),
+        (guard, "Trade.Script.OpeningInputs", "COpeningInputs", () if management else ("check", "assert_current", "snapshot")),
+        (policy, "Trade.SafetyPolicy", policy_class, ("assert_order_allowed",)),
         (engine.chan_db, "Trade.db_util", "CChanDB", ("_order_write", "claim_order_submission", "record_order_ack")),
         (engine, "Trade.TradeEngine", "CTradeEngine", ("add_trade",)),
     ):
@@ -197,7 +204,7 @@ def _selected_runtime(engine, guard, policy):
             if type(method) is not types.MethodType or getattr(method, "__self__", None) is not owner:
                 _fail()
             selected.append((module, cls+"."+name, method.__func__))
-    for name in ("env", "scope"):
+    for name in (() if management else ("env", "scope")):
         descriptor = vars(type(guard))[name]
         if type(descriptor) is not property or descriptor.fset is not None or descriptor.fdel is not None:
             _fail()
@@ -257,7 +264,7 @@ def _selected_runtime(engine, guard, policy):
     modules, result = {}, {}
     for module, qualname, function in selected:
         result[module+":"+qualname] = _function_identity(module, qualname, function, modules)
-    return {"coverage": "selected_prepare_callables", "python": platform.python_version(),
+    return {"coverage": "selected_management_callables" if management else "selected_prepare_callables", "python": platform.python_version(),
             "implementation": platform.python_implementation(), "optimize": sys.flags.optimize, "callables": result}
 
 

@@ -4,9 +4,14 @@ The eventual action consumer must own current collection, quantity checks,
 account-wide CAS and the original SDK use point. JSON copies cannot send.
 """
 import json
+import hashlib
+import types
 from decimal import Decimal, localcontext
+from pathlib import Path
+from time import monotonic_ns as _monotonic_ns
 
 from Common.ChanException import CChanException, ErrCode
+from Common.KLineTime import utc_now_ms
 from CustomBuySellPoint.Decision import canonical_bytes
 from .AccountRiskStore import account_key, _sha
 from .ExecutionFacts import _MONEY, _number, _string
@@ -88,5 +93,192 @@ def read_native_management_order_identity(chan, record_id, *, phase):
             result = json.loads(canonical_bytes({"schema": IDENTITY_SCHEMA, "payload": payload, "payload_sha256": _sha(payload)}))
         Boundary._same_database(chan, database, connection, table, owned=owned)
         return result
+    except Exception:
+        _fail()
+
+
+def _source_runtime(engine):
+    """Reuse original runtime/SDK checks, with the actual frozen read role."""
+    from . import NativePreparation as Prepare
+    from . import NativePreparedClient as Client
+    from . import NativeInstrumentCurrent as Instrument
+    from . import NativeCurrentComponents as Current
+    from . import NativeAdmission as Admission
+    from . import AccountSources as Account
+    from . import NativePendingOrders as Pending
+    from . import NativeMarketEvidence as Market
+    modules = {}
+    selected = [(Prepare, "_selected_runtime"), (Prepare, "_client_binding"), (Client, "initialize_native_order_recovery_client"),
+        (Instrument, "collect_native_instruments_for_engine"), (Current, "read_native_component_policy"),
+        (Admission, "_assert_current_windows"), (Account, "collect_account_snapshot"),
+        (Account, "verify_account_snapshot"), (Pending, "collect_native_pending_orders"),
+        (Pending, "verify_native_pending_orders"), (Market, "collect_native_market_evidence"),
+        (Market, "verify_native_market_evidence")]
+    callables = {module.__name__+":"+name: Prepare._function_identity(module.__name__, name,
+        getattr(module, name), modules) for module, name in selected}
+    for owner, module, cls, names in (
+        (engine, "Trade.TradeEngine", "CTradeEngine", ("_query_persisted_order",)),
+        (engine.chan_db, "Trade.db_util", "CChanDB", ("get_record", "get_order_history")),
+    ):
+        for name in names:
+            method = getattr(owner, name)
+            if type(method) is not types.MethodType or method.__self__ is not owner:
+                _fail()
+            callables[module+":"+cls+"."+name] = Prepare._function_identity(module, cls+"."+name, method.__func__, modules)
+    for name in ("read_native_management_order_identity", "_source_runtime", "collect_native_management_sources"):
+        callables[__name__+":"+name] = Prepare._function_identity(__name__, name, globals()[name], modules)
+    return {"engine": Prepare._selected_runtime(engine, None, engine._management_only_policy), "sources": callables}
+
+
+def collect_native_management_sources(engine, record_id, *, phase, policy,
+        instrument_max_age_ms, instrument_max_observation_span_ms, order_max_age_ms, order_max_observation_span_ms):
+    """Own current GETs, not quantity capability, CAS, release or permission.
+
+    Query may persist its original ACK/terminal observation, never apply fills.
+    A new cumulative fill needs the original report consumer before management.
+    No caller source, clock, cache refresh or generic PASS is accepted.
+    """
+    from .CCXTTradeEngine import CCCXTTradeEngine
+    from . import NativePreparation as Prepare
+    from . import NativePreparedClient as Client
+    from . import NativeInstrumentCurrent as Instrument
+    from . import NativeCurrentComponents as Current
+    from . import NativeAdmission as Admission
+    from . import AccountSources as Account
+    from . import NativePendingOrders as Pending
+    from . import NativeMarketEvidence as Market
+    try:
+        if (type(engine) is not CCCXTTradeEngine or engine.dry_run is not False or engine.market_type != "swap"
+                or engine.mode not in {"live", "testnet"}):
+            _fail()
+        provided = {"policy": policy, "instrument_max_age_ms": instrument_max_age_ms,
+            "instrument_max_observation_span_ms": instrument_max_observation_span_ms,
+            "order_max_age_ms": order_max_age_ms, "order_max_observation_span_ms": order_max_observation_span_ms}
+        original = canonical_bytes(provided)
+        values = json.loads(original)
+        for name, value in values.items():
+            if name != "policy" and (type(value) is not int or not 0 <= value < 2**63):
+                _fail()
+        values["policy"] = Current.read_native_component_policy(values["policy"])
+        runtime = _source_runtime(engine)
+        chan, mode, role = engine.chan_db, engine.mode, engine._management_only_policy
+        database = Boundary._database(chan)
+        connection, table = database.conn, chan.table
+        Boundary._same_database(chan, database, connection, table, owned=False)
+        config = canonical_bytes(engine.ccxt_conf)
+        started, elapsed_start = utc_now_ms(), _monotonic_ns()
+        local = read_native_management_order_identity(chan, record_id, phase=phase)
+        with database.transaction():
+            Boundary._same_database(chan, database, connection, table, owned=True)
+            record = chan.get_record(record_id)
+            Boundary._same_database(chan, database, connection, table, owned=True)
+            transition = Transition._read(chan, record)
+            Boundary._same_database(chan, database, connection, table, owned=True)
+            codes = transition["payload"]["root"]["preparation"]["identity"]["payload"]["scope"]["code_list"]
+        if engine.exchange is None:
+            Client.initialize_native_order_recovery_client(engine, record_id)
+        exchange = engine.exchange
+        from requests import Session
+        session = exchange.session
+        if type(session) is not Session or type(session.request) not in {types.FunctionType, types.MethodType}:
+            _fail()
+        request = session.request
+        binding = Prepare._client_binding(exchange)
+        location = canonical_bytes(database.query("PRAGMA database_list"))
+        implementation = {**Prepare._implementation(), __name__: hashlib.sha256(Path(__file__).read_bytes()).hexdigest()}
+
+        def owners(*, identity=True):
+            Boundary._same_database(chan, database, connection, table, owned=False)
+            if (engine.chan_db is not chan or engine.exchange is not exchange or engine.mode != mode
+                    or engine.dry_run is not False or engine.market_type != "swap"
+                    or engine._management_only_policy is not role or engine.safety_policy is not role
+                    or exchange.session is not session or session.request != request
+                    or canonical_bytes(engine.ccxt_conf) != config or canonical_bytes(provided) != original
+                    or canonical_bytes(database.query("PRAGMA database_list")) != location
+                    or Prepare._client_binding(exchange) != binding or _source_runtime(engine) != runtime
+                    or {**Prepare._implementation(), __name__: hashlib.sha256(Path(__file__).read_bytes()).hexdigest()} != implementation):
+                _fail()
+            # Same original Entry verifier, not a second source/SDK verifier.
+            Prepare._assert_execution_sdk(exchange, mode, source_entries=("fapiPrivateV3GetBalance", "fapiPrivateV3GetAccount",
+                "fapiPrivateV3GetPositionRisk", "fapiPrivateGetSymbolConfig", "fapiPrivateGetMultiAssetsMargin",
+                "fapiPrivateGetOpenAlgoOrders", "fapiPublicGetPremiumIndex", "fapiPublicGetTickerBookTicker", "fapiPublicGetExchangeInfo"))
+            from . import NativePreparedIntent as Prepared
+            Prepared._assert_native_adapter_retry_policy(exchange)
+            if identity and read_native_management_order_identity(chan, record_id, phase=phase) != local:
+                _fail()
+
+        owners()
+        instrument_elapsed_start = _monotonic_ns()
+        instruments = Instrument.collect_native_instruments_for_engine(engine, codes, max_age_ms=instrument_max_age_ms,
+            max_observation_span_ms=instrument_max_observation_span_ms)
+        instrument_elapsed_end = _monotonic_ns()
+        owners()
+        query_start = utc_now_ms()
+        query_elapsed_start = _monotonic_ns()
+        result = engine._query_persisted_order(record, phase)
+        owners(identity=False)  # Only the original query may append its ACK/terminal source.
+        query_end = utc_now_ms()
+        query_elapsed_end = _monotonic_ns()
+        current = read_native_management_order_identity(chan, record_id, phase=phase)
+        fresh = chan.get_record(record_id)
+        owners(identity=False)
+        expected = dict(record)
+        prefix = "open" if phase == "open" else "cover"
+        if record[prefix+"_order_id"] is None:
+            expected.update({key: fresh[key] for key in (prefix+"_order_id", "order_last_update")})
+        if (current["payload"]["identity"] != local["payload"]["identity"]
+                or current["payload"]["local_remaining_quantity"] != local["payload"]["local_remaining_quantity"]
+                or canonical_bytes(fresh) != canonical_bytes(expected)):
+            _fail()
+        local = current
+        record = fresh
+        owners()
+        history = chan.get_order_history(record_id)
+        owners()
+        attempt = next(a for a in history["attempts"] if a["identity"] == local["payload"]["identity"])
+        if (_number(str(result.filled)) != _number(str(attempt["events"][-1]["state"]["filled_qty"]))
+                or result.order_id != record[prefix+"_order_id"]):
+            _fail()
+        units = [engine._market_contract(code)[0] for code in codes]
+        owners()
+        account = Account.collect_account_snapshot(exchange, units, mode=mode)
+        owners()
+        pending = Pending.collect_native_pending_orders(exchange, units, mode=mode)
+        owners()
+        market = Market.collect_native_market_evidence(exchange, units, mode=mode)
+        owners()
+        context = local["payload"]["account_context"]
+        if any(document["payload"]["account_context"] != context for document in (account, pending)):
+            _fail()
+        if read_native_management_order_identity(chan, record_id, phase=phase) != local:
+            _fail()
+        payload = {"identity": local, "account_context": context, "instruments": instruments,
+            "order": {name: getattr(result, name) for name in ("order_id", "client_order_id", "requested", "filled", "avg_price", "status")},
+            "order_window": {"started_ms": query_start, "finished_ms": query_end}, "account": account,
+            "pending": pending, "market": market, "policy": values, "runtime": runtime, "implementation_sha256": implementation,
+            "started_ms": started, "finished_ms": utc_now_ms(), "native_quantity_verified": False, "operation_authorized": False}
+        document = json.loads(canonical_bytes({"schema": "chan-native-management-sources-v1", "payload": payload, "payload_sha256": _sha(payload)}))
+        owners()
+        finished, elapsed_end = utc_now_ms(), _monotonic_ns()
+        instrument = instruments["payload"]
+        elapsed_clocks = (elapsed_start, instrument_elapsed_start, instrument_elapsed_end,
+            query_elapsed_start, query_elapsed_end, elapsed_end)
+        if (any(type(value) is not int or value < 0 for value in elapsed_clocks)
+                or tuple(sorted(elapsed_clocks)) != elapsed_clocks):
+            _fail()
+        if (not 0 <= started <= query_start <= query_end <= finished < 2**63
+                or finished-query_start > order_max_age_ms or query_end-query_start > order_max_observation_span_ms
+                or finished-instrument["started_ms"] > instrument_max_age_ms
+                or instrument["finished_ms"]-instrument["started_ms"] > instrument_max_observation_span_ms
+                or elapsed_end-instrument_elapsed_start > instrument_max_age_ms*1_000_000
+                or instrument_elapsed_end-instrument_elapsed_start > instrument_max_observation_span_ms*1_000_000
+                or elapsed_end-query_elapsed_start > order_max_age_ms*1_000_000
+                or query_elapsed_end-query_elapsed_start > order_max_observation_span_ms*1_000_000
+                or finished-started > values["policy"]["max_observation_span_ms"]["total"]
+                or elapsed_end-elapsed_start > values["policy"]["max_observation_span_ms"]["total"]*1_000_000):
+            _fail()
+        Admission._assert_current_windows(values["policy"], started, finished, account=account["payload"],
+            market=market["payload"], wallets=[], executions=[], additional=[("open_orders", pending["payload"])])
+        return document
     except Exception:
         _fail()

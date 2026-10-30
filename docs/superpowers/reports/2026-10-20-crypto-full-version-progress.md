@@ -22,6 +22,8 @@
 
 当前管理角色仍无通用发送权、三CLI未接入，本地剩余量与JSON不是native可关闭额度或操作capability。当前原SDK/原单GET和position/pending/报价owned来源、数量消重、账户串行管理CAS/journal、A/B实际使用点与fresh-process仍继续实施；不以本基础子步替代批准的最终管理能力或关闭C5/C6/C7 Goal。实际配置/候选/资金/研究/测试网/实盘门禁均未改。
 
+基础子步已Lore/普通push为e017e3da7d57b8b777c1708cead4ef136b0d7956且远端精确一致。随后继续[原生来源读取子步](2026-10-30-native-management-sources.md)：复用原SDK查询、冷初始化、account/pending/instrument/mark-book和原runtime/Entry检查，不借开仓candidate/unlock，不新增发送器/账本/hook；严格RED修复继承查单分派、回调记录与Session/request/来源Entry晚变、最终UTC年龄及单来源单调预算遗漏。双版实际相同9模块各624唯一节点均自然exit0，各1原AUC警告，独立节点/state/183源码与70/71包环境核对一致；compileall、真实optional-free导入与diff/review通过。正向新来源证据仍限Binance one-way LONG原开仓attempt的暖/冷两币夹具，两个授权/数量标志均false。继续剩余attempt/模式、可关闭量/归属消重、账户串行CAS、管理A/B与原三CLI；管理执行及C5/C6/C7尚未完成，实际配置/研究/资金/交易门禁未改，Goal active。
+
 ## 交付身份与归属
 
 - 开始时远端：`895fc700705e48013019a4054645e016a6e08d0e`。
