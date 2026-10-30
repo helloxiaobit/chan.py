@@ -68,6 +68,37 @@ def _float_exact(value):
     return result
 
 
+def _quantized_order_terms(engine, code, definition, amount, price, *, reference_price=None, _assert_current=None):
+    """Shared units/SDK precision only; neither an intent nor permission.
+
+    A management caller owns any explicit market reference and its use-time
+    checks. Ordinary prepare retains its original ticker fallback and gates.
+    """
+    def current():
+        if _assert_current is not None:
+            _assert_current()
+    with localcontext() as context:
+        context.prec = 50
+        size = _quantity(definition["contractSize"], positive=True)
+        desired = _quantity(amount, positive=True)
+        current()
+        amount = _quantity(engine.get_exchange().amount_to_precision(code, str(desired/size)), positive=True)
+        current()
+        quantity = amount*size
+        if quantity > desired:
+            raise CChanException("精度化不得向上扩大币数量", ErrCode.PARA_ERROR)
+        price = None if price is None else _quantity(engine.get_exchange().price_to_precision(code, price), positive=True)
+        current()
+        if price is None and reference_price is None:
+            reference_price = engine.get_exchange().fetch_ticker(code).get("last")
+            current()
+        reference = price if price is not None else _quantity(reference_price, positive=True)
+        engine._check_limits(definition, amount, reference, quantity*reference)
+        current()
+        return {"quantity": str(quantity), "exchange_amount": str(amount), "price": None if price is None else str(price),
+            "reference_price": str(reference), "notional": str(quantity*reference)}
+
+
 @dataclass
 class _SimOrder:
     code: str
@@ -709,20 +740,12 @@ class CCCXTTradeEngine(CTradeEngine):
                 raise CChanException("market 非明确 active，禁止新风险", ErrCode.TRADE_UNLOCK_FAIL)
             with localcontext() as context:
                 context.prec = 50
-                size = _quantity(definition["contractSize"], positive=True)
-                desired = _quantity(amount, positive=True)
-                amount = _quantity(self.get_exchange().amount_to_precision(code, str(desired/size)), positive=True)
-                quantity = amount*size
-                if quantity > desired:
-                    raise CChanException("精度化不得向上扩大币数量", ErrCode.PARA_ERROR)
-                price = None if price is None else _quantity(self.get_exchange().price_to_precision(code, price), positive=True)
-                reference = price if price is not None else _quantity(self.get_exchange().fetch_ticker(code).get("last"), positive=True)
-                self._check_limits(definition, amount, reference, quantity*reference)
+                terms = _quantized_order_terms(self, code, definition, amount, price)
+                quantity, amount = (_quantity(terms[key], positive=True) for key in ("quantity", "exchange_amount"))
+                price = None if terms["price"] is None else _quantity(terms["price"], positive=True)
                 contract = {"schema": "chan-ccxt-order-v2", "market": definition, "quantity_unit": "base_currency",
                     "exchange_amount_unit": "base_currency" if self.market_type == "spot" else "contracts",
-                    "quantity": str(quantity), "exchange_amount": str(amount),
-                    "price": None if price is None else str(price), "reference_price": str(reference),
-                    "notional": str(quantity*reference), "reduce_only": bool(reduce_only),
+                    **terms, "reduce_only": bool(reduce_only),
                     "execution": execution, "account_observation": observation, "post_only": post_only}
                 if account is not None:
                     contract.update(schema="chan-ccxt-order-v3", account_context=account)

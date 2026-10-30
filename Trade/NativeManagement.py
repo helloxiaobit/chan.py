@@ -6,6 +6,7 @@ account-wide CAS and the original SDK use point. JSON copies cannot send.
 import json
 import hashlib
 import types
+import math
 from decimal import Decimal, localcontext
 from pathlib import Path
 from time import monotonic_ns as _monotonic_ns
@@ -148,8 +149,10 @@ def _known_management_interval_sources(chan, context, *, current=None):
     return fingerprint
 
 
-def _source_runtime(engine, *, include_interval=False):
+def _source_runtime(engine, *, include_interval=False, include_close=False):
     """Reuse original runtime/SDK checks, with the actual frozen read role."""
+    if type(include_interval) is not bool or type(include_close) is not bool or (include_close and not include_interval):
+        _fail()
     role = getattr(engine, "_management_only_policy", None)
     if role is None or engine.mode != role.mode or engine.dry_run is not role.dry_run:
         _fail()
@@ -210,8 +213,30 @@ def _source_runtime(engine, *, include_interval=False):
         ) for name in names)
     callables = {module.__name__+":"+name: Prepare._function_identity(module.__name__, name,
         getattr(module, name), modules) for module, name in selected}
+    if include_close:
+        from . import NativeLastPrice as Last
+        from . import NativeMarketEvidence as Market
+        from . import NativeCapacityEvidence as Capacity
+        from .TradeEngine import CTradeEngine
+        for name, module in (("_markets", Market), ("_sdk", Market), ("_public_environment", Market),
+                ("_budget", Capacity), ("_exact_response", Capacity), ("_window", Capacity), ("_sha", Capacity),
+                ("_https", Identity), ("_raw", Account), ("_number", Facts), ("_string", Facts), ("_original_method", Instrument)):
+            if getattr(Last, name) is not getattr(module, name):
+                _fail()
+        selected = [(module, name) for module, names in (
+            (Last, ("collect_binance_last_prices", "verify_binance_last_prices", "_verify_binance_last_prices_at", "_implementation",
+                "_environment", "_values", "_windows", "_elapsed")),
+            (Market, ("_markets", "_sdk", "_public_environment")),
+            (Capacity, ("_budget", "_exact_response", "_window", "_sha")),
+            (Identity, ("_https",)), (Account, ("_raw",)), (Instrument, ("_original_method",)),
+        ) for name in names]
+        for module, name in selected:
+            callables[module.__name__+":"+name] = Prepare._function_identity(module.__name__, name, getattr(module, name), modules)
+        callables["Trade.TradeEngine:CTradeEngine.make_client_order_id"] = Prepare._function_identity(
+            "Trade.TradeEngine", "CTradeEngine.make_client_order_id", CTradeEngine.make_client_order_id, modules)
     for owner, module, cls, names in (
         (engine, "Trade.TradeEngine", "CTradeEngine", ("_query_persisted_order",)),
+        (engine, "Trade.CCXTTradeEngine", "CCCXTTradeEngine", ("make_client_order_id",) if include_close else ()),
         (engine.chan_db, "Trade.db_util", "CChanDB", ("get_record", "get_order_history")),
     ):
         for name in names:
@@ -222,6 +247,9 @@ def _source_runtime(engine, *, include_interval=False):
     for name in ("read_native_management_order_identity", "_source_runtime", "collect_native_management_sources",
             "collect_native_management_interval", "_collect_native_management_sources", "_known_management_interval_sources", "observe_native_management_quantity"):
         callables[__name__+":"+name] = Prepare._function_identity(__name__, name, globals()[name], modules)
+    if include_close:
+        for name in ("collect_native_management_close_request", "_build_native_management_close_request"):
+            callables[__name__+":"+name] = Prepare._function_identity(__name__, name, globals()[name], modules)
     return {"engine": Prepare._selected_runtime(engine, None, engine._management_only_policy), "sources": callables}
 
 
@@ -241,8 +269,117 @@ def collect_native_management_interval(engine, record_id, *, phase, policy,
         order_max_age_ms=order_max_age_ms, order_max_observation_span_ms=order_max_observation_span_ms, include_interval=True)
 
 
+def collect_native_management_close_request(engine, record_id, amount, price=None, *, post_only=False, policy,
+        instrument_max_age_ms, instrument_max_observation_span_ms, order_max_age_ms, order_max_observation_span_ms,
+        last_max_age_ms, last_max_observation_span_ms):
+    """Own original close-request terms; never persist, claim or send them."""
+    try:
+        if (type(record_id) is not int or record_id <= 0 or type(amount) not in (int, float) or not math.isfinite(amount) or amount <= 0
+                or (price is not None and (type(price) not in (int, float) or not math.isfinite(price) or price <= 0))
+                or type(post_only) is not bool or (post_only and price is None)
+                or any(type(value) is not int or not 0 <= value < 2**63 for value in (last_max_age_ms, last_max_observation_span_ms))):
+            _fail()
+        _source_runtime(engine, include_interval=True, include_close=True)
+        chan = engine.chan_db
+        database = Boundary._database(chan)
+        connection, table = database.conn, chan.table
+        Boundary._same_database(chan, database, connection, table, owned=False)
+        record = chan.get_record(record_id)
+        Boundary._same_database(chan, database, connection, table, owned=False)
+        phase = "close" if record["cover_attempt"] else "open"
+        request = {"amount": amount, "price": price, "post_only": post_only,
+            "last_max_age_ms": last_max_age_ms, "last_max_observation_span_ms": last_max_observation_span_ms}
+        return _collect_native_management_sources(engine, record_id, phase=phase, policy=policy,
+            instrument_max_age_ms=instrument_max_age_ms, instrument_max_observation_span_ms=instrument_max_observation_span_ms,
+            order_max_age_ms=order_max_age_ms, order_max_observation_span_ms=order_max_observation_span_ms,
+            include_interval=True, close_request=request)
+    except Exception:
+        _fail()
+
+
+def _build_native_management_close_request(engine, record, quantity, account, units, request, owners, component_windows):
+    """Run the original arithmetic and SDK builder, not a second sender."""
+    from . import CCXTTradeEngine as Engine
+    from . import NativeLastPrice as Last
+    if (record["status"] != "open" or record["is_open"] != 1 or quantity["payload"]["new_close_blockers"]
+            or _number(str(request["amount"]), positive=True) > _number(quantity["payload"]["observed_available_base_quantity"])):
+        _fail()
+    original = json.loads(record["open_order_contract"])
+    code = record["stock_code"]
+    definition = next(unit for unit in units if unit["symbol"] == code)
+    if original["execution"]["venue"] != "binance" or _market(original["market"]) != _market(definition):
+        _fail()
+    execution = original["execution"]
+    owners()
+    source_start = _monotonic_ns()
+    observed_mode = engine.exchange.fetch_position_mode(code)
+    owners()
+    component_windows.append({"age_roles": ["account"], "span_role": "account",
+        "started_ns": source_start, "finished_ns": _monotonic_ns()})
+    positions = [row for row in account["payload"]["positions"]
+        if row["instrument"] == code and row["position_side"] == execution["position_side"]]
+    if (len(positions) != 1 or type(observed_mode) is not dict or type(observed_mode.get("hedged")) is not bool
+            or observed_mode["hedged"] is not (execution["position_mode"] == "hedged")
+            or positions[0]["margin_mode"] != execution["margin_mode"]):
+        _fail()
+    leverage = _number(positions[0]["leverage"], positive=True)
+    if leverage != leverage.to_integral_value() or not 1 <= leverage <= 125:
+        _fail()
+    # Use the already verified native Symbol Config through its original
+    # account-source parser. fetch_leverage would populate an unrelated SDK
+    # bracket cache on cold objects, not add position-quantity evidence.
+    observation = {"hedged": observed_mode["hedged"], "margin_mode": positions[0]["margin_mode"],
+        "long_leverage": int(leverage), "short_leverage": int(leverage)}
+    last, last_window, reference = None, None, None
+    if request["price"] is None:
+        source_start = _monotonic_ns()
+        last = Last.collect_binance_last_prices(engine.exchange, [definition], mode=engine.mode,
+            max_age_ms=request["last_max_age_ms"], max_observation_span_ms=request["last_max_observation_span_ms"])
+        last_window = {"started_ns": source_start, "finished_ns": _monotonic_ns()}
+        owners()
+        if last["payload"]["markets"] != Last._markets([definition], engine.exchange.id):
+            _fail()
+        reference = last["payload"]["observations"][0]["price"]
+    terms = Engine._quantized_order_terms(engine, code, definition, request["amount"], request["price"],
+        reference_price=reference, _assert_current=owners)
+    owners()
+    contract = {"schema": "chan-ccxt-order-v3", "market": definition, "quantity_unit": "base_currency",
+        "exchange_amount_unit": "contracts", **terms, "reduce_only": True, "execution": execution,
+        "account_observation": observation, "post_only": request["post_only"], "account_context": original["account_context"]}
+    contract["contract_id"] = Engine._contract_id(contract)
+    engine._check_execution_evidence(contract, record, "close")
+    owners()
+    quantity_value = Engine._float_exact(Engine._quantity(terms["quantity"], positive=True))
+    amount = Engine._float_exact(Engine._quantity(terms["exchange_amount"], positive=True))
+    price = None if terms["price"] is None else Engine._float_exact(Engine._quantity(terms["price"], positive=True))
+    is_buy = not bool(record["is_buy"])
+    client = engine.make_client_order_id(record, "close")
+    owners()
+    params = engine._venue_params(contract, client, is_buy=is_buy, reduce_only=True,
+        post_only=request["post_only"], side=execution["position_side"])
+    owners()
+    wire = engine.exchange.create_order_request(code, "market" if price is None else "limit", "buy" if is_buy else "sell", amount, price, params)
+    owners()
+    required = {"symbol", "side", "type", "quantity", "positionSide", "newClientOrderId"}
+    expected_keys = required | ({"price", "timeInForce"} if price is not None else set()) | ({"reduceOnly"} if execution["position_mode"] == "one_way" else set())
+    if (not expected_keys <= set(wire) <= expected_keys | {"newOrderRespType"}
+            or wire["symbol"] != definition["id"] or wire["side"] != ("BUY" if is_buy else "SELL")
+            or wire["positionSide"] != execution["position_side"] or wire["newClientOrderId"] != client
+            or wire["type"] != ("MARKET" if price is None else "LIMIT")
+            or _number(str(wire["quantity"]), positive=True) != _number(terms["exchange_amount"], positive=True)
+            or (execution["position_mode"] == "one_way" and wire["reduceOnly"] is not True)
+            or (price is not None and (_number(str(wire["price"]), positive=True) != _number(terms["price"], positive=True)
+                or wire["timeInForce"] != ("GTX" if request["post_only"] else "GTC")))
+            or ("newOrderRespType" in wire and wire["newOrderRespType"] not in {"ACK", "RESULT"})):
+        _fail()
+    return {"requested_base_quantity": str(Engine._quantity(request["amount"], positive=True)), "quantity": str(Engine._quantity(quantity_value)),
+        "client_order_id": client, "next_close_attempt": (record["cover_attempt"] or 0)+1, "contract": contract,
+        "sdk_request": wire, "last": last, "last_window": last_window, "operation_authorized": False}
+
+
 def _collect_native_management_sources(engine, record_id, *, phase, policy,
-        instrument_max_age_ms, instrument_max_observation_span_ms, order_max_age_ms, order_max_observation_span_ms, include_interval):
+        instrument_max_age_ms, instrument_max_observation_span_ms, order_max_age_ms, order_max_observation_span_ms, include_interval,
+        close_request=None):
     """Own current GETs, not quantity capability, CAS, release or permission.
 
     Query may persist its original ACK/terminal observation, never apply fills.
@@ -270,13 +407,17 @@ def _collect_native_management_sources(engine, record_id, *, phase, policy,
         provided = {"policy": policy, "instrument_max_age_ms": instrument_max_age_ms,
             "instrument_max_observation_span_ms": instrument_max_observation_span_ms,
             "order_max_age_ms": order_max_age_ms, "order_max_observation_span_ms": order_max_observation_span_ms}
+        if close_request is not None:
+            if include_interval is not True:
+                _fail()
+            provided["close_request"] = close_request
         original = canonical_bytes(provided)
         values = json.loads(original)
         for name, value in values.items():
-            if name != "policy" and (type(value) is not int or not 0 <= value < 2**63):
+            if name not in {"policy", "close_request"} and (type(value) is not int or not 0 <= value < 2**63):
                 _fail()
         values["policy"] = Current.read_native_component_policy(values["policy"])
-        runtime = _source_runtime(engine, include_interval=include_interval)
+        runtime = _source_runtime(engine, include_interval=include_interval, include_close=close_request is not None)
         chan, mode, role = engine.chan_db, engine.mode, engine._management_only_policy
         database = Boundary._database(chan)
         connection, table = database.conn, chan.table
@@ -321,14 +462,16 @@ def _collect_native_management_sources(engine, record_id, *, phase, policy,
                     or exchange.session is not session or session.request != request
                     or canonical_bytes(engine.ccxt_conf) != config or canonical_bytes(provided) != original
                     or canonical_bytes(database.query("PRAGMA database_list")) != location
-                    or Prepare._client_binding(exchange) != binding or _source_runtime(engine, include_interval=include_interval) != runtime
+                    or Prepare._client_binding(exchange) != binding
+                    or _source_runtime(engine, include_interval=include_interval, include_close=close_request is not None) != runtime
                     or {**Prepare._implementation(), __name__: hashlib.sha256(Path(__file__).read_bytes()).hexdigest()} != implementation):
                 _fail()
             # Same original Entry verifier, not a second source/SDK verifier.
             Prepare._assert_execution_sdk(exchange, mode, source_entries=("fapiPrivateV3GetBalance", "fapiPrivateV3GetAccount",
                 "fapiPrivateV3GetPositionRisk", "fapiPrivateGetSymbolConfig", "fapiPrivateGetMultiAssetsMargin",
                 "fapiPrivateGetOpenAlgoOrders", "fapiPublicGetPremiumIndex", "fapiPublicGetTickerBookTicker", "fapiPublicGetExchangeInfo")
-                +(("fapiPrivateGetUserTrades", "fapiPrivateGetIncome") if include_interval else ()))
+                +(("fapiPrivateGetUserTrades", "fapiPrivateGetIncome") if include_interval else ())
+                +(("fapiPrivateGetPositionSideDual", "fapiPublicV2GetTickerPrice") if close_request is not None else ()))
             from . import NativePreparedIntent as Prepared
             Prepared._assert_native_adapter_retry_policy(exchange)
             if identity and read_native_management_order_identity(chan, record_id, phase=phase) != local:
@@ -466,6 +609,9 @@ def _collect_native_management_sources(engine, record_id, *, phase, policy,
             _fail()
         quantity = observe_native_management_quantity(chan, record_id, phase=phase, account_snapshot=account, pending_orders=pending)
         owners()
+        bound_close = None if close_request is None else _build_native_management_close_request(
+            engine, record, quantity, account, units, values["close_request"], owners, component_windows)
+        owners()
         payload = {"identity": local, "account_context": context, "instruments": instruments,
             "order": {name: getattr(result, name) for name in ("order_id", "client_order_id", "requested", "filled", "avg_price", "status")},
             "order_window": {"started_ms": query_start, "finished_ms": query_end}, "account": account,
@@ -482,9 +628,17 @@ def _collect_native_management_sources(engine, record_id, *, phase, policy,
             owners()
             interval["monotonic_windows"] = component_windows
             payload["interval"] = {"schema": "chan-native-management-interval-v1", "payload": interval, "payload_sha256": _sha(interval)}
-        document = json.loads(canonical_bytes({"schema": "chan-native-management-sources-v3" if include_interval else "chan-native-management-sources-v2",
+        if bound_close is not None:
+            payload["close_request"] = bound_close
+        schema = "chan-native-management-sources-v4" if close_request is not None else "chan-native-management-sources-v3" if include_interval else "chan-native-management-sources-v2"
+        document = json.loads(canonical_bytes({"schema": schema,
             "payload": payload, "payload_sha256": _sha(payload)}))
         owners()
+        if bound_close is not None and bound_close["last"] is not None:
+            from . import NativeLastPrice as Last
+            Last.verify_binance_last_prices(bound_close["last"], max_age_ms=close_request["last_max_age_ms"],
+                max_observation_span_ms=close_request["last_max_observation_span_ms"])
+            owners()
         finished, elapsed_end = utc_now_ms(), _monotonic_ns()
         instrument = instruments["payload"]
         elapsed_clocks = (elapsed_start, instrument_elapsed_start, instrument_elapsed_end,
@@ -493,7 +647,7 @@ def _collect_native_management_sources(engine, record_id, *, phase, policy,
                 or tuple(sorted(elapsed_clocks)) != elapsed_clocks):
             _fail()
         if include_interval:
-            if len(component_windows) != len(units)+4:
+            if len(component_windows) != len(units)+4+(1 if close_request is not None else 0):
                 _fail()
             previous = query_elapsed_end
             for window in component_windows:
@@ -503,6 +657,15 @@ def _collect_native_management_sources(engine, record_id, *, phase, policy,
                         or any(elapsed_end-begin > values["policy"]["max_age_ms"][role]*1_000_000 for role in window["age_roles"])):
                     _fail()
                 previous = end
+        if bound_close is not None and bound_close["last"] is not None:
+            Last._windows(bound_close["last"]["payload"], finished, close_request["last_max_age_ms"],
+                close_request["last_max_observation_span_ms"])
+            window = bound_close["last_window"]
+            if (type(window["started_ns"]) is not int or type(window["finished_ns"]) is not int
+                    or not component_windows[-1]["finished_ns"] <= window["started_ns"] <= window["finished_ns"] <= elapsed_end
+                    or window["finished_ns"]-window["started_ns"] > close_request["last_max_observation_span_ms"]*1_000_000
+                    or elapsed_end-window["started_ns"] > close_request["last_max_age_ms"]*1_000_000):
+                _fail()
         if (not 0 <= started <= query_start <= query_end <= finished < 2**63
                 or finished-query_start > order_max_age_ms or query_end-query_start > order_max_observation_span_ms
                 or finished-instrument["started_ms"] > instrument_max_age_ms

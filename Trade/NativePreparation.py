@@ -260,7 +260,7 @@ def _selected_runtime(engine, guard, policy):
         "_native_terminal_observation", "_sdk_submission_report", "_assert_sdk_submission",
         "_append", "_read_attempt", "read_history", "_history_header"))
     selected.extend(("Trade.CCXTTradeEngine", name, getattr(engine_module, name))
-                    for name in ("_quantity", "_float_exact", "_contract_id"))
+                    for name in ("_quantity", "_float_exact", "_contract_id", "_quantized_order_terms"))
     selected.extend(("Trade.SafetyPolicy", name, getattr(safety_module, name))
                     for name in ("build_trading_safety_policy", "build_query_only_safety_policy", "build_management_only_safety_policy",
                                  "_load_candidate_receipt", "_configured_mode", "_assert_private_configuration"))

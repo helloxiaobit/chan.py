@@ -47,3 +47,33 @@
 该完整区间观察子步现已[双版同442精确节点验收](../reports/2026-10-30-native-management-interval.md)：各441 passed/1原有isolated skip/零warning，新52项全通过；187源码map、成员/顺序/状态、原环境及raw工件独立配对一致。原基线/全市场execution+wallet、已知事实防抹除/末尾入库竞态、先账户后执行及独立单调预算均有RED/GREEN；整数ms端点相等通过原identity GET分隔，不改原严格规则。中间诊断一次错误假设调用次数也保留，未计入终验成绩。原source-v2沿私有共享主体保留诊断顺序；v3结果仍不是动作许可，未更新配置或表/资金/门禁。
 
 下一实施点是第3步剩余的实际请求与原SDK精度化/只关闭语义、当前调用不可转交context；然后第4–6步CAS账户占用、管理A/B和三CLI/fresh-worker。cancel不应借新风险余额或要求可关闭余量大于零，但close须原单终态及当前可证实余量。继续沿原intent/claim/journal，不创建新sender/表，真实通道完整性与实际网络预算不凭fake通过；整个Goal仍active。
+
+## dd9cc5e后请求绑定与共享算术计划（修改前）
+
+先在tests/test_native_management_request.py写缺入口RED：同一原claimed订单经原cancel/GET/report确证终态后，管理采集器用当前真实可证实余量向下精度化，原SDK create_order_request构造相同原标的、反向side、原leg和下一close client号的limit/post-only与market正文；活跃open/close、超余量/错误模式或参数晚变仍拒绝。仅底层HTTP fake，不mock准入/CAS或精度成功，结果仍不允许发送。市价必须用原NativeLastPrice V2且额外年龄/跨度显式提供，不依赖缓存或caller quote；保留原最小名义金额检查，不添加close豁免。
+
+为避免复制单位算术，先在Trade/CCXTTradeEngine.py把原prepare中contractSize/amount/price precision、reference和limits小块抽成私有共享terms函数；普通入口前后所有原门禁、返回float精确重读不变。沿Trade/NativePreparation.py原函数枚举绑定新helper，不改SDK/依赖/配置。管理入口在NativeManagement原collector内、最终来源/ledger/window尾核验前调用该helper及原_venue_params/create_order_request，逐次外调前后复核owner，枚举新增Last/原client-ID实际依赖；不另写sender或用通用policy PASS。
+
+本轮冻结的是实际请求身份基础，不能据SDK形状声称服务器锁仓/必接单或C7已认证。紧接着将该同次数据封在原上下文模式的不可转交live handle，在原CAS/OrderAudit消费并于已批准A/B使用点复核；未有完整消费者前仍禁止发送。源/参数/实现晚变、独立单调预算及真实optional-free导入作为回归；无活pytest才改/编译，适用双版及精确原件后Lore/普通push。
+
+## 请求绑定终验：3.11中断恢复记录（2026-10-31）
+
+原3.14进程28416自然exit0，731精确节点为730 passed/1原有isolated cash-channel skip、零warning，CLI7625.62秒；原JUnit `request-acceptance-py314-8b8bf2a3d90e451b84cddc9e171790da.xml` SHA `4acabe1d00f0a36245a3d25fe6d5119f9405777a144ed61e53e7b93c33f1576f`，result SHA `a641ceedaa3541eb1d507301f79e4b53d4dc775c6cf633259fb6a462a22629b9`，case-state SHA `a5c11731370622bfc86faa64f982c09cc90f4bcc15f6f133b059ddc8993408a5`。控制器accepted=true后才串行启动3.11，不将此单版结果称为双版验收或管理执行完成。
+
+03:13（19:13 UTC）续接时，原3.11句柄62803已不存在；两次系统只读检查均无Python/pytest/uv。该尝试仅保留started、731节点args和17458字节partial stdout，无JUnit/result，退出码及中断机制未知。日志110个通过精确对应原清单前缀，但均不计终验；新增请求54项与区间52项曾在该partial中通过的观察不替代完整终态。
+
+本次原件根为 `C:/chanpy/verification/native-management-request-20261030/`。原started SHA `efdf8dea65c1e5857b23bffd9ef794340640b3bd335af8cc36fe0f205f5397ad`，原args SHA `2041decde19d51fdb61986464c1f8dff9361ad1adc577cfbeb2a4068aea3330e`，partial log SHA `283a6e51f1f52ba880b6f6ec746b16d8e7b012a480a9f44e0a1948e7c14d90c1`；观察及完整环境复核保存在 `request-interruption-20261030T191322Z.json`。源码188文件map仍 `4339b35d337b0d98131b713598da65054af68cf46e95dc0fee9df1642ada00c4`，manifest raw SHA仍 `5985f2c13fb7cfc285bbf8f64a739b0f169d9ca797fae1c3cd937f815b517596`，两版真实metadata/前缀/user-site、requirements、原HEAD dd9cc5e和3.14终态原件全部复核一致。
+
+沿既有中断恢复规程，仅在确认无活任务后，把该已停started原字节可逆归档为 `request-py311.interrupted-20261030T191322Z.started.json`，不改原args、partial log或basetemp。使用SHA不变的 `verify_request_binding.py`（`81d92be4b5e5ebbcfc6b699acdace2002e71f0b710221acd972e4ec921f800d4`）将原731节点完整重跑到新GUID；保持原清单/顺序/封装/环境，不叠加partial、重标失败或缩小范围，不重复已完整接受且身份未变的3.14。双版终态独立审计、当前编译/import检查、Lore/普通push及后续CAS/A-B/CLI仍待完成，Goal active；产品/测试/依赖/实际配置和交易门禁不变。
+
+### 恢复终态与本观察子步验收
+
+原恢复句柄54698自然exit0，3.11完整731节点为730 passed/1原有skip/零warning，CLI8504.41秒；新JUnit `request-acceptance-py311-8198072c00be47aa96be90ed19ffb407.xml` SHA `030892f54aea5426ed549f8044119b40414a0104acd91d505bf89c100f5497b8`，result SHA `12625be080f7742ac6c1ce2b52a5d1d77593720acf42ae48dac6042ef585971d`。与3.14完整成员/顺序/状态逐项相同，case-state仍a5c11731；188源码map、真实70/71包环境及原manifest/verifier未变。独立审计exit0、双版四改动py编译和真实optional-free导入均通过，14中间JUnit/64工具副本、初始DB断言错误/Decimal误用和两项Last尾RED均保留，见[本请求绑定报告](../reports/2026-10-31-native-management-request.md)。此观察子步具备相应Lore/普通push门槛，实际Git身份另核；不称整个第3–6步或C5/C6/C7完成。
+
+## 下一步动作上下文与原journal接线（修改前计划）
+
+先在原SQLite/SDK fake夹具写缺私有动作handle的RED：JSON/复制体/新造同型对象不能消费，跨Engine/连接/线程不能转交；源、参数、实现、全库ledger晚变或原窗口过龄必须在外来SQL/transport之前拒绝。沿原WeakKeyDictionary上下文模式封存本次自采closure和请求，不接受caller PASS/baseline/时钟，不复制来源/金额/发送状态机；public source-v4仍只导出非授权JSON。
+
+随后沿原`_order_write`/`acquire_close_intent`/claim与`OrderAudit`消费同一动作、原intent/claim唯一增量和全账户占用；先验证两连接/两进程、已有未知/created/submitting、回滚、重复报告及原生终态才释放。NativeOrderTransition表的phase=open CHECK不得改或塞close/cancel；在原append-only OrderAudit事件中显式版本化管理绑定/增量，严格reader核新增字段digest/类型/前缀，不新建第二ledger/table、不补签旧open L2。
+
+最后接已批准A/B原fetch和Session.request两位置：同call核实际动作/client/leg/数量/来源/owner/CAS，严格恢复，不重采/重签/第三hook；再接原三CLI与fresh-worker。通用管理发送断言仍拒绝，只允许逐动作完整消费者执行批准范围，不能停在永久全拒绝。cancel不借新风险余额或可关闭量>0，close保留原终态/余量及服务器只关闭证据门槛。逐步真实RED/GREEN、适用串行回归和Lore，不改实际配置或真实交易授权。

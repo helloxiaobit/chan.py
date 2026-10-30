@@ -2,7 +2,15 @@
 
 用户在 2026-10-20 批准按 [C0–C7 计划](../plans/2026-10-20-crypto-full-version-completion.md) 开发并向 `helloxiaobit/chan.py full-version` 提交、推送。按阶段串行验证；Goal 仅在全部要求有结果后关闭。
 
-## 当前检查点（2026-10-30，查单完成；管理原完整区间观察已验）
+## 当前检查点（2026-10-31，查单已交付；管理请求绑定离线验收已验）
+
+原完整区间观察已Lore/普通push为 `dd9cc5e17a630028ed419c2d4f7431893912ec79`。其后完成[原关闭请求绑定与共享精度子步](2026-10-31-native-management-request.md)：source-v4自采后用原SDK builder构造精度化、原账户/leg/client-ID绑定请求，市价取原Last V2，修复最终decoder工作遗漏其他来源预算与Last原交易年龄尾检查。原prepare共用单位/精度函数和原运行时枚举，没有新sender/表/账本/hook/依赖；两个授权标志仍false，未接管理发送消费者。
+
+同一188源码、17完整模块/731唯一节点，双版终态各730 passed/1原有isolated cash-channel skip、零测试warning，成员/顺序/状态逐项相同，case-state SHA `a5c11731370622bfc86faa64f982c09cc90f4bcc15f6f133b059ddc8993408a5`。首个3.11中断仅partial/无JUnit及退出码，110个日志通过不计终验；原字节可逆归档后用未改verifier全731重跑，旧raw log/args/basetemp保留。源码/实际环境/封装/raw SHA独立审计、双版编译和真实optional-free导入通过；14中间JUnit、64工具副本与自己的断言/类型错误见报告。不重标旧成绩为当前运行；验收对应父HEAD dd9cc5e加本工作树，发布以本次Lore/普通push实际Git核实为准。
+
+第3步仍未整体闭合：请求JSON/SDK形状不等于服务器只关闭或动作capability；原私有live handle、管理CAS账户串行占用、未知释放的原生终态/完整来源、A/B两位置消费者及三管理CLI/fresh-worker继续实施。不能以本观察或永久全拒绝替代批准最终能力。OKX、候选/旧证明迁移、更广E2E和C7外部认证仍未完成；实际配置/交易/研究门禁不变，整个C0–C7 Goal active。
+
+### 已交付历史检查点（保留当时结论，最新状态以上段为准）
 
 最新交付基线18f761b已完成[管理数量读取](2026-10-30-native-management-quantity.md)双版478精确节点并普通push；随后[原SDK同调用路由快照清理](2026-10-30-native-sdk-route-snapshot.md)严格RED/GREEN，当前同一186源码、7完整模块共254节点双版均254 passed/零skip/warning、精确成员/状态配对通过。唯一生产函数只将同次5/14次路由parse减为1并增加返回前原字节复核，无跨调用缓存、门禁放宽或管理发送权。双版编译、真实optional-free导入及solo review通过；对应原件与未验项见报告，不重标旧7405或478为新执行。整个C5/C6仍进行中、C7未认证、Goal active；接下来继续完整原区间/执行归属、动作数量与精度、原账户串行CAS/管理A/B及三CLI，不以局部清理代替批准的最终管理功能。
 
