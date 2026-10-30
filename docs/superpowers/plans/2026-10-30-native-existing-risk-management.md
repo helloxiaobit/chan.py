@@ -24,6 +24,14 @@
 
 ## f9588c8后续执行细化
 
-先在tests/test_native_management_attempts.py复用原capacity_case四模式/方向、management_case及raw recovery transport，验证冷开仓/冷关闭attempt与原累计历史；测试共享transport仅将固定示例orderId改为当前原raw row的ID，不替换SDK/查询/准入成功。关闭夹具只用原prepare/CAS/claim/ACK/report生成本地历史，再由真实原SDK GET读取底层fake原单，不宣称真实关闭POST。已有相同生产源码证据按身份复用，任何真实缺口先RED再最小修正。
+先在tests/test_native_management_attempts.py复用原capacity_case四模式/方向、management_case及raw recovery transport，验证冷开仓/冷关闭attempt与原累计历史；测试共享transport使用独立的请求端期望orderId（旧默认123456，关闭夹具显式789123），不能让被刻意损坏的响应raw row改写请求端断言；不替换SDK/查询/准入成功。关闭夹具只用原prepare/CAS/claim/ACK/report生成本地历史，再由真实原SDK GET读取底层fake原单，不宣称真实关闭POST。已有相同生产源码证据按身份复用，任何真实缺口先RED再最小修正。
 
 其后第3步先独立观察原全账户ledger与原account/pending源码：复用原AccountReconcile数量/方向及NativePendingOwnership规则，不把caller JSON变成能力。按原record/leg精确核合计本地剩余和原生position、扣同账户原关闭在途量且消重；未知/跨账户/归属不清/超量拒绝，金额零默认容差。该观察仍不是管理CAS/发送许可；操作消费者必须在同调用自采并在原CAS和A/B里复验。每个新行为先见RED，原七入口锁保持；不以只读观察替代第4–6步。
+
+## 18f761b后使用点成本清理计划（先保护行为）
+
+数量读取子步已普通push为18f761b，原双版证据对应185文件；以下是其后的独立工作，不回写旧验收。源码核对发现NativePreparation._assert_execution_sdk在同一次调用中为5个执行Entry加9个管理source Entry逐个读取并parse同一ccxt.abstract路由文件；3.14本地纯检查一次约0.73秒，无端点调用。这不是实盘延迟认证，也不许可延长或绕过原来源窗口。
+
+先写离线TDD：原SDK/Entry、零网络，证明每次调用每个路由文件只解析一次且必须在返回前重新读取核字节；第二次调用必须重新读/parse，任一Entry（含最后source Entry）晚变或源字节漂移仍拒绝。观察原重复读取/未核字节变化的RED后，唯一生产修改限该函数，使用仅存于本次调用的path→source/tree字典，逐Entry原验证不删，末尾重新read比较；不增加跨调用缓存、SDK副本、hook、依赖或权限。复用适用SDK负向/管理来源/原A/B回归，双版串行冻结成员与源码后验收，原管理仍未接通。随后回到完整区间归属、动作参数、原CAS/A/B和CLI主线，不能把此成本清理称为管理能力完成。
+
+该局部清理已完成严格RED/GREEN及[双版254节点审查](../reports/2026-10-30-native-sdk-route-snapshot.md)，186源码/70与71包环境精确配对；同次parse由5/14降到1，末尾重新读原字节，下一调用仍fresh，无新权限或窗口放宽。它不是最终管理能力，不把旧7405或上轮478节点重标为当前再次运行。下一实施优先复用AccountReconcile.build_account_reconciliation_with_pending的原完整区间/执行归属：基线必须来自原已验证root/check，不发明lookback；owned pending须在after endpoint之前读取，wallet/execution覆盖原before.started到after.finished+1的完整区间并绑定全部原市场/账户/ledger。先用相同净仓位但存在unowned往返成交的RED证明不能凭净数量通过，再接动作数量/精度、原CAS和A/B。原新风险collector含冻结/资金前置条件，不能直接让其通用PASS充当管理许可或借管理路径解冻。

@@ -2,7 +2,9 @@
 
 用户在 2026-10-20 批准按 [C0–C7 计划](../plans/2026-10-20-crypto-full-version-completion.md) 开发并向 `helloxiaobit/chan.py full-version` 提交、推送。按阶段串行验证；Goal 仅在全部要求有结果后关闭。
 
-## 当前检查点（2026-10-30，查单完成；管理数量读取子步已验）
+## 当前检查点（2026-10-30，查单完成；管理数量读取及SDK局部清理已验）
+
+最新交付基线18f761b已完成[管理数量读取](2026-10-30-native-management-quantity.md)双版478精确节点并普通push；随后[原SDK同调用路由快照清理](2026-10-30-native-sdk-route-snapshot.md)严格RED/GREEN，当前同一186源码、7完整模块共254节点双版均254 passed/零skip/warning、精确成员/状态配对通过。唯一生产函数只将同次5/14次路由parse减为1并增加返回前原字节复核，无跨调用缓存、门禁放宽或管理发送权。双版编译、真实optional-free导入及solo review通过；对应原件与未验项见报告，不重标旧7405或478为新执行。整个C5/C6仍进行中、C7未认证、Goal active；接下来继续完整原区间/执行归属、动作数量与精度、原账户串行CAS/管理A/B及三CLI，不以局部清理代替批准的最终管理功能。
 
 已批准的限定query-only角色与五fresh-worker混合历史恢复已完成本轮离线验收；精确范围见[双版报告](2026-10-30-native-query-only-verification.md)。新非Temp代际a097f905的两版各37/37批原件已齐备并独立核对：各7403 passed/2原有skip、7405唯一节点、24原始警告，完整node/state差异0。双版collection均7405/7406、仅原1个network排除；query-only50项、configured-process4项和原金额执行/入口模块均按实际完整成员复核，不借总数推断。两版12改动py的compileall、diff检查和主线程solo review已通过，源码179文件map仍1a44946c。原2793自然exit0、无活pytest后才补文档。
 

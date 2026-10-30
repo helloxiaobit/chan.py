@@ -137,6 +137,7 @@ def _assert_execution_sdk(exchange, mode, *, source_entries=()):
         entry_path = sdk_root/"base/types.py"
         for name in ("__init__", "__get__"):
             _function_identity("ccxt.base.types", "Entry."+name, vars(Entry)[name], modules, path=entry_path)
+        route_sources = {}  # This call only; never renew or cache an SDK identity across calls.
         for name in ("fapiPrivatePostOrder", "fapiPrivateGetOrder", "fapiPrivateDeleteOrder",
                      "fapiPrivateGetAllOrders", "fapiPrivateGetOpenOrders")+source_entries:
             owner = next(cls for cls in type(exchange).__mro__ if name in vars(cls))
@@ -144,7 +145,10 @@ def _assert_execution_sdk(exchange, mode, *, source_entries=()):
             if type(descriptor) is not Entry:
                 _fail()
             route_path = sdk_root.joinpath(*owner.__module__.split(".")[1:]).with_suffix(".py")
-            tree = ast.parse(route_path.read_text(encoding="utf-8"))
+            if route_path not in route_sources:
+                source = route_path.read_bytes()
+                route_sources[route_path] = (source, ast.parse(source))
+            _, tree = route_sources[route_path]
             statement = next(node for node in _function_node(tree, owner.__qualname__).body if isinstance(node, ast.Assign)
                              and any(isinstance(target, ast.Name) and target.id == name for target in node.targets))
             if (not isinstance(statement.value, ast.Call) or not isinstance(statement.value.func, ast.Subscript)
@@ -166,6 +170,8 @@ def _assert_execution_sdk(exchange, mode, *, source_entries=()):
             if (type(method) is not types.MethodType or getattr(method, "__self__", None) is not exchange
                     or getattr(method, "__func__", None) is not function):
                 _fail()
+        if any(path.read_bytes() != source for path, (source, _) in route_sources.items()):
+            _fail()
     except Exception:
         _fail()
 
