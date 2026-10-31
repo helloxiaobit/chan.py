@@ -89,3 +89,23 @@
 该基础子步现已[双版终验及独立审计](../reports/2026-10-31-native-management-context.md)：同一218精确节点各218 passed/零skip/warning，原进程自然exit0，189源码map仍dd5b02c5；完整成员/顺序/状态相等，真实70/71包环境不变。3.14接受后才启动3.11，原123次观察和中间错误保留；当前编译、实际optional-free导入也通过。不重标未改522或旧7405为本轮重跑，不称整个第3–6步/C5/C6/C7完成。
 
 后续接线前仍按修改前计划：先RED覆盖原writer及其实际SQL/回调依赖晚换，拒绝发生在外来SQL/transport之前；再原CAS唯一intent/claim增量和稳定账户跨币占用。用原OrderAudit显式版本化管理字段，并纳入data_sha/digest/reader/header，不能在原NativeOrderTransition塞close/cancel。当前活视图只接受写前全等，写后必须独立核确定义的唯一增量，不能增添任意ignore/allow-pass参数。随后管理A/B与三CLI，保持未知/ACK不释放和实际门禁；不以当前仍无发送能力作为最终交付。
+
+### 99096e4后原SQL依赖与CAS接线细化（修改前）
+
+上下文基础已Lore/普通push为99096e4，远端相同且交付时189源码map不变；原双版218验收不冒称在新HEAD重跑。先用同一真实SQLite/SDK小夹具验证本次原db.query/query_one/transaction/execute及CChanDB原record/history/intent/claim/writer的实例或类方法晚换，还有原连接row_factory/text_factory晚换；检查必须在外来callable或SQL之前拒绝。只扩原runtime函数枚举和同次owner绑定，复用原fresh-compile验证及原contextlib事务wrapper，不另造数据库/金额状态机或允许caller callback。此范围不声称能封锁任意SQLite trace/authorizer或任意Python进程修改。
+
+随后在同一原close intent/claim/CAS中接管理context：原字段/实际参数/单一增量必须逐项一致，原OrderAudit显式版本化记录且纳入digest/reader/header；两个旧pre-intent handle不能都获写，原账户跨币未观察管理事件持续占用，未知不释放。新正向和回滚/竞争负向先RED，完整消费者前不开放HTTP或CLI，NativeOrderTransition的open-only表和原新风险门禁不变。
+
+上述SQL前置保护已有两条真实RED与3项focused GREEN（218.42秒），见[当前证据](../reports/2026-10-31-native-management-sql.md)。首条暴露20类方法/factory晚换仍执行外来回调/SQL或未被拒绝；修复后追加helper晚换与采集前同类负向。第二条暴露contextmanager在类型检查前调用外来__module__，类型检查前移后同一回归通过。仅修正断言的巨量SQL诊断为精确计数/首项，不放宽零SQL条件，原失败XML保留。双版当前两py编译与实际optional-free导入已通过；接下来冻结9完整管理模块/221唯一节点及190源码，接受3.14后才启动3.11，未完成前不提交或声称CAS已接通。
+
+用户暂停时只停止原observer，未终止pytest或编辑；恢复后原3.14 runner已有完整221 passed/exit0终态，原句柄缺失但result/log/args/XML、190源码、原两版环境及成员/state独立核对通过。终态工具返回缺失如实保留，不重造、不重跑或缩小清单；afda4c恢复审计仅核原件。接下来按原清单启动3.11，双版独立审计/Lore/push和原CAS接线仍待，不把此单版推进称C5/C6完成。
+
+上述SQL子步现已[完整双版接受](../reports/2026-10-31-native-management-sql.md)：各221 passed/零skip/warning、真实exit0，190源码map及70/71包真实环境完全相同。原3.11句柄68572自然终态b26fd9，完整成员/state与3.14一致；105次实际poll仅保留其连续monitor范围，3.14返回缺口不补造。独立审计旧runner文件名首跑失败保留，仅修审计路径后280c08通过；原manifest/runner/测试工件未改。编译、真实optional-free导入及solo review按当前相同身份适用，具备本子步Lore/普通push门槛，不把仍无管理写权作为最终目标。
+
+### 下一步原writer消费与唯一管理增量（修改前）
+
+从本次已验树起先写真实正向RED：原terminal_case自采活context后，原CChanDB.acquire_close_intent在原事务中消费它，确实新增唯一close attempt及原OrderAudit intent，原投影只出现确定义的关闭字段变化。沿原方法增加限定内部context参数，不从JSON/caller PASS重建；其后claim同一attempt，记录唯一claim增量。原通用Engine发送仍拒绝，HTTP/CLI必须等完整消费者接好。
+
+OrderAudit显式版本化管理binding/增量，并纳入data_sha、strict reader和history header；旧v1–v3事件不重签，新字段不能被旧reader静默忽略。原前缀必须逐字相同，只允许本次原target的确定义intent/claim增量及对应投影；不得把写后新读结果直接改成expected或加入ignore字段。CAS前后复用本次source/owner/原窗口，不重采或重签；NativeOrderTransition的phase=open CHECK不改，不新增表/第二ledger/sender。
+
+随后TDD覆盖同稳定账户跨币占用、两个旧handle/两连接/进程竞争、重入/重复claim、另一记录/历史晚变、意外额外event/attempt、SQL失败与事务回滚；created/submitting/unknown持续占用，ACK或DELETE本身不释放。原生终态及完整已知来源/原累计回报的唯一观察事件才可解除管理占用，旧新风险未知不能被管理动作释放。支持one-way/hedged范围仍按批准的服务器仅关闭证据逐组合核实，缺证据的组合保持未验收而非改成客户假设。完成这条真实writer路径后继续原A/B和三CLI/fresh-worker，不用新增抽象或永久拒绝替代最终管理能力。

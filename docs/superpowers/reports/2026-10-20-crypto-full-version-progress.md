@@ -2,7 +2,15 @@
 
 用户在 2026-10-20 批准按 [C0–C7 计划](../plans/2026-10-20-crypto-full-version-completion.md) 开发并向 `helloxiaobit/chan.py full-version` 提交、推送。按阶段串行验证；Goal 仅在全部要求有结果后关闭。
 
-## 当前检查点（2026-10-31，请求绑定已交付；私有管理上下文基础双版已验）
+## 当前检查点（2026-10-31，原SQL依赖保护双版已验；原CAS管理增量待接）
+
+原SQL依赖保护已完成[双版验收与独立审计](2026-10-31-native-management-sql.md)：9完整管理模块/221唯一节点，两版各221 passed、零skip/failure/error/warning、实际退出码0，完整成员/顺序/state一致；190源码map 936bc8fb及真实70/71包环境前后未变。3.14暂停后原终态工具返回缺口如实保留，原完整controller/result/JUnit/log独立审查通过，不重跑或补造；3.11句柄68572自然b26fd9 exit0，105次实际poll工具副本仅按该段monitor范围保留。独立审计首跑旧文件名错误d824d3保留，仅修审计路径后280c08 exit0，没有改原证明或放宽核验。双版原编译/实际optional-free导入按同一身份适用，无新依赖/配置或发送权限；本子步Lore/普通push按实际Git核实。下一步接原关闭CAS/OrderAudit唯一增量和账户串行占用，再A/B和原三CLI；这些及OKX/C7完整范围仍未完成，Goal active。
+
+以下是本子步暂停/恢复期间的历史检查点，最新状态以上段及报告双版终态为准。
+
+SQL子步原3.14在用户暂停期间自然发布完整原result/log/JUnit，221 passed/零skip/warning、退出码0；恢复时原句柄已不存在，未获得原终态工具返回，缺口明确记录、不伪造。恢复独立审查afda4c exit0，原清单/190源码/环境/Git及完整成员state均匹配，未重跑。见[恢复证据](2026-10-31-native-management-sql.md)。当前准备按同一221清单运行3.11，尚未双版终验/提交；原CAS/占用/A-B/CLI以及完整C0–C7仍继续，Goal已按用户恢复active。
+
+私有上下文基础已Lore/普通push为`99096e4f6e5aea1a79b5db6e899be4e06530cb4c`，远端SHA一致，交付时Git干净且189源码map仍dd5b02c5；原双版218成绩对应父HEAD加当时工作树，不冒称新HEAD重跑。其后按原计划补[SQL依赖与元数据调用前保护](2026-10-31-native-management-sql.md)，两条真实RED保留，新增3项focused GREEN；唯一生产修改仍NativeManagement，复用原fresh-compile/事务wrapper/owner检查，没有接管理写或发送。适用9完整模块/221节点将严格双版串行终验，尚未接受或提交本SQL子步，不能借旧218成绩覆盖。原CAS增量、账户占用、管理A/B、三CLI及完整C0–C7仍未完成，实际配置和交易门禁不变。
 
 请求绑定已Lore/普通push为`1a2a147bd9de2a08c7cd271dd8b79e6d7d488fcc`，远端SHA一致、交付时工作树干净，原188源码map未变。其后按[管理计划](../plans/2026-10-30-native-existing-risk-management.md)实现[私有当前调用上下文基础](2026-10-31-native-management-context.md)：原with/弱引用模式、同Engine/线程及原拥有事务重核，退出失效；同一来源/全账本/窗口复用，不重采或授发送许可。原9项及guard晚变RED保留，双版全部8个管理模块同218节点各218 passed/零skip/warning、自然exit0；189源码map dd5b02c5、完整成员/状态及真实70/71包环境精确配对，独立审计、当前编译/实际optional-free导入均通过。Lore/普通push以实际Git核实为准，不冒称新HEAD重跑；未改522/旧7405只按原范围复用。原CAS/SQL回调及唯一增量、账户占用/A-B/三CLI、OKX和C7等完整范围继续未完成，实际配置/资金/交易研究门禁不变，Goal active。
 

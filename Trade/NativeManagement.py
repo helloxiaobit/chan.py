@@ -158,6 +158,43 @@ def _known_management_interval_sources(chan, context, *, current=None):
     return fingerprint
 
 
+def _management_database_bindings(chan):
+    """Declared original SQL/read/write methods, without invoking any SQL."""
+    import sqlite3
+    from contextlib import contextmanager
+    from .db_util import CChanDB
+    from .SqliteDB import CSqliteDB
+    if type(chan) is not CChanDB or chan.db_type != "sqlite" or type(chan.db) is not CSqliteDB:
+        _fail()
+    database = chan.db
+    if (type(database.conn) is not sqlite3.Connection or database.conn.row_factory is not sqlite3.Row
+            or database.conn.text_factory is not str):
+        _fail()
+    result = []
+    for owner, names in ((chan, ("get_record", "get_order_history", "_order_write", "acquire_close_intent", "claim_order_submission")),
+            (database, ("query", "query_one", "transaction", "execute"))):
+        for name in names:
+            descriptor = vars(type(owner))[name]
+            if type(descriptor) is not types.FunctionType or name in vars(owner):
+                _fail()
+            method = getattr(owner, name)
+            if type(method) is not types.MethodType or method.__self__ is not owner or method.__func__ is not descriptor:
+                _fail()
+            body = descriptor
+            if owner is database and name == "transaction":
+                body = getattr(descriptor, "__wrapped__", None)
+                if type(body) is not types.FunctionType:
+                    _fail()
+                reference = contextmanager(body)
+                if (descriptor.__code__ is not reference.__code__
+                        or descriptor.__globals__ is not reference.__globals__ or descriptor.__defaults__ is not None
+                        or descriptor.__kwdefaults__ is not None or descriptor.__code__.co_freevars != ("func",)
+                        or len(descriptor.__closure__ or ()) != 1 or descriptor.__closure__[0].cell_contents is not body):
+                    _fail()
+            result.append((owner, name, descriptor, body))
+    return tuple(result)
+
+
 def _source_runtime(engine, *, include_interval=False, include_close=False):
     """Reuse original runtime/SDK checks, with the actual frozen read role."""
     if type(include_interval) is not bool or type(include_close) is not bool or (include_close and not include_interval):
@@ -181,6 +218,11 @@ def _source_runtime(engine, *, include_interval=False, include_close=False):
             ((Facts, ("_market", "_number", "_string")), (Risk, ("account_key", "_sha"))) for name in names):
         _fail()
     modules = {}
+    database_callables = {__name__+":_management_database_bindings": Prepare._function_identity(
+        __name__, "_management_database_bindings", _management_database_bindings, modules)}
+    for owner, name, _, body in _management_database_bindings(engine.chan_db):
+        module, qualname = type(owner).__module__, type(owner).__qualname__+"."+name
+        database_callables[module+":"+qualname] = Prepare._function_identity(module, qualname, body, modules)
     selected = [(Prepare, "_selected_runtime"), (Prepare, "_client_binding"), (Client, "initialize_native_order_recovery_client"),
         (Prepare, "_implementation"), (Boundary, "_database"), (Boundary, "_same_database"),
         (Instrument, "collect_native_instruments_for_engine"), (Current, "read_native_component_policy"),
@@ -261,7 +303,8 @@ def _source_runtime(engine, *, include_interval=False, include_close=False):
         for name in ("collect_native_management_close_request", "_collect_native_management_close_request",
                 "_native_management_close_context", "_assert_native_management_context_current", "_build_native_management_close_request"):
             callables[__name__+":"+name] = Prepare._function_identity(__name__, name, globals()[name], modules)
-    return {"engine": Prepare._selected_runtime(engine, None, engine._management_only_policy), "sources": callables}
+    return {"engine": Prepare._selected_runtime(engine, None, engine._management_only_policy),
+        "sources": {**callables, **database_callables}}
 
 
 def collect_native_management_sources(engine, record_id, *, phase, policy,
@@ -514,15 +557,23 @@ def _collect_native_management_sources(engine, record_id, *, phase, policy,
         implementation = {**Prepare._implementation(), __name__: hashlib.sha256(Path(__file__).read_bytes()).hexdigest()}
         runtime_reader, database_reader = _source_runtime, Boundary._same_database
         client_reader, implementation_reader = Prepare._client_binding, Prepare._implementation
+        bindings_reader = _management_database_bindings
+        database_bindings = bindings_reader(chan)
+        functions = (runtime_reader, database_reader, client_reader, implementation_reader, bindings_reader)
+        functions += tuple(function for _, _, descriptor, body in database_bindings
+            for function in ((descriptor,) if descriptor is body else (descriptor, body)))
         guards = [(function, function.__code__, canonical_bytes((function.__defaults__, function.__kwdefaults__)))
-            for function in (runtime_reader, database_reader, client_reader, implementation_reader)]
+            for function in functions]
 
         def owners(*, identity=True, owned=False):
             if (runtime_reader is not _source_runtime or database_reader is not Boundary._same_database
                     or client_reader is not Prepare._client_binding or implementation_reader is not Prepare._implementation
+                    or bindings_reader is not _management_database_bindings
                     or any(function.__code__ is not code
                         or canonical_bytes((function.__defaults__, function.__kwdefaults__)) != defaults
                         for function, code, defaults in guards)):
+                _fail()
+            if bindings_reader(chan) != database_bindings:
                 _fail()
             Boundary._same_database(chan, database, connection, table, owned=owned)
             if (engine.chan_db is not chan or engine.exchange is not exchange or engine.mode != mode
