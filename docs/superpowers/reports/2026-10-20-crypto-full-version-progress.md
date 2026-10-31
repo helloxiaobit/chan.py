@@ -2,7 +2,9 @@
 
 用户在 2026-10-20 批准按 [C0–C7 计划](../plans/2026-10-20-crypto-full-version-completion.md) 开发并向 `helloxiaobit/chan.py full-version` 提交、推送。按阶段串行验证；Goal 仅在全部要求有结果后关闭。
 
-## 当前检查点（2026-10-31，查单已交付；管理请求绑定离线验收已验）
+## 当前检查点（2026-10-31，请求绑定已交付；私有管理上下文基础双版已验）
+
+请求绑定已Lore/普通push为`1a2a147bd9de2a08c7cd271dd8b79e6d7d488fcc`，远端SHA一致、交付时工作树干净，原188源码map未变。其后按[管理计划](../plans/2026-10-30-native-existing-risk-management.md)实现[私有当前调用上下文基础](2026-10-31-native-management-context.md)：原with/弱引用模式、同Engine/线程及原拥有事务重核，退出失效；同一来源/全账本/窗口复用，不重采或授发送许可。原9项及guard晚变RED保留，双版全部8个管理模块同218节点各218 passed/零skip/warning、自然exit0；189源码map dd5b02c5、完整成员/状态及真实70/71包环境精确配对，独立审计、当前编译/实际optional-free导入均通过。Lore/普通push以实际Git核实为准，不冒称新HEAD重跑；未改522/旧7405只按原范围复用。原CAS/SQL回调及唯一增量、账户占用/A-B/三CLI、OKX和C7等完整范围继续未完成，实际配置/资金/交易研究门禁不变，Goal active。
 
 原完整区间观察已Lore/普通push为 `dd9cc5e17a630028ed419c2d4f7431893912ec79`。其后完成[原关闭请求绑定与共享精度子步](2026-10-31-native-management-request.md)：source-v4自采后用原SDK builder构造精度化、原账户/leg/client-ID绑定请求，市价取原Last V2，修复最终decoder工作遗漏其他来源预算与Last原交易年龄尾检查。原prepare共用单位/精度函数和原运行时枚举，没有新sender/表/账本/hook/依赖；两个授权标志仍false，未接管理发送消费者。
 

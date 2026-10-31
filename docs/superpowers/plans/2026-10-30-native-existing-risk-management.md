@@ -77,3 +77,15 @@
 随后沿原`_order_write`/`acquire_close_intent`/claim与`OrderAudit`消费同一动作、原intent/claim唯一增量和全账户占用；先验证两连接/两进程、已有未知/created/submitting、回滚、重复报告及原生终态才释放。NativeOrderTransition表的phase=open CHECK不得改或塞close/cancel；在原append-only OrderAudit事件中显式版本化管理绑定/增量，严格reader核新增字段digest/类型/前缀，不新建第二ledger/table、不补签旧open L2。
 
 最后接已批准A/B原fetch和Session.request两位置：同call核实际动作/client/leg/数量/来源/owner/CAS，严格恢复，不重采/重签/第三hook；再接原三CLI与fresh-worker。通用管理发送断言仍拒绝，只允许逐动作完整消费者执行批准范围，不能停在永久全拒绝。cancel不借新风险余额或可关闭量>0，close保留原终态/余量及服务器只关闭证据门槛。逐步真实RED/GREEN、适用串行回归和Lore，不改实际配置或真实交易授权。
+
+### 1a2a147后私有上下文实现与待验范围
+
+请求绑定已Lore/普通push为`1a2a147bd9de2a08c7cd271dd8b79e6d7d488fcc`，远端完整SHA相同，交付时工作树干净，188源码仍与原731双版清单相等，未声称新HEAD重跑。其后唯一生产修改为NativeManagement：原WeakKeyDictionary空handle模式、当前with作用域/Engine/线程，退出即撤销该内存上下文；JSON无授权。复用同一close采集主体及原owner/full-ledger/known-source检查，在原拥有事务中重核，不重采，不更新原窗口。窗口块抽成同次closure供采集和使用复用，没有第二SDK/账本/发送器或实际配置修改。
+
+先缺入口RED，再原SQLite/SDK底层fake的4项GREEN。其间自己漏导入store导致1failure/3setup error；补导入后的另一次因共享pytest-current权限错误退出，保留原件，不删除旧目录或计通过；之后用既有GUID独立basetemp规程得到4项正确缺入口RED。新增guard晚变RED证明4个外来callable先执行才被拒绝，随后在任何调用前核同次函数对象/code/defaults，并将实际Boundary/implementation依赖纳入原枚举。当前9项GREEN（746.58秒、exit0）：真实原事务、复制/JSON/异Engine/异线程、七类owner替换零外来SQL/transport、四守卫、原50ms钱包/UTC倒退、另一记录/参数及cold market Last/异常失效。原件位于`C:/chanpy/verification/native-management-context-20261031/`，本段仍不是双版终验。
+
+主线程依显式solo要求复核，无委派；当前仅pre-intent活视图，不允许合法CAS增量、占用释放或管理发送。后续第4–6步仍必须完成，不能将此handle或None当许可。适用验收冻结全部8个管理模块（新9＋原209，共218节点）及189源码、原3.14/3.11完整环境，严格串行至真实终态；未改且无NativeManagement依赖的原522节点只按适用身份复用，不改称本轮再次执行。无活pytest才编译/改文档，独立审查完整成员/工件后才Lore/push本上下文子步。
+
+该基础子步现已[双版终验及独立审计](../reports/2026-10-31-native-management-context.md)：同一218精确节点各218 passed/零skip/warning，原进程自然exit0，189源码map仍dd5b02c5；完整成员/顺序/状态相等，真实70/71包环境不变。3.14接受后才启动3.11，原123次观察和中间错误保留；当前编译、实际optional-free导入也通过。不重标未改522或旧7405为本轮重跑，不称整个第3–6步/C5/C6/C7完成。
+
+后续接线前仍按修改前计划：先RED覆盖原writer及其实际SQL/回调依赖晚换，拒绝发生在外来SQL/transport之前；再原CAS唯一intent/claim增量和稳定账户跨币占用。用原OrderAudit显式版本化管理字段，并纳入data_sha/digest/reader/header，不能在原NativeOrderTransition塞close/cancel。当前活视图只接受写前全等，写后必须独立核确定义的唯一增量，不能增添任意ignore/allow-pass参数。随后管理A/B与三CLI，保持未知/ACK不释放和实际门禁；不以当前仍无发送能力作为最终交付。

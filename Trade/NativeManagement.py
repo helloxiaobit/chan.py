@@ -7,6 +7,7 @@ import json
 import hashlib
 import types
 import math
+import weakref
 from decimal import Decimal, localcontext
 from pathlib import Path
 from time import monotonic_ns as _monotonic_ns
@@ -23,6 +24,14 @@ from . import OrderAudit as Audit
 
 
 IDENTITY_SCHEMA = "chan-native-management-identity-v1"
+
+
+class _NativeManagementContext:
+    """An empty live-call handle, never caller JSON or send permission."""
+    __slots__ = ("__weakref__",)
+
+
+_MANAGEMENT_CONTEXTS = weakref.WeakKeyDictionary()
 
 
 def _fail():
@@ -173,6 +182,7 @@ def _source_runtime(engine, *, include_interval=False, include_close=False):
         _fail()
     modules = {}
     selected = [(Prepare, "_selected_runtime"), (Prepare, "_client_binding"), (Client, "initialize_native_order_recovery_client"),
+        (Prepare, "_implementation"), (Boundary, "_database"), (Boundary, "_same_database"),
         (Instrument, "collect_native_instruments_for_engine"), (Current, "read_native_component_policy"),
         (Admission, "_assert_current_windows"), (Account, "collect_account_snapshot"),
         (Account, "verify_account_snapshot"), (Pending, "collect_native_pending_orders"),
@@ -248,7 +258,8 @@ def _source_runtime(engine, *, include_interval=False, include_close=False):
             "collect_native_management_interval", "_collect_native_management_sources", "_known_management_interval_sources", "observe_native_management_quantity"):
         callables[__name__+":"+name] = Prepare._function_identity(__name__, name, globals()[name], modules)
     if include_close:
-        for name in ("collect_native_management_close_request", "_build_native_management_close_request"):
+        for name in ("collect_native_management_close_request", "_collect_native_management_close_request",
+                "_native_management_close_context", "_assert_native_management_context_current", "_build_native_management_close_request"):
             callables[__name__+":"+name] = Prepare._function_identity(__name__, name, globals()[name], modules)
     return {"engine": Prepare._selected_runtime(engine, None, engine._management_only_policy), "sources": callables}
 
@@ -273,8 +284,55 @@ def collect_native_management_close_request(engine, record_id, amount, price=Non
         instrument_max_age_ms, instrument_max_observation_span_ms, order_max_age_ms, order_max_observation_span_ms,
         last_max_age_ms, last_max_observation_span_ms):
     """Own original close-request terms; never persist, claim or send them."""
+    return _collect_native_management_close_request(engine, record_id, amount, price, post_only=post_only, policy=policy,
+        instrument_max_age_ms=instrument_max_age_ms, instrument_max_observation_span_ms=instrument_max_observation_span_ms,
+        order_max_age_ms=order_max_age_ms, order_max_observation_span_ms=order_max_observation_span_ms,
+        last_max_age_ms=last_max_age_ms, last_max_observation_span_ms=last_max_observation_span_ms, live_context=False)
+
+
+def _native_management_close_context(engine, record_id, amount, price=None, *, post_only=False, policy,
+        instrument_max_age_ms, instrument_max_observation_span_ms, order_max_age_ms, order_max_observation_span_ms,
+        last_max_age_ms, last_max_observation_span_ms):
+    """Own fresh original collection only during this call, without mutation."""
+    from contextlib import contextmanager
+    from threading import get_ident
+
+    @contextmanager
+    def use():
+        document, recheck = _collect_native_management_close_request(engine, record_id, amount, price,
+            post_only=post_only, policy=policy, instrument_max_age_ms=instrument_max_age_ms,
+            instrument_max_observation_span_ms=instrument_max_observation_span_ms, order_max_age_ms=order_max_age_ms,
+            order_max_observation_span_ms=order_max_observation_span_ms, last_max_age_ms=last_max_age_ms,
+            last_max_observation_span_ms=last_max_observation_span_ms, live_context=True)
+        context = _NativeManagementContext()
+        _MANAGEMENT_CONTEXTS[context] = (engine, get_ident(), canonical_bytes(document), recheck)
+        try:
+            yield context
+        finally:
+            _MANAGEMENT_CONTEXTS.pop(context, None)
+    return use()
+
+
+def _assert_native_management_context_current(engine, context):
+    """Recheck this pre-intent source view inside the original owned CAS."""
+    from threading import get_ident
     try:
-        if (type(record_id) is not int or record_id <= 0 or type(amount) not in (int, float) or not math.isfinite(amount) or amount <= 0
+        if type(context) is not _NativeManagementContext or context not in _MANAGEMENT_CONTEXTS:
+            _fail()
+        owner, thread_id, _, recheck = _MANAGEMENT_CONTEXTS[context]
+        if engine is not owner or get_ident() != thread_id:
+            _fail()
+        recheck()
+    except Exception:
+        _fail()
+
+
+def _collect_native_management_close_request(engine, record_id, amount, price=None, *, post_only=False, policy,
+        instrument_max_age_ms, instrument_max_observation_span_ms, order_max_age_ms, order_max_observation_span_ms,
+        last_max_age_ms, last_max_observation_span_ms, live_context):
+    """One shared request/phase reader for JSON and the private live scope."""
+    try:
+        if (type(live_context) is not bool or type(record_id) is not int or record_id <= 0 or type(amount) not in (int, float) or not math.isfinite(amount) or amount <= 0
                 or (price is not None and (type(price) not in (int, float) or not math.isfinite(price) or price <= 0))
                 or type(post_only) is not bool or (post_only and price is None)
                 or any(type(value) is not int or not 0 <= value < 2**63 for value in (last_max_age_ms, last_max_observation_span_ms))):
@@ -292,7 +350,7 @@ def collect_native_management_close_request(engine, record_id, amount, price=Non
         return _collect_native_management_sources(engine, record_id, phase=phase, policy=policy,
             instrument_max_age_ms=instrument_max_age_ms, instrument_max_observation_span_ms=instrument_max_observation_span_ms,
             order_max_age_ms=order_max_age_ms, order_max_observation_span_ms=order_max_observation_span_ms,
-            include_interval=True, close_request=request)
+            include_interval=True, close_request=request, live_context=live_context)
     except Exception:
         _fail()
 
@@ -379,7 +437,7 @@ def _build_native_management_close_request(engine, record, quantity, account, un
 
 def _collect_native_management_sources(engine, record_id, *, phase, policy,
         instrument_max_age_ms, instrument_max_observation_span_ms, order_max_age_ms, order_max_observation_span_ms, include_interval,
-        close_request=None):
+        close_request=None, live_context=False):
     """Own current GETs, not quantity capability, CAS, release or permission.
 
     Query may persist its original ACK/terminal observation, never apply fills.
@@ -401,7 +459,8 @@ def _collect_native_management_sources(engine, record_id, *, phase, policy,
     from . import AccountReconcile as Reconcile
     from . import ExecutionFacts as Facts
     try:
-        if (type(include_interval) is not bool or type(engine) is not CCCXTTradeEngine or engine.dry_run is not False or engine.market_type != "swap"
+        if (type(include_interval) is not bool or type(live_context) is not bool or (live_context and close_request is None)
+                or type(engine) is not CCCXTTradeEngine or engine.dry_run is not False or engine.market_type != "swap"
                 or engine.mode not in {"live", "testnet"}):
             _fail()
         provided = {"policy": policy, "instrument_max_age_ms": instrument_max_age_ms,
@@ -453,9 +512,19 @@ def _collect_native_management_sources(engine, record_id, *, phase, policy,
         binding = Prepare._client_binding(exchange)
         location = canonical_bytes(database.query("PRAGMA database_list"))
         implementation = {**Prepare._implementation(), __name__: hashlib.sha256(Path(__file__).read_bytes()).hexdigest()}
+        runtime_reader, database_reader = _source_runtime, Boundary._same_database
+        client_reader, implementation_reader = Prepare._client_binding, Prepare._implementation
+        guards = [(function, function.__code__, canonical_bytes((function.__defaults__, function.__kwdefaults__)))
+            for function in (runtime_reader, database_reader, client_reader, implementation_reader)]
 
-        def owners(*, identity=True):
-            Boundary._same_database(chan, database, connection, table, owned=False)
+        def owners(*, identity=True, owned=False):
+            if (runtime_reader is not _source_runtime or database_reader is not Boundary._same_database
+                    or client_reader is not Prepare._client_binding or implementation_reader is not Prepare._implementation
+                    or any(function.__code__ is not code
+                        or canonical_bytes((function.__defaults__, function.__kwdefaults__)) != defaults
+                        for function, code, defaults in guards)):
+                _fail()
+            Boundary._same_database(chan, database, connection, table, owned=owned)
             if (engine.chan_db is not chan or engine.exchange is not exchange or engine.mode != mode
                     or engine.dry_run is not False or engine.market_type != "swap"
                     or engine._management_only_policy is not role or engine.safety_policy is not role
@@ -639,48 +708,74 @@ def _collect_native_management_sources(engine, record_id, *, phase, policy,
             Last.verify_binance_last_prices(bound_close["last"], max_age_ms=close_request["last_max_age_ms"],
                 max_observation_span_ms=close_request["last_max_observation_span_ms"])
             owners()
-        finished, elapsed_end = utc_now_ms(), _monotonic_ns()
-        instrument = instruments["payload"]
-        elapsed_clocks = (elapsed_start, instrument_elapsed_start, instrument_elapsed_end,
-            query_elapsed_start, query_elapsed_end, elapsed_end)
-        if (any(type(value) is not int or value < 0 for value in elapsed_clocks)
-                or tuple(sorted(elapsed_clocks)) != elapsed_clocks):
-            _fail()
-        if include_interval:
-            if len(component_windows) != len(units)+4+(1 if close_request is not None else 0):
+        checked_utc, checked_elapsed = None, None
+
+        def windows():
+            nonlocal checked_utc, checked_elapsed
+            finished, elapsed_end = utc_now_ms(), _monotonic_ns()
+            instrument = instruments["payload"]
+            elapsed_clocks = (elapsed_start, instrument_elapsed_start, instrument_elapsed_end,
+                query_elapsed_start, query_elapsed_end, elapsed_end)
+            if (any(type(value) is not int or value < 0 for value in elapsed_clocks)
+                    or tuple(sorted(elapsed_clocks)) != elapsed_clocks
+                    or type(finished) is not int
+                    or (checked_utc is not None and (finished < checked_utc or elapsed_end < checked_elapsed))):
                 _fail()
-            previous = query_elapsed_end
-            for window in component_windows:
-                begin, end = window["started_ns"], window["finished_ns"]
-                if (type(begin) is not int or type(end) is not int or not previous <= begin <= end <= elapsed_end
-                        or end-begin > values["policy"]["max_observation_span_ms"][window["span_role"]]*1_000_000
-                        or any(elapsed_end-begin > values["policy"]["max_age_ms"][role]*1_000_000 for role in window["age_roles"])):
+            if include_interval:
+                if len(component_windows) != len(units)+4+(1 if close_request is not None else 0):
                     _fail()
-                previous = end
-        if bound_close is not None and bound_close["last"] is not None:
-            Last._windows(bound_close["last"]["payload"], finished, close_request["last_max_age_ms"],
-                close_request["last_max_observation_span_ms"])
-            window = bound_close["last_window"]
-            if (type(window["started_ns"]) is not int or type(window["finished_ns"]) is not int
-                    or not component_windows[-1]["finished_ns"] <= window["started_ns"] <= window["finished_ns"] <= elapsed_end
-                    or window["finished_ns"]-window["started_ns"] > close_request["last_max_observation_span_ms"]*1_000_000
-                    or elapsed_end-window["started_ns"] > close_request["last_max_age_ms"]*1_000_000):
+                previous = query_elapsed_end
+                for window in component_windows:
+                    begin, end = window["started_ns"], window["finished_ns"]
+                    if (type(begin) is not int or type(end) is not int or not previous <= begin <= end <= elapsed_end
+                            or end-begin > values["policy"]["max_observation_span_ms"][window["span_role"]]*1_000_000
+                            or any(elapsed_end-begin > values["policy"]["max_age_ms"][role]*1_000_000 for role in window["age_roles"])):
+                        _fail()
+                    previous = end
+            if bound_close is not None and bound_close["last"] is not None:
+                Last._windows(bound_close["last"]["payload"], finished, close_request["last_max_age_ms"],
+                    close_request["last_max_observation_span_ms"])
+                window = bound_close["last_window"]
+                if (type(window["started_ns"]) is not int or type(window["finished_ns"]) is not int
+                        or not component_windows[-1]["finished_ns"] <= window["started_ns"] <= window["finished_ns"] <= elapsed_end
+                        or window["finished_ns"]-window["started_ns"] > close_request["last_max_observation_span_ms"]*1_000_000
+                        or elapsed_end-window["started_ns"] > close_request["last_max_age_ms"]*1_000_000):
+                    _fail()
+            if (not 0 <= started <= query_start <= query_end <= finished < 2**63
+                    or finished-query_start > order_max_age_ms or query_end-query_start > order_max_observation_span_ms
+                    or finished-instrument["started_ms"] > instrument_max_age_ms
+                    or instrument["finished_ms"]-instrument["started_ms"] > instrument_max_observation_span_ms
+                    or elapsed_end-instrument_elapsed_start > instrument_max_age_ms*1_000_000
+                    or instrument_elapsed_end-instrument_elapsed_start > instrument_max_observation_span_ms*1_000_000
+                    or elapsed_end-query_elapsed_start > order_max_age_ms*1_000_000
+                    or query_elapsed_end-query_elapsed_start > order_max_observation_span_ms*1_000_000
+                    or finished-started > values["policy"]["max_observation_span_ms"]["total"]
+                    or elapsed_end-elapsed_start > values["policy"]["max_observation_span_ms"]["total"]*1_000_000):
                 _fail()
-        if (not 0 <= started <= query_start <= query_end <= finished < 2**63
-                or finished-query_start > order_max_age_ms or query_end-query_start > order_max_observation_span_ms
-                or finished-instrument["started_ms"] > instrument_max_age_ms
-                or instrument["finished_ms"]-instrument["started_ms"] > instrument_max_observation_span_ms
-                or elapsed_end-instrument_elapsed_start > instrument_max_age_ms*1_000_000
-                or instrument_elapsed_end-instrument_elapsed_start > instrument_max_observation_span_ms*1_000_000
-                or elapsed_end-query_elapsed_start > order_max_age_ms*1_000_000
-                or query_elapsed_end-query_elapsed_start > order_max_observation_span_ms*1_000_000
-                or finished-started > values["policy"]["max_observation_span_ms"]["total"]
-                or elapsed_end-elapsed_start > values["policy"]["max_observation_span_ms"]["total"]*1_000_000):
-            _fail()
-        Admission._assert_current_windows(values["policy"], started, finished, account=account["payload"],
-            market=market["payload"], wallets=[row["payload"] for row in wallets], executions=observations,
-            additional=[("open_orders", pending["payload"])])
-        return document
+            Admission._assert_current_windows(values["policy"], started, finished, account=account["payload"],
+                market=market["payload"], wallets=[row["payload"] for row in wallets], executions=observations,
+                additional=[("open_orders", pending["payload"])])
+            checked_utc, checked_elapsed = finished, elapsed_end
+
+        windows()
+        if not live_context:
+            return document
+
+        def recheck():
+            owners(owned=True)
+            windows()
+            if (Risk._ledger(chan) != ledger or Check._journal_prefix(database) != prefix
+                    or Risk.read_check(database, baseline["check_id"]) != baseline["check"]
+                    or _known_management_interval_sources(chan, context, current=current_sources) != known):
+                _fail()
+            owners(owned=True)
+            if bound_close["last"] is not None:
+                Last.verify_binance_last_prices(bound_close["last"], max_age_ms=close_request["last_max_age_ms"],
+                    max_observation_span_ms=close_request["last_max_observation_span_ms"])
+                owners(owned=True)
+            windows()
+
+        return document, recheck
     except Exception:
         _fail()
 
